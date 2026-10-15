@@ -1,0 +1,122 @@
+{
+  "name": "complete bot factory opening",
+  "kind": "opening",
+  "map": "flat-pawn-lab",
+  "max_ticks": 600,
+  "seed": 404,
+  "observation": {
+    "line_of_sight": true,
+    "radar": true,
+    "remember_last_seen": false
+  },
+  "sides": [
+    {
+      "side": 0,
+      "team": 0,
+      "start_position": { "x": 128, "z": 128 },
+      "starting_metal": 1200,
+      "starting_energy": 1500
+    },
+    {
+      "side": 1,
+      "team": 1,
+      "start_position": { "x": 384, "z": 384 },
+      "starting_metal": 1200,
+      "starting_energy": 1500
+    }
+  ],
+  "formations": [
+    {
+      "side": 0,
+      "anchor": { "x": 96, "z": 128 },
+      "heading": 0.0,
+      "members": [
+        { "label": "prime_engineer", "definition": "armck", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 20 }
+    },
+    {
+      "side": 1,
+      "anchor": { "x": 416, "z": 384 },
+      "heading": 3.1415927,
+      "members": [
+        { "label": "opposing_engineer", "definition": "armck", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 20 }
+    }
+  ],
+  "openings": [
+    {
+      "name": "standard bot opening",
+      "side": 0,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "prime_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armmex",
+            "position": { "x": 96, "z": 96 },
+            "facing": "South"
+          }
+        },
+        {
+          "at_tick": 100,
+          "actor": { "type": "label", "label": "prime_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armsolar",
+            "position": { "x": 96, "z": 176 },
+            "facing": "South"
+          }
+        },
+        {
+          "at_tick": 220,
+          "actor": { "type": "label", "label": "prime_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armlab",
+            "position": { "x": 184, "z": 184 },
+            "facing": "South"
+          }
+        }
+      ]
+    },
+    {
+      "name": "opposing expansion",
+      "side": 1,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "opposing_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armmex",
+            "position": { "x": 416, "z": 416 },
+            "facing": "North"
+          }
+        },
+        {
+          "at_tick": 100,
+          "actor": { "type": "label", "label": "opposing_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armsolar",
+            "position": { "x": 416, "z": 336 },
+            "facing": "North"
+          }
+        },
+        {
+          "at_tick": 220,
+          "actor": { "type": "label", "label": "opposing_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armlab",
+            "position": { "x": 328, "z": 328 },
+            "facing": "North"
+          }
+        }
+      ]
+    }
+  ]
+}

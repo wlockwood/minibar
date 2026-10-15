@@ -1,0 +1,91 @@
+{
+  "name": "pawn fast flank raid",
+  "kind": "raid",
+  "map": "flat-pawn-lab",
+  "max_ticks": 450,
+  "seed": 303,
+  "observation": {
+    "line_of_sight": true,
+    "radar": true,
+    "remember_last_seen": true
+  },
+  "sides": [
+    {
+      "side": 0,
+      "team": 0,
+      "start_position": { "x": 128, "z": 128 },
+      "starting_metal": 1000,
+      "starting_energy": 1000
+    },
+    {
+      "side": 1,
+      "team": 1,
+      "start_position": { "x": 384, "z": 384 },
+      "starting_metal": 1000,
+      "starting_energy": 1000
+    }
+  ],
+  "formations": [
+    {
+      "side": 0,
+      "anchor": { "x": 140, "z": 140 },
+      "heading": 0.0,
+      "members": [
+        { "label": "outpost_engineer", "definition": "armck", "count": 1 },
+        { "label": "sentry_lead", "definition": "armpw", "count": 1 },
+        { "label": "sentry_wing", "definition": "armpw", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 24 }
+    },
+    {
+      "side": 1,
+      "anchor": { "x": 384, "z": 384 },
+      "heading": 3.9269908,
+      "members": [
+        { "label": "raider_lead", "definition": "armpw", "count": 1 },
+        { "label": "raider_flank", "definition": "armpw", "count": 4 }
+      ],
+      "pattern": { "type": "ring", "radius": 28 }
+    }
+  ],
+  "openings": [
+    {
+      "name": "outpost construction",
+      "side": 0,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "outpost_engineer" },
+          "instruction": {
+            "type": "build",
+            "definition": "armsolar",
+            "position": { "x": 100, "z": 140 },
+            "facing": "South"
+          }
+        }
+      ]
+    },
+    {
+      "name": "raider rush",
+      "side": 1,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "raider_lead" },
+          "instruction": {
+            "type": "attack",
+            "target": { "type": "label", "label": "outpost_engineer" }
+          }
+        },
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "raider_flank" },
+          "instruction": {
+            "type": "attack",
+            "target": { "type": "label", "label": "sentry_lead" }
+          }
+        }
+      ]
+    }
+  ]
+}

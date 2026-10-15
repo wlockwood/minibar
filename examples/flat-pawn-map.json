@@ -1,0 +1,21 @@
+{
+  "map_name": "flat-pawn-lab",
+  "map_size": [512, 512],
+  "water_level": 0,
+  "terrain": {
+    "heights": [[0, 0], [0, 0]],
+    "movement_classes": {
+      "BOT": [[true, true], [true, true]]
+    }
+  },
+  "metal_spots": [
+    { "x": 96.0, "y": 0.0, "z": 96.0, "worth": 2.0 },
+    { "x": 160.0, "y": 0.0, "z": 96.0, "worth": 2.0 },
+    { "x": 352.0, "y": 0.0, "z": 416.0, "worth": 2.0 },
+    { "x": 416.0, "y": 0.0, "z": 416.0, "worth": 2.0 }
+  ],
+  "geothermal_spots": [
+    { "x": 128.0, "y": 0.0, "z": 160.0, "radius": 32.0 },
+    { "x": 384.0, "y": 0.0, "z": 352.0, "radius": 32.0 }
+  ]
+}

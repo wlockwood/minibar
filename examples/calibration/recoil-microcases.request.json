@@ -1,0 +1,49 @@
+{
+  "type": "calibration_capture_request",
+  "format_version": 1,
+  "capture_id": "replace-at-runtime",
+  "fixture_id": "armpw-movement-weapon-obstruction-v1",
+  "duration_frames": 300,
+  "sample_interval_frames": 3,
+  "seed": 1,
+  "subjects": [
+    {"key": "mover", "unit_id": 101},
+    {"key": "shooter", "unit_id": 102},
+    {"key": "clear_target", "unit_id": 103},
+    {"key": "blocked_target", "unit_id": 104}
+  ],
+  "checks": [
+    {
+      "id": "movement.samples",
+      "mechanic": "movement.kinematics",
+      "kind": "exact_snapshots",
+      "subjects": ["mover"]
+    },
+    {
+      "id": "weapon.state",
+      "mechanic": "weapon.timing_damage",
+      "kind": "exact_snapshots",
+      "subjects": ["shooter"]
+    },
+    {
+      "id": "weapon.damage",
+      "mechanic": "weapon.timing_damage",
+      "kind": "exact_events",
+      "subjects": ["shooter", "clear_target"],
+      "events": ["damage", "destroyed"]
+    },
+    {
+      "id": "obstruction.timeline",
+      "mechanic": "line_of_fire.obstruction",
+      "kind": "exact_events",
+      "subjects": ["shooter", "blocked_target"],
+      "events": ["damage", "destroyed"]
+    },
+    {
+      "id": "obstruction.health",
+      "mechanic": "line_of_fire.obstruction",
+      "kind": "exact_snapshots",
+      "subjects": ["blocked_target"]
+    }
+  ]
+}

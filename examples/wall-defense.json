@@ -1,0 +1,93 @@
+{
+  "name": "wall defense fortification",
+  "kind": "wall_defense",
+  "map": "flat-pawn-lab",
+  "max_ticks": 400,
+  "seed": 101,
+  "observation": {
+    "line_of_sight": true,
+    "radar": true,
+    "remember_last_seen": true
+  },
+  "sides": [
+    {
+      "side": 0,
+      "team": 0,
+      "start_position": { "x": 128, "z": 256 },
+      "starting_metal": 1500,
+      "starting_energy": 2000
+    },
+    {
+      "side": 1,
+      "team": 1,
+      "start_position": { "x": 400, "z": 256 },
+      "starting_metal": 1000,
+      "starting_energy": 1000
+    }
+  ],
+  "formations": [
+    {
+      "side": 0,
+      "anchor": { "x": 200, "z": 256 },
+      "heading": 1.5707964,
+      "members": [
+        { "label": "breach_point", "definition": "armdrag", "count": 1 },
+        { "label": "wall_segment", "definition": "armdrag", "count": 4 }
+      ],
+      "pattern": { "type": "line", "spacing": 32 }
+    },
+    {
+      "side": 0,
+      "anchor": { "x": 150, "z": 256 },
+      "heading": 0.0,
+      "members": [
+        { "label": "defender_lead", "definition": "armpw", "count": 1 },
+        { "label": "defender_wing", "definition": "armpw", "count": 3 }
+      ],
+      "pattern": { "type": "line", "spacing": 28 }
+    },
+    {
+      "side": 0,
+      "anchor": { "x": 160, "z": 180 },
+      "heading": 0.0,
+      "members": [
+        { "label": "wall_turret", "definition": "armrl", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 28 }
+    },
+    {
+      "side": 0,
+      "anchor": { "x": 110, "z": 256 },
+      "heading": 0.0,
+      "members": [
+        { "label": "fortification_engineer", "definition": "armck", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 28 }
+    },
+    {
+      "side": 1,
+      "anchor": { "x": 380, "z": 256 },
+      "heading": 3.1415927,
+      "members": [
+        { "label": "assault_squad", "definition": "armpw", "count": 8 }
+      ],
+      "pattern": { "type": "grid", "columns": 4, "column_spacing": 24, "row_spacing": 24 }
+    }
+  ],
+  "openings": [
+    {
+      "name": "assault push",
+      "side": 1,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "all_combat_units" },
+          "instruction": {
+            "type": "attack",
+            "target": { "type": "label", "label": "breach_point" }
+          }
+        }
+      ]
+    }
+  ]
+}

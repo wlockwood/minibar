@@ -1,0 +1,51 @@
+{
+  "name": "two-player river crossing",
+  "kind": "formation",
+  "map": "MiniBar River Crossing",
+  "max_ticks": 1800,
+  "seed": 303,
+  "observation": {
+    "line_of_sight": true,
+    "radar": true,
+    "remember_last_seen": true
+  },
+  "sides": [
+    {
+      "side": 0,
+      "team": 0,
+      "start_position": { "x": 40, "z": 40 },
+      "starting_metal": 600,
+      "starting_energy": 900
+    },
+    {
+      "side": 1,
+      "team": 1,
+      "start_position": { "x": 216, "z": 216 },
+      "starting_metal": 600,
+      "starting_energy": 900
+    }
+  ],
+  "formations": [
+    {
+      "side": 0,
+      "anchor": { "x": 36, "z": 36 },
+      "heading": 0.7853982,
+      "members": [
+        { "label": "blue_builder", "definition": "armck", "count": 1 },
+        { "label": "blue_squad", "definition": "armpw", "count": 4 }
+      ],
+      "pattern": { "type": "line", "spacing": 6 }
+    },
+    {
+      "side": 1,
+      "anchor": { "x": 220, "z": 220 },
+      "heading": 3.9269908,
+      "members": [
+        { "label": "red_builder", "definition": "armck", "count": 1 },
+        { "label": "red_squad", "definition": "armpw", "count": 4 }
+      ],
+      "pattern": { "type": "line", "spacing": 6 }
+    }
+  ],
+  "openings": []
+}

@@ -1,0 +1,102 @@
+{
+  "name": "economy expansion race",
+  "kind": "economy_race",
+  "map": "flat-pawn-lab",
+  "max_ticks": 500,
+  "seed": 202,
+  "observation": {
+    "line_of_sight": true,
+    "radar": true,
+    "remember_last_seen": false
+  },
+  "sides": [
+    {
+      "side": 0,
+      "team": 0,
+      "start_position": { "x": 100, "z": 100 },
+      "starting_metal": 1000,
+      "starting_energy": 1000
+    },
+    {
+      "side": 1,
+      "team": 1,
+      "start_position": { "x": 400, "z": 400 },
+      "starting_metal": 1000,
+      "starting_energy": 1000
+    }
+  ],
+  "formations": [
+    {
+      "side": 0,
+      "anchor": { "x": 64, "z": 96 },
+      "heading": 0.0,
+      "members": [
+        { "label": "north_builder", "definition": "armck", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 20 }
+    },
+    {
+      "side": 1,
+      "anchor": { "x": 448, "z": 416 },
+      "heading": 3.1415927,
+      "members": [
+        { "label": "south_builder", "definition": "armck", "count": 1 }
+      ],
+      "pattern": { "type": "line", "spacing": 20 }
+    }
+  ],
+  "openings": [
+    {
+      "name": "north expansion",
+      "side": 0,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "north_builder" },
+          "instruction": {
+            "type": "build",
+            "definition": "armmex",
+            "position": { "x": 96, "z": 96 },
+            "facing": "South"
+          }
+        },
+        {
+          "at_tick": 120,
+          "actor": { "type": "label", "label": "north_builder" },
+          "instruction": {
+            "type": "build",
+            "definition": "armsolar",
+            "position": { "x": 160, "z": 96 },
+            "facing": "South"
+          }
+        }
+      ]
+    },
+    {
+      "name": "south expansion",
+      "side": 1,
+      "steps": [
+        {
+          "at_tick": 0,
+          "actor": { "type": "label", "label": "south_builder" },
+          "instruction": {
+            "type": "build",
+            "definition": "armmex",
+            "position": { "x": 416, "z": 416 },
+            "facing": "North"
+          }
+        },
+        {
+          "at_tick": 120,
+          "actor": { "type": "label", "label": "south_builder" },
+          "instruction": {
+            "type": "build",
+            "definition": "armsolar",
+            "position": { "x": 352, "z": 416 },
+            "facing": "North"
+          }
+        }
+      ]
+    }
+  ]
+}

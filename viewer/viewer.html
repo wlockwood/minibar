@@ -1,0 +1,343 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Visigoth live simulator</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}body{background:#10151d;color:#dce7f3;font:14px system-ui}header{padding:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-height:116px;overflow:hidden}button,input{background:#253044;color:inherit;border:1px solid #50627a;padding:5px}.active{border-color:#66d9ef;color:#66d9ef}button:disabled{opacity:.35;cursor:not-allowed;color:#9aa6b8;border-color:#3a4658}canvas{display:block;width:100vw;height:calc(100vh - 116px);background:#18212d;touch-action:none}#status{margin-left:auto}#legend,#details{color:#aebdcc;font-size:12px}.historical-only{display:none}body.historical .historical-only{display:inline-flex;gap:5px;align-items:center}body.historical .live-only{display:none}.decision-frame{color:#ffe066;font-weight:700}.future-warning{color:#ff9f68;font-weight:700}#review-inspectors{display:none;position:fixed;right:10px;bottom:10px;z-index:2;width:min(360px,calc(100vw - 20px));max-height:calc(100vh - 140px);overflow:auto;gap:7px;pointer-events:auto}.review-panel{background:#10151df0;border:1px solid #50627a;border-radius:4px;padding:7px;box-shadow:0 2px 12px #0008}.review-panel h2{font-size:12px;color:#dce7f3;margin:0 0 5px}.review-panel p{margin:3px 0;color:#b8c5d3;font-size:12px}.review-panel .unavailable{color:#9aa6b8;font-style:italic}.review-panel .derived{color:#c9b7ed}.review-panel .recorded{color:#9fd7bf}.review-timeline{display:flex;gap:2px;align-items:flex-end;height:24px;margin:5px 0}.review-timeline span{display:block;min-width:3px;flex:1;background:#66d9ef99}.review-timeline span.stalled{background:#ff8f66}.review-evidence{padding-left:16px;margin:4px 0}.review-evidence li{font-size:12px;margin:2px 0}body.historical:not(.panels-hidden) #review-inspectors{display:grid}body.historical.panels-hidden #review-inspectors{display:none}
+</style><header><span class="live-only"><button id="pause">Resume</button><button id="step">Step</button><label>Speed <input id="speed" type="number" min="0.1" max="64" step="0.1" value="1"></label><button data-mode="move">Move</button><button data-mode="attack">Attack</button><button data-mode="build">Build</button><button data-mode="assist">Assist</button><button data-mode="repair">Repair</button><button data-mode="reclaim">Reclaim</button><input id="definition" placeholder="unit definition"><button id="queue">Queue</button><button id="clear-queue">Clear queue</button><button id="repeat">Repeat</button><button id="cancel">Cancel orders</button><button id="cancel-project">Cancel project</button><button id="cancel-production">Cancel production</button><button id="activate">On/off</button></span><span class="historical-only"><button id="prediction-prev">Previous prediction</button><button id="history-prev">Previous frame</button><button id="history-play">Play</button><input id="history-time" type="range" min="0" value="0" step="1"><button id="history-next">Next frame</button><button id="prediction-next">Next prediction</button><button id="history-decision">Decision frame</button><label><input id="history-future" type="checkbox"> Future confirmation</label><label>Trail <input id="history-trail" type="range" min="0" max="9" value="6"></label><label><input id="history-grid" type="checkbox" checked> Sector grid</label><label><input id="history-labels" type="checkbox" checked> Unit labels</label><button id="review-panel-toggle">Hide panels</button><button data-review-action="accept">Accept</button><button data-review-action="reject">Reject</button><button data-review-action="correct_kind">Correct kind</button><button data-review-action="correct_target">Correct target</button><button data-review-action="correct_both">Correct both</button><input id="review-kind" placeholder="corrected kind"><input id="review-sector" placeholder="sector x,z"><input id="review-notes" placeholder="review notes"><button data-review-action="save_notes">Save notes</button></span><span id="status">connecting</span><span id="legend">Blue = your units · Red = visible enemy · bars = walls · round emplacements = turrets · outer arrow = hull facing · inner gold arrow = turret facing · gold/red lines = weapon intent · gray line = friendly wall blocking · impact flashes = applied damage</span><span id="details">Left-click or drag to select blue units. Choose one order, then left-click its target. Right-click moves, or attacks an enemy.</span></header><canvas id="map"></canvas><aside id="review-inspectors" aria-label="Historical review inspection panels"><section class="review-panel"><h2>Force & formation</h2><div id="review-force"></div></section><section class="review-panel"><h2>Economy & timeline</h2><div id="review-economy"></div><div id="review-timeline" class="review-timeline" aria-label="Recorded resource timeline"></div></section><section class="review-panel"><h2>Decision evidence</h2><div id="review-decision"></div></section></aside>
+<script>
+window.VISIGOTH_SHARED_VIEWER=true;let viewerConfig={schema:'visigoth.viewer_config',schema_version:1,mode:'pending',capabilities:{time_controls:true,unit_commands:true},frame_endpoint:'',initial_frame_index:0,frame_count:0},historicalIndex=0,historicalPlaying=false,historicalTimer=null,rawHistoricalFrame=null,mapZoom=1,displayedGameTime=null,historicalLoadToken=0,navigationQueue=Promise.resolve();
+const c=document.querySelector('#map'),x=c.getContext('2d'),status=document.querySelector('#status'),details=document.querySelector('#details'),definition=document.querySelector('#definition');let state,obs,request=1,actionSequence=4503599627370496,pendingSequence=null,ws,mode=null,cursor=null,preview=null,lastPreview=0,dragStart=null,feedback='';const selected=new Map;
+function send(message){if(ws?.readyState===1)ws.send(JSON.stringify({protocol_version:1,request_id:request++,message}))}
+function submit(action){if(!state||!obs){feedback='not connected';draw();return false}pendingSequence=actionSequence;feedback='command queued; awaiting world validation';send({type:'submit_action',displayed_tick:state.displayed_tick,action:{side:obs.side,sequence:actionSequence++,apply_at_tick:state.displayed_tick,action}});return true}
+function connect(){ws=new WebSocket(`ws://${location.host}/ws`);ws.onopen=()=>send({type:'synchronize',last_server_sequence:null});ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='observation'){state=m.state;const staticMap=obs?.map;obs=m.observation.map?m.observation:{...m.observation,map:staticMap};for(const id of [...selected.keys()]){const current=obs.entities.find(e=>key(e.id)===id);if(current)selected.set(id,current);else selected.delete(id)}const finalResult=(obs.action_results||[]).find(result=>result.side===obs.side&&result.sequence===pendingSequence);if(finalResult){feedback=finalResult.accepted?'world executed command':`world rejected command: ${finalResult.rejection||'unknown'}`;pendingSequence=null}draw()}else{state=m.message?.state||m.message?.ack?.state||state;const result=m.message?.ack?.result;if(result)feedback=result.status==='accepted'||result.status==='duplicate'?'command queued; awaiting world validation':`command rejected: ${result.rejection?.reason||result.status}`;if(m.message?.type==='error')feedback=`server error: ${m.message.error?.kind||'unknown'}`;if(m.message?.type==='build_preview'){preview=m.message.preview}draw()}};ws.onerror=()=>{feedback='connection failed; retrying'};ws.onclose=()=>setTimeout(connect,500)}
+function key(id){return id&&typeof id==='object'?`${id.slot}:${id.generation}`:String(id)}function entities(){return [...selected.values()].map(e=>e.id)}function selectedEntities(){return [...selected.values()]}function supports(capability,single=false){if(viewerConfig.capabilities?.unit_commands===false)return false;const units=selectedEntities();return units.length>0&&(!single||units.length===1)&&units.every(unit=>unit.capabilities?.[capability]===true)}function setEnabled(selector,enabled){const control=document.querySelector(selector);if(control)control.disabled=!enabled}const modeCapability={move:'move_order',attack:'attack',build:'build',assist:'assist',repair:'repair',reclaim:'reclaim'};function refreshControls(){for(const [modeName,capability] of Object.entries(modeCapability)){const valid=supports(capability,modeName==='build');setEnabled(`[data-mode="${modeName}"]`,valid);if(mode===modeName&&!valid)clearOrder()}const factory=supports('factory_queue',true);setEnabled('#queue',factory&&!!definition.value.trim());setEnabled('#clear-queue',factory);setEnabled('#repeat',factory);setEnabled('#cancel-production',factory);const canCancel=supports('cancel');setEnabled('#cancel',canCancel);setEnabled('#cancel-project',canCancel);setEnabled('#activate',supports('activation'))}
+function viewport(){const scale=Math.min(c.clientWidth/obs.map_size.x,c.clientHeight/obs.map_size.z)*mapZoom;return{scale,ox:(c.clientWidth-obs.map_size.x*scale)/2,oz:(c.clientHeight-obs.map_size.z*scale)/2}}
+function point(event){const r=c.getBoundingClientRect(),v=viewport();return{x:(event.clientX-r.left-v.ox)/v.scale,z:(event.clientY-r.top-v.oz)/v.scale}}
+function nearest(event,predicate){if(!obs?.entities)return null;const p=point(event),scale=viewport().scale;let best=null,bestScore=Infinity;for(const e of obs.entities){if(!predicate(e))continue;const radius=Math.max(e.radius||8,14/scale),q=(e.position.x-p.x)**2+(e.position.z-p.z)**2,score=q/(radius*radius);if(score<=1&&score<bestScore){bestScore=score;best=e}}return best}
+function target(kind,e,p){return kind==='entity'?{kind:'entity',entity:e.id}:{kind:'area',position:p,radius:64}}
+function requestPreview(){const builder=entities()[0];if(!state||!obs||!builder||!cursor||!definition.value)return;send({type:'preview_build',request:{side:obs.side,builder,definition:definition.value,position:cursor,facing:'south'}})}
+function clearOrder(){mode=null;preview=null;document.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'))}
+function issue(action){if(!entities().length){feedback='select units first';draw();return false}const sent=submit(action);if(sent)clearOrder();return sent}
+function interact(event){if(!obs||!mode)return;const p=point(event),own=e=>e.side===obs.side,orderMode=event.shiftKey?'append':'replace';if(mode==='move')issue({type:'move',entities:entities(),destination:p,mode:orderMode});else if(mode==='build'&&preview?.valid){if(submit({type:'build',builder:entities()[0],definition:definition.value,position:preview.snapped_position,facing:'south',mode:orderMode}))clearOrder()}else if(mode==='build'){feedback=preview?.rejection||'select a builder and a definition';draw()}else{const e=nearest(event,mode==='attack'?q=>!own(q):mode==='reclaim'?q=>true:own);if(!e){feedback='choose a valid target';draw();return}if(mode==='attack')issue({type:'attack',entities:entities(),target:{kind:'entity',entity:e.id},mode:orderMode});if(mode==='assist')issue({type:'assist',entities:entities(),target:e.id,mode:orderMode});if(mode==='repair')issue({type:'repair',entities:entities(),target:e.id,mode:orderMode});if(mode==='reclaim')issue({type:'reclaim',entities:entities(),target:target('entity',e,p),mode:orderMode})}draw()}
+function selectAt(event){const own=e=>e.side===obs.side,e=nearest(event,own);if(!event.shiftKey)selected.clear();if(e)selected.set(key(e.id),e);feedback=e?`${selected.size} unit${selected.size===1?'':'s'} selected`:'selection cleared'}
+function finishSelection(event){const end=point(event),start=dragStart,dx=(end.x-start.x)*c.clientWidth/obs.map_size.x,dz=(end.z-start.z)*c.clientHeight/obs.map_size.z;if(Math.abs(dx)<5&&Math.abs(dz)<5){selectAt(event)}else{if(!event.shiftKey)selected.clear();const minX=Math.min(start.x,end.x),maxX=Math.max(start.x,end.x),minZ=Math.min(start.z,end.z),maxZ=Math.max(start.z,end.z);for(const e of obs.entities)if(e.side===obs.side&&e.position.x>=minX&&e.position.x<=maxX&&e.position.z>=minZ&&e.position.z<=maxZ)selected.set(key(e.id),e);feedback=`${selected.size} unit${selected.size===1?'':'s'} selected`}dragStart=null;draw()}
+function symbol(e,px,pz,r){x.beginPath();if(e.kind==='wall'){x.rect(px-r,pz-r*.35,r*2,r*.7)}else if(e.is_turret){x.arc(px,pz,r*.68,0,Math.PI*2)}else if(e.kind==='factory'||e.kind==='structure'){x.rect(px-r,pz-r,r*2,r*2)}else if(e.kind==='feature'){x.moveTo(px,pz-r);x.lineTo(px+r,pz);x.lineTo(px,pz+r);x.lineTo(px-r,pz);x.closePath()}else{x.moveTo(px,pz-r);x.lineTo(px+r*.85,pz+r*.72);x.lineTo(px-r*.85,pz+r*.72);x.closePath()}x.fill();if(e.is_turret){x.fillStyle='#1a2433';x.beginPath();x.arc(px,pz,Math.max(2,r*.2),0,Math.PI*2);x.fill()}if(document.body.classList.contains('historical')&&document.querySelector('#history-labels').checked){x.fillStyle='#f5f7fa';x.font='11px system-ui';x.fillText(e.definition||e.metadata?.role||e.visibility,px+r+3,pz-r-2)}}
+function facing(px,pz,heading,from,to,color,width){const dx=Math.sin(heading),dz=Math.cos(heading),sx=px+dx*from,sz=pz+dz*from,ex=px+dx*to,ez=pz+dz*to,wing=Math.max(3,width*2.2);x.strokeStyle=color;x.lineWidth=width;x.beginPath();x.moveTo(sx,sz);x.lineTo(ex,ez);x.lineTo(ex-dx*wing-dz*wing*.6,ez-dz*wing+dx*wing*.6);x.moveTo(ex,ez);x.lineTo(ex-dx*wing+dz*wing*.6,ez-dz*wing-dx*wing*.6);x.stroke()}
+function terrain(sx,sy){const m=obs?.map;if(m){const cw=m.cell_size_x*sx,ch=m.cell_size_z*sy;for(let r=0;r<m.rows;r++)for(let col=0;col<m.cols;col++){const i=r*m.cols+col,h=m.heights[i]||0,water=m.water_depth[i]||0;x.fillStyle=water>0?`rgb(24,${70+Math.min(85,water)},125)`:`rgb(${Math.max(24,50+h*.25)},${Math.max(30,62+h*.3)},${Math.max(25,50+h*.18)})`;x.fillRect(col*cw,r*ch,cw+.5,ch+.5);if(m.passable[i]===false){x.fillStyle='#0006';x.fillRect(col*cw,r*ch,cw+.5,ch+.5)}}}for(const site of obs.resource_sites||[]){const px=site.position.x*sx,pz=site.position.z*sy;x.strokeStyle=site.geothermal?'#ff9d40':'#c7f0ff';x.beginPath();x.arc(px,pz,site.geothermal?6:4,0,Math.PI*2);x.stroke()}if(document.body.classList.contains('historical')&&document.querySelector('#history-grid').checked&&obs.sector_grid){const grid=obs.sector_grid;x.strokeStyle='#ffffff35';x.lineWidth=1;for(let col=1;col<grid.columns;col++){x.beginPath();x.moveTo(obs.map_size.x*sx*col/grid.columns,0);x.lineTo(obs.map_size.x*sx*col/grid.columns,obs.map_size.z*sy);x.stroke()}for(let row=1;row<grid.rows;row++){x.beginPath();x.moveTo(0,obs.map_size.z*sy*row/grid.rows);x.lineTo(obs.map_size.x*sx,obs.map_size.z*sy*row/grid.rows);x.stroke()}if(obs.target_sector){const [col,row]=obs.target_sector;x.strokeStyle='#ffe066';x.lineWidth=3;x.strokeRect(col*obs.map_size.x*sx/grid.columns,row*obs.map_size.z*sy/grid.rows,obs.map_size.x*sx/grid.columns,obs.map_size.z*sy*row/grid.rows)}}}
+function draw(){c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio;x.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);x.clearRect(0,0,c.clientWidth,c.clientHeight);if(!obs?.entities)return;const v=viewport(),sx=v.scale,sy=v.scale,byId=new Map(obs.entities.map(e=>[key(e.id),e]));x.save();x.translate(v.ox,v.oz);if(rawHistoricalFrame?.future_confirmation)x.globalAlpha=.45;terrain(sx,sy);x.lineWidth=1;for(const a of obs.fire_intents||[]){const s=byId.get(key(a.source));if(!s)continue;x.strokeStyle=a.blocked_by_friendly_wall?'#aab4c4':s.side===obs.side?'#f9c74f':'#ff8f66';x.setLineDash(a.blocked_by_friendly_wall?[2,5]:[4,3]);x.beginPath();x.moveTo(s.position.x*sx,s.position.z*sy);x.lineTo(a.target_position.x*sx,a.target_position.z*sy);x.stroke();x.setLineDash([])}for(const e of obs.entities){const px=e.position.x*sx,pz=e.position.z*sy,r=Math.max(3,(e.radius||8)*sx),bar=Math.max(14,r*2);if(e.planned_route?.length){x.strokeStyle='#66d9ef99';x.setLineDash([3,3]);x.beginPath();x.moveTo(px,pz);for(const p of e.planned_route)x.lineTo(p.x*sx,p.z*sy);x.stroke();x.setLineDash([])}for(const order of e.commands||[]){const target=order.destination||order.target_position;if(!target)continue;x.strokeStyle='#b9f6ca';x.setLineDash([2,4]);x.beginPath();x.moveTo(px,pz);x.lineTo(target.x*sx,target.z*sy);x.stroke();x.setLineDash([])}x.strokeStyle=e.side===obs.side?'#66d9ef66':'#ff6b6b66';x.beginPath();x.arc(px,pz,r,0,Math.PI*2);x.stroke();if(e.heading!=null)facing(px,pz,e.heading,r*.7,r*1.42,e.side===obs.side?'#eff7ff':'#ffd0d0',2);if(e.turret_heading!=null)facing(px,pz,e.turret_heading,r*.08,r*.58,'#ffe066',1.5);x.fillStyle=e.visibility==='radar'?'#b7bec8':e.side===obs.side?'#66d9ef':e.kind==='feature'?'#9ca3af':'#ff6b6b';symbol(e,px,pz,r*.65);if(e.health_fraction!=null){x.fillStyle='#111';x.fillRect(px-bar/2,pz-r-5,bar,3);x.fillStyle=e.side===obs.side?'#62d97b':'#ed6a5e';x.fillRect(px-bar/2,pz-r-5,bar*Math.max(0,Math.min(1,e.health_fraction)),3)}if(e.construction_progress!=null){x.fillStyle='#ffd166';x.fillRect(px-bar/2,pz+r+3,bar*Math.max(0,Math.min(1,e.construction_progress)),2)}if(selected.has(key(e.id))){x.strokeStyle='#fff';x.strokeRect(px-r-3,pz-r-3,(r+3)*2,(r+3)*2)}}for(const hit of obs.damage_events||[]){const victim=byId.get(key(hit.entity));if(!victim)continue;const px=victim.position.x*sx,pz=victim.position.z*sy,r=Math.max(6,(victim.radius||8)*sx);x.strokeStyle='#fff1a8';x.lineWidth=2;x.beginPath();x.arc(px,pz,r+5,0,Math.PI*2);x.stroke();x.fillStyle='#fff1a8';x.fillText(`-${Math.round(hit.amount)}`,px+r+5,pz-r-7)}if(dragStart&&cursor&&mode===null){const x0=dragStart.x*sx,z0=dragStart.z*sy;x.strokeStyle='#fff';x.setLineDash([4,3]);x.strokeRect(x0,z0,cursor.x*sx-x0,cursor.z*sy-z0);x.setLineDash([])}if(cursor&&mode==='build'){const p=preview?.snapped_position||cursor,ok=preview?.valid!==false;x.strokeStyle=ok?'#62d97b':'#ff5d73';x.strokeRect(p.x*sx-8,p.z*sy-8,16,16);x.fillStyle=x.strokeStyle;x.fillText(preview?.rejection||definition.value||'build',p.x*sx+10,p.z*sy)}x.restore();const first=selected.values().next().value,hitCount=(obs.damage_events||[]).length,hitDamage=(obs.damage_events||[]).reduce((sum,hit)=>sum+hit.amount,0),wallBlocks=(obs.fire_intents||[]).filter(a=>a.blocked_by_friendly_wall).length;const active=!first?'idle':(obs.fire_intents||[]).some(a=>key(a.source)===key(first.id))?'engaging':first.planned_route?.length?'moving':'idle',hp=first?(first.health_fraction!=null?`HP ${Math.round(first.health_fraction*100)}%`:'HP unavailable'):'';details.textContent=first?`${first.metadata?.display_name||first.definition||first.metadata?.role||first.kind}${first.trail_evidence==='derived'?' · INFERRED trail':''} · ${hp} · ${active}${first.enabled===false?' · disabled (radar/jammer off)':''}${first?.sensor_coverage?` · LOS ${Math.round(first.sensor_coverage.los||0)} · Radar ${Math.round(first.sensor_coverage.radar||0)}${first.sensor_coverage.jammer?` · Jammer ${Math.round(first.sensor_coverage.jammer)}`:''}`:''}`:'Left-click or drag to select blue units. Choose one order, then left-click its target.';const gameTime=Number.isFinite(displayedGameTime)?` · ${Math.floor(displayedGameTime/60)}:${String(Math.floor(displayedGameTime%60)).padStart(2,'0')}`:'';status.textContent=`tick ${state?.displayed_tick??obs.tick}${gameTime} ${state?.paused?'paused':'running'} · metal ${Math.round(obs.metal.stored)}/${Math.round(obs.metal.capacity)} · energy ${Math.round(obs.energy.stored)}/${Math.round(obs.energy.capacity)}${wallBlocks?` · ${wallBlocks} wall-blocked`:''}${hitCount?` · ${hitCount} impact${hitCount===1?'':'s'} (${Math.round(hitDamage)} damage)`:''}${feedback?` · ${feedback}`:''}`}
+for(const button of document.querySelectorAll('[data-mode]'))button.onclick=()=>{mode=button.dataset.mode;preview=null;dragStart=null;document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b===button));feedback=`${button.textContent} order: choose a target`;draw()};c.onpointerdown=e=>{if(obs&&mode===null&&e.button===0){dragStart=point(e);cursor=dragStart;c.setPointerCapture?.(e.pointerId);draw()}};c.onpointerup=e=>{if(!obs||e.button!==0)return;if(mode===null&&dragStart){finishSelection(e);c.releasePointerCapture?.(e.pointerId)}else if(mode!==null)interact(e)};c.oncontextmenu=e=>{e.preventDefault();if(!obs)return;if(!entities().length){feedback='select units first';draw();return}const p=point(e),enemy=nearest(e,q=>q.side!==obs.side),orderMode=e.shiftKey?'append':'replace';if(enemy)issue({type:'attack',entities:entities(),target:{kind:'entity',entity:enemy.id},mode:orderMode});else issue({type:'move',entities:entities(),destination:p,mode:orderMode})};c.onpointermove=e=>{if(obs){cursor=point(e);if(mode==='build'&&performance.now()-lastPreview>100){lastPreview=performance.now();requestPreview()}if(mode==='build'||dragStart)draw()}};
+document.addEventListener('wheel',e=>{e.preventDefault();if(!obs)return;mapZoom=Math.max(.25,Math.min(12,mapZoom*(e.deltaY<0?1.15:1/1.15)));feedback=`map zoom ${Math.round(mapZoom*100)}%`;draw()},{passive:false});document.addEventListener('keydown',e=>{if(['PageUp','PageDown','Home','End','ArrowUp','ArrowDown',' '].includes(e.key)&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))e.preventDefault()},{passive:false});
+function selectFirstOr(message){const first=entities()[0];if(!first){feedback=message;draw()}return first}document.querySelector('#queue').onclick=()=>{const factory=selectFirstOr('select a factory first');if(factory&&definition.value)submit({type:'factory_queue',factory,operation:{operation:'append',item:{definition:definition.value,count:1}}});else if(factory){feedback='enter a unit definition to queue';draw()}};document.querySelector('#clear-queue').onclick=()=>{const factory=selectFirstOr('select a factory first');if(factory)submit({type:'factory_queue',factory,operation:{operation:'clear'}})};let repeat=false;document.querySelector('#repeat').onclick=()=>{const factory=selectFirstOr('select a factory first');if(factory){repeat=!repeat;submit({type:'factory_queue',factory,operation:{operation:'set_repeat',enabled:repeat}})}};document.querySelector('#cancel').onclick=()=>{const ids=entities();if(!ids.length){feedback='select units to cancel';draw()}for(const entity of ids)submit({type:'cancel',target:{kind:'orders',entity}})};document.querySelector('#cancel-project').onclick=()=>{const ids=entities();if(!ids.length){feedback='select a project to cancel';draw()}for(const entity of ids)submit({type:'cancel',target:{kind:'project',entity}})};document.querySelector('#cancel-production').onclick=()=>{const ids=entities();if(!ids.length){feedback='select a factory to cancel production';draw()}for(const entity of ids)submit({type:'cancel',target:{kind:'factory_current',entity}})};document.querySelector('#activate').onclick=()=>{const first=selected.values().next().value;if(!first){feedback='select units to change activation';draw();return}submit({type:'set_activation',entities:entities(),active:!first.enabled})};document.querySelector('#pause').onclick=()=>send({type:'set_paused',paused:!state?.paused});document.querySelector('#step').onclick=()=>send({type:'step',ticks:1});document.querySelector('#speed').onchange=e=>send({type:'set_speed',speed:{numerator:Math.max(1,Math.round(+e.target.value*10)),denominator:10}});setInterval(()=>{if(viewerConfig.mode==='live_simulation'&&state&&!state.paused)send({type:'advance',real_time_quanta:1})},50);
+function neutralKind(entity){const role=entity.metadata?.role;return role==='factory'?'factory':entity.metadata?.building?'structure':role==='defense'?'structure':'unit'}
+function panelClear(id){const node=document.querySelector(id);while(node.firstChild)node.removeChild(node.firstChild);return node}
+function panelLine(node,text,kind){const line=document.createElement('p');line.textContent=text;if(kind)line.className=kind;node.appendChild(line);return line}
+function numberText(value){return Number.isFinite(value)?Math.round(value).toLocaleString():'?'}
+function forceSummary(entities,label){if(!entities.length)return `${label}: no recorded contacts`;const roles=new Map;for(const entity of entities){const role=entity.metadata?.role||'unknown';roles.set(role,(roles.get(role)||0)+1)}const roleText=[...roles.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,4).map(([role,count])=>`${count} ${role.replaceAll('_',' ')}`).join(', ');const radar=entities.filter(entity=>entity.visibility==='radar').length;const los=entities.filter(entity=>entity.visibility==='line_of_sight').length;const visibility=radar?` · ${los} LOS, ${radar} radar`:los?` · ${los} LOS`:'';return `${label}: ${entities.length} contact${entities.length===1?'':'s'}${visibility} · ${roleText||'role unavailable'}`}
+function formationSummary(entities,label){if(entities.length<2)return `${label} formation: unavailable (fewer than two recorded positions)`;const xs=entities.map(entity=>entity.position?.x).filter(Number.isFinite),zs=entities.map(entity=>entity.position?.z).filter(Number.isFinite);if(xs.length<2||zs.length<2)return `${label} formation: unavailable (positions missing)`;const minX=Math.min(...xs),maxX=Math.max(...xs),minZ=Math.min(...zs),maxZ=Math.max(...zs),centerX=xs.reduce((sum,value)=>sum+value,0)/xs.length,centerZ=zs.reduce((sum,value)=>sum+value,0)/zs.length,spread=entities.reduce((sum,entity)=>sum+Math.hypot((entity.position.x||0)-centerX,(entity.position.z||0)-centerZ),0)/entities.length;return `${label} formation: ${numberText(maxX-minX)} × ${numberText(maxZ-minZ)} footprint · mean spread ${numberText(spread)} (derived from recorded positions)`}
+function renderReviewForce(frame){const panel=panelClear('#review-force'),entities=Array.isArray(frame.entities)?frame.entities:[],friendly=entities.filter(entity=>entity.relation==='friendly'),enemies=entities.filter(entity=>entity.relation==='enemy');panelLine(panel,forceSummary(friendly,'Friendly force'),'recorded');panelLine(panel,forceSummary(enemies,'Enemy contacts'),'recorded');panelLine(panel,formationSummary(friendly,'Friendly'),'derived');panelLine(panel,formationSummary(enemies,'Enemy'),'derived')}
+function resourceText(name,stored,capacity,income,expense){return `${name} ${numberText(stored)}/${numberText(capacity)} · +${numberText(income)} −${numberText(expense)}`}
+function renderReviewEconomy(frame){const panel=panelClear('#review-economy'),timeline=panelClear('#review-timeline'),resources=frame.resources;if(!resources)panelLine(panel,'Economy unavailable in this recorded frame.','unavailable');else{panelLine(panel,resourceText('Metal',resources.metal_stored,resources.metal_capacity,resources.metal_income,resources.metal_expense),'recorded');panelLine(panel,resourceText('Energy',resources.energy_stored,resources.energy_capacity,resources.energy_income,resources.energy_expense),'recorded');if(resources.stalled)panelLine(panel,'Recorded economy stall.','recorded')}const history=Array.isArray(frame.resource_history)?frame.resource_history:[];if(!history.length){panelLine(timeline,'No earlier recorded resource samples.','unavailable');return}const ratios=history.map(item=>{const value=item.resources||{},metal=value.metal_capacity>0?value.metal_stored/value.metal_capacity:0,energy=value.energy_capacity>0?value.energy_stored/value.energy_capacity:0;return{ratio:Math.max(0,Math.min(1,metal,energy)),stalled:!!value.stalled,time:item.game_time_seconds}});for(const item of ratios){const bar=document.createElement('span');bar.style.height=`${Math.max(3,Math.round(item.ratio*24))}px`;bar.title=`${numberText(item.time)}s · minimum storage ${Math.round(item.ratio*100)}%${item.stalled?' · stalled':''}`;if(item.stalled)bar.className='stalled';timeline.appendChild(bar)}panelLine(panel,`Timeline: ${history.length} recorded sample${history.length===1?'':'s'}; bar height is the lower of metal/energy storage.`,'recorded')}
+function renderReviewDecision(frame){const panel=panelClear('#review-decision'),decision=frame.decision||{};if(!frame.decision)panelLine(panel,'Inferred decision metadata unavailable for this record.','unavailable');else{const confidence=Number.isFinite(decision.confidence)?` · confidence ${Math.round(decision.confidence*100)}%`:'';panelLine(panel,`Goal: ${decision.goal_kind||'unavailable'}${confidence}`,'derived');const contract=decision.contract;if(contract){const target=contract.target?.profile&&contract.target.profile!=='AUTO'?` · target ${contract.target.profile}`:'';panelLine(panel,`${contract.effect||'AUTO'} · ${contract.method||'AUTO'} · ${contract.commitment||'AUTO'}${target}`,'derived')}if(decision.reason)panelLine(panel,decision.reason,'derived');if(Array.isArray(frame.target_sector)&&frame.target_sector.length===2)panelLine(panel,`Target sector: ${frame.target_sector[0]}, ${frame.target_sector[1]}`,'derived')}const evidence=Array.isArray(decision.evidence)&&decision.evidence.length?decision.evidence:(frame.detector_evidence||[]);if(!evidence.length){panelLine(panel,'No detector evidence was recorded.','unavailable')}else{const list=document.createElement('ul');list.className='review-evidence';for(const item of evidence.slice(0,8)){const entry=document.createElement('li');entry.textContent=`${item.label||'evidence unavailable'} (${item.evidence||'unavailable'})`;list.appendChild(entry)}panel.appendChild(list)}for(const annotation of (frame.annotations||[]).filter(item=>item.label&&item.label!=='recorded observation').slice(0,3))panelLine(panel,annotation.detail?`${annotation.label}: ${annotation.detail}`:annotation.label,annotation.evidence==='unavailable'?'unavailable':annotation.evidence)}
+function renderReviewInspectors(frame){renderReviewForce(frame);renderReviewEconomy(frame);renderReviewDecision(frame)}
+function normalizeHistorical(frame){const terrain=frame.map.terrain,mapRecorded=frame.map.evidence==='recorded';return{tick:frame.tick??frame.frame_index,side:0,map_size:{x:frame.map.width,z:frame.map.depth},map:terrain?{width:frame.map.width,depth:frame.map.depth,cols:terrain.columns,rows:terrain.rows,cell_size_x:frame.map.width/terrain.columns,cell_size_z:frame.map.depth/terrain.rows,heights:terrain.heights,water_depth:terrain.water_depth||[],passable:terrain.passable||[]}:null,metal:{stored:frame.resources?.metal_stored||0,capacity:frame.resources?.metal_capacity||0},energy:{stored:frame.resources?.energy_stored||0,capacity:frame.resources?.energy_capacity||0},entities:(frame.entities||[]).map(e=>{const ambiguous=e.ambiguous_trails?.[0];return{id:e.id,side:e.relation==='friendly'?0:1,definition:e.definition,kind:neutralKind(e),position:e.position,health_fraction:e.health!=null&&e.max_health?e.health/e.max_health:null,visibility:e.visibility,radius:8,construction_progress:e.build_progress,planned_route:e.trail?.points||ambiguous?.points||[],metadata:e.metadata,commands:e.commands||[],command_event_count:e.command_event_count||0,trail_evidence:e.trail?.evidence||ambiguous?.evidence,trail_ambiguous:!!ambiguous,sensor_coverage:e.sensor_coverage||null}}),resource_sites:(frame.resource_sites||[]).map(s=>({position:s.position,geothermal:s.kind==='geothermal'})),fire_intents:[],damage_events:[],action_results:[],target_sector:mapRecorded?frame.target_sector:null,sector_grid:mapRecorded?frame.map.sector_grid:null}}
+async function loadHistorical(index){index=Math.max(0,Math.min(viewerConfig.frame_count-1,index));const predictionId=viewerConfig.prediction_id;if(!predictionId)throw new Error('historical frame has no selected prediction');const loadToken=++historicalLoadToken;const response=await fetch(`${viewerConfig.frame_endpoint}?index=${encodeURIComponent(index)}&prediction_id=${encodeURIComponent(predictionId)}`,{cache:'no-store'});if(!response.ok)throw new Error(`frame request failed (${response.status})`);const frame=await response.json();if(loadToken!==historicalLoadToken||viewerConfig.prediction_id!==predictionId)return;if(frame.schema!=='visigoth.viewer_frame'||frame.schema_version!==1)throw new Error('unsupported ViewerFrame schema/version');if(frame.prediction_id!==predictionId)throw new Error('historical frame prediction does not match the selected review');if(frame.future_confirmation&&!document.querySelector('#history-future').checked){feedback='future confirmation hidden — enable it explicitly to view this frame';historicalPlaying=false;document.querySelector('#history-play').textContent='Play';draw();return}rawHistoricalFrame=frame;historicalIndex=index;displayedGameTime=frame.game_time_seconds;obs=normalizeHistorical(frame);state={displayed_tick:obs.tick,paused:!historicalPlaying};selected.clear();const slider=document.querySelector('#history-time');slider.value=index;status.className=frame.decision_frame?'decision-frame':frame.future_confirmation?'future-warning':'';feedback=frame.future_confirmation?'NOT AVAILABLE TO POLICY':frame.decision_frame?'DECISION FRAME':'';renderReviewInspectors(frame);draw()}
+function changeHistorical(delta){loadHistorical(historicalIndex+delta).catch(error=>{feedback=error.message;draw()})}
+async function commitReview(action){if(!viewerConfig.review_endpoint)throw new Error('review endpoint unavailable');if(!rawHistoricalFrame?.prediction_id)throw new Error('frame has no prediction_id');if(rawHistoricalFrame.prediction_id!==viewerConfig.prediction_id)throw new Error('displayed frame does not match the selected review');const sector=document.querySelector('#review-sector').value.trim(),parts=sector?sector.split(',').map(Number):null;if(parts&&(!Number.isInteger(parts[0])||!Number.isInteger(parts[1])))throw new Error('corrected sector must be x,z integers');const body={prediction_id:rawHistoricalFrame.prediction_id,action,notes:document.querySelector('#review-notes').value};if(document.querySelector('#review-kind').value.trim())body.corrected_goal_kind=document.querySelector('#review-kind').value.trim();if(parts)body.corrected_target_sector=parts;feedback='saving review…';draw();const response=await fetch(viewerConfig.review_endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json().catch(()=>({}));if(!response.ok||result.committed!==true)throw new Error(result.error||`review save failed (${response.status})`);feedback='review durably committed';draw()}
+function navigatePrediction(direction){const task=navigationQueue.then(()=>navigatePredictionNow(direction));navigationQueue=task.catch(()=>{});return task}async function navigatePredictionNow(direction){if(!viewerConfig.prediction_endpoint)throw new Error('prediction navigation unavailable');const currentPredictionId=viewerConfig.prediction_id;if(!currentPredictionId)throw new Error('historical navigation has no selected prediction');const response=await fetch(`${viewerConfig.prediction_endpoint}?direction=${encodeURIComponent(direction)}&prediction_id=${encodeURIComponent(currentPredictionId)}`,{cache:'no-store'});if(!response.ok)throw new Error(`prediction request failed (${response.status})`);const next=await response.json();if(next.schema!=='visigoth.viewer_config'||next.schema_version!==1)throw new Error('prediction endpoint returned invalid viewer config');viewerConfig=next;historicalPlaying=false;clearInterval(historicalTimer);document.querySelector('#history-play').textContent='Play';document.querySelector('#history-future').checked=false;document.querySelector('#review-notes').value='';document.querySelector('#review-kind').value='';document.querySelector('#review-sector').value='';await startHistorical()}
+async function startHistorical(){document.body.classList.add('historical');const draft=viewerConfig.review_draft||{};document.querySelector('#review-notes').value=typeof draft.notes==='string'?draft.notes:'';document.querySelector('#review-kind').value=typeof draft.corrected_goal_kind==='string'?draft.corrected_goal_kind:'';document.querySelector('#review-sector').value=Array.isArray(draft.corrected_target_sector)?draft.corrected_target_sector.join(','):'';const panelToggle=document.querySelector('#review-panel-toggle');panelToggle.onclick=()=>{document.body.classList.toggle('panels-hidden');panelToggle.textContent=document.body.classList.contains('panels-hidden')?'Show panels':'Hide panels'};document.querySelector('#history-time').max=Math.max(0,viewerConfig.frame_count-1);document.querySelector('#prediction-prev').disabled=!viewerConfig.prediction_endpoint;document.querySelector('#prediction-next').disabled=!viewerConfig.prediction_endpoint;const decisionButton=document.querySelector('#history-decision');decisionButton.disabled=viewerConfig.decision_frame_available===false;decisionButton.title=decisionButton.disabled?'This window has no recorded decision frame':'';document.querySelector('#prediction-prev').onclick=()=>navigatePrediction('previous').catch(error=>{feedback=error.message;draw()});document.querySelector('#prediction-next').onclick=()=>navigatePrediction('next').catch(error=>{feedback=error.message;draw()});document.querySelector('#history-prev').onclick=()=>changeHistorical(-1);document.querySelector('#history-next').onclick=()=>changeHistorical(1);document.querySelector('#history-time').oninput=e=>loadHistorical(+e.target.value).catch(error=>{feedback=error.message;draw()});decisionButton.onclick=()=>{if(viewerConfig.decision_frame_index==null){feedback='recorded decision frame is unavailable in this window';draw();return}loadHistorical(viewerConfig.decision_frame_index).catch(error=>{feedback=error.message;draw()})};document.querySelector('#history-future').onchange=()=>loadHistorical(historicalIndex).catch(error=>{feedback=error.message;draw()});document.querySelector('#history-play').onclick=e=>{historicalPlaying=!historicalPlaying;e.target.textContent=historicalPlaying?'Pause':'Play';clearInterval(historicalTimer);if(historicalPlaying)historicalTimer=setInterval(()=>historicalIndex+1<viewerConfig.frame_count?changeHistorical(1):(historicalPlaying=false,e.target.textContent='Play'),700)};for(const button of document.querySelectorAll('[data-review-action]')){button.disabled=!viewerConfig.capabilities?.review;button.onclick=()=>commitReview(button.dataset.reviewAction).catch(error=>{feedback=error.message;draw()})}await loadHistorical(viewerConfig.initial_frame_index)}
+async function bootstrap(){try{const response=await fetch('/viewer-config.json',{cache:'no-store'});if(response.ok){viewerConfig=await response.json();if(viewerConfig.schema!=='visigoth.viewer_config'||viewerConfig.schema_version!==1)throw new Error('unsupported viewer configuration');if(viewerConfig.mode==='historical_review'||viewerConfig.mode==='simulator_trace'){if(viewerConfig.capabilities?.time_controls||viewerConfig.capabilities?.unit_commands)throw new Error('read-only backend exposed mutation controls');await startHistorical();return}}}catch(error){if(location.protocol==='file:'){feedback=error.message;draw();return}}viewerConfig.mode='live_simulation';installLiveControls();connect()}
+definition.oninput=()=>{refreshControls();if(mode==='build'&&cursor)requestPreview()};c.oncontextmenu=e=>{e.preventDefault();if(viewerConfig.capabilities?.unit_commands===false||!obs)return;if(!entities().length){feedback='select units first';draw();return}const p=point(e),enemy=nearest(e,q=>q.side!==obs.side),orderMode=e.shiftKey?'append':'replace';if(enemy){if(!supports('attack')){feedback='selected units cannot attack';draw();return}issue({type:'attack',entities:entities(),target:{kind:'entity',entity:enemy.id},mode:orderMode})}else{if(!supports('move_order')){feedback='selected units cannot move';draw();return}issue({type:'move',entities:entities(),destination:p,mode:orderMode})}};setInterval(refreshControls,50);bootstrap();
+const historicalIcons={};function historicalIcon(uri){if(!uri)return null;let image=historicalIcons[uri];if(!image){image=new Image();image.src=uri;image.onload=()=>draw();historicalIcons[uri]=image}return image}function symbol(e,px,pz,r){const icon=historicalIcon(e.metadata?.icon_uri);if(icon?.complete&&icon.naturalWidth){x.drawImage(icon,px-r,pz-r,r*2,r*2)}else{x.beginPath();if(e.kind==='wall'){x.rect(px-r,pz-r*.35,r*2,r*.7)}else if(e.is_turret){x.arc(px,pz,r*.68,0,Math.PI*2)}else if(e.kind==='factory'||e.kind==='structure'){x.rect(px-r,pz-r,r*2,r*2)}else if(e.kind==='feature'){x.moveTo(px,pz-r);x.lineTo(px+r,pz);x.lineTo(px,pz+r);x.lineTo(px-r,pz);x.closePath()}else{x.moveTo(px,pz-r);x.lineTo(px+r*.85,pz+r*.72);x.lineTo(px-r*.85,pz+r*.72);x.closePath()}x.fill();if(e.is_turret){x.fillStyle='#1a2433';x.beginPath();x.arc(px,pz,Math.max(2,r*.2),0,Math.PI*2);x.fill()}}if(document.body.classList.contains('historical')&&document.querySelector('#history-labels').checked){x.fillStyle='#f5f7fa';x.font='11px system-ui';x.fillText(e.metadata?.display_name||e.definition||e.metadata?.role||e.visibility,px+r+3,pz-r-2)}}
+// The live server keeps this choice per browser connection: it changes both
+// the fog-of-war observation and the only side whose orders it will accept.
+// It is deliberately added here so the historical-review markup stays inert.
+function installLiveControls(){if(document.querySelector('#control-side'))return;const sideControl=document.createElement('select');sideControl.id='control-side';sideControl.title='Commands and fog of war are scoped to this side';sideControl.innerHTML='<option value="0">Blue · side 0</option><option value="1">Red · side 1</option>';const sideLabel=document.createElement('label');sideLabel.textContent='Control ';sideLabel.appendChild(sideControl);document.querySelector('.live-only')?.prepend(sideLabel);for(const [id,label,title] of [['live-sensor-los','LOS','Calculated line-of-sight radii'],['live-sensor-radar','Radar','Calculated radar radii'],['live-sensor-jammer','Jammer','Calculated radar jammer radii']]){if(document.querySelector(`#${id}`))continue;const sensorLabel=document.createElement('label');sensorLabel.title=title;sensorLabel.innerHTML=`<input id="${id}" type="checkbox" checked> ${label}`;document.querySelector('.live-only')?.appendChild(sensorLabel);sensorLabel.querySelector('input').onchange=()=>draw();}let awaitingSide=null;sideControl.onchange=()=>{awaitingSide=Number(sideControl.value);selected.clear();clearOrder();preview=null;feedback=`switching control to side ${awaitingSide}; selection cleared`;send({type:'select_control_side',side:awaitingSide});draw()};const baseDraw=draw;draw=function(){baseDraw();if(!obs)return;if(awaitingSide===obs.side)awaitingSide=null;if(awaitingSide===null)sideControl.value=String(obs.side);const controlled=Number(sideControl.value),name=controlled===0?'Blue / side 0':'Red / side 1';document.querySelector('#legend').textContent=`Cyan = ${name} (controlled) · red = visible opponent · bars = walls · round emplacements = turrets · outer arrow = hull facing · inner gold arrow = turret facing · gold/red lines = weapon intent · gray line = friendly wall blocking · impact flashes = applied damage`;status.textContent+=` · controlling ${name}${awaitingSide!==null?' (switching…)':''}`};let messageSocket=null;setInterval(()=>{if(!ws||ws===messageSocket)return;messageSocket=ws;ws.addEventListener('message',event=>{let wire;try{wire=JSON.parse(event.data)}catch(_){return}const ack=wire.message?.ack;if(ack&&pendingSequence!==null&&ack.side===obs?.side)pendingSequence=ack.sequence;const error=wire.message?.error;if(error?.reason==='controlled_side_mismatch')feedback=`order rejected: controlling side ${error.controlled_side}, not side ${error.requested_side}`;if(error?.reason==='invalid_controlled_side')feedback=`side ${error.requested_side} is not playable`;if(error)draw()})},25);}
+</script>
+<script>
+/* Historical-review remediation: camera anchoring, evidence hierarchy, and
+   provenance-forward map/fog explanations. Kept separate from the shared
+   live viewer body above so the live simulator retains its existing controls. */
+(()=>{
+  const remediationStyle=document.createElement('style');
+  remediationStyle.textContent=`
+    #legend{display:none}.review-float{position:fixed;z-index:4;background:#10151df2;border:1px solid #60728b;border-radius:6px;box-shadow:0 3px 16px #0009;color:#dce7f3;font-size:12px;backdrop-filter:blur(3px)}
+    #visual-key{left:10px;bottom:10px;width:min(350px,calc(100vw - 20px));max-height:min(58vh,520px);overflow:auto}.review-float summary{cursor:pointer;padding:8px 10px;font-weight:700;color:#edf5ff}.review-key-list{padding:0 9px 9px;display:grid;gap:5px}.review-key-row{display:grid;grid-template-columns:62px 1fr;gap:7px;align-items:center;border-top:1px solid #50627a66;padding-top:5px}.review-key-sample{min-height:18px;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace;font-size:13px;letter-spacing:1px}.sample-friendly{color:#66d9ef}.sample-enemy{color:#ff6b6b}.sample-radar{color:#c9b7ed}.sample-motion{color:#8fe3cc}.sample-order{color:#ffe08a}.sample-target{color:#ffe066}.sample-terrain{color:#aab4c4}.sample-los{color:#ffd27a}.sample-radar-coverage{color:#b48cff}.sample-jammer-coverage{color:#ff54a2}.review-key-row strong{color:#edf5ff}.review-key-row small{display:block;color:#aebdcc;line-height:1.3;margin-top:1px}
+    #review-fog{left:10px;top:128px;max-width:min(420px,calc(100vw - 20px));padding:7px 9px;line-height:1.35}.review-fog-title{font-weight:700;color:#c9b7ed}.review-fog-radar{color:#c9b7ed}.review-fog-los{color:#ff9f8f}.review-fog-unavailable{color:#aebdcc;font-style:italic}.review-map-title{color:#9fd7bf;font-weight:700}
+    body:not(.historical) #visual-key,body:not(.historical) #review-fog{display:none}
+  `;
+  document.head.appendChild(remediationStyle);
+
+  const historicalToolbar=document.querySelector('.historical-only');
+  const allMotionLabel=document.createElement('label');
+  allMotionLabel.title='Off shows motion only for selected units. On shows motion for every friendly unit, dimming unselected units when something is selected.';
+  allMotionLabel.innerHTML='<input id="history-all-motion" type="checkbox"> All motion';
+  historicalToolbar?.insertBefore(allMotionLabel,document.querySelector('#review-panel-toggle'));
+  for(const [id,label,title] of [['history-sensor-los','LOS','Derived line-of-sight radii of completed friendly units'],['history-sensor-radar','Radar','Derived radar radii of completed friendly units'],['history-sensor-jammer','Jammer','Derived radar jammer radii of completed friendly units']]){
+    const sensorLabel=document.createElement('label');sensorLabel.title=title;
+    sensorLabel.innerHTML=`<input id="${id}" type="checkbox" checked> ${label}`;
+    historicalToolbar?.insertBefore(sensorLabel,document.querySelector('#review-panel-toggle'));
+    sensorLabel.querySelector('input').onchange=()=>draw();
+  }
+  const trailInput=document.querySelector('#history-trail'),trailLabel=trailInput?.parentElement;
+  if(trailLabel?.firstChild?.nodeType===Node.TEXT_NODE)trailLabel.firstChild.textContent='Motion history ';
+  if(trailInput){trailInput.title='How many recorded motion segments to show for each unit';trailInput.oninput=()=>draw()}
+
+  const visualKey=document.createElement('details');
+  visualKey.id='visual-key';visualKey.className='review-float';visualKey.open=true;
+  visualKey.innerHTML=`<summary>Visual key · click to collapse</summary><div class="review-key-list">
+    <div class="review-key-row"><span class="review-key-sample sample-friendly">●</span><span><strong>Friendly contact</strong><small>Recorded friendly unit; its health bar is the thin bar above.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample sample-enemy">●</span><span><strong>Visible enemy</strong><small>Recorded line-of-sight contact, not an inferred opponent.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample sample-radar">? ◌</span><span><strong>Radar-only contact</strong><small>Fog-of-war contact: identity and health are deliberately unavailable.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample sample-motion">· · · ▶</span><span><strong>Recorded motion</strong><small>Fades from older source to the unit's current position. Select a unit to show its motion, or enable All motion to show every unit's.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample sample-order">- - ▶</span><span><strong>Latest linked command event</strong><small>One most-recent event for an exactly tracked unit. It is not a reconstructed active command or queue; unbound events have no arrows.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample sample-target">▢</span><span><strong>Goal target sector</strong><small>Yellow box is the inferred goal target, not a camera viewport or a unit order.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample sample-terrain">▦</span><span><strong>Recorded map surface</strong><small>Height/water tint when captured. Darkened cells are impassable: below water by default, or for the selected unit's movement class.</small></span></div>
+    <div class="review-key-row"><span class="review-key-sample"><span class="sample-los">◯</span>&nbsp;<span class="sample-radar-coverage">◯</span>&nbsp;<span class="sample-jammer-coverage">◯</span></span><span><strong>Derived sensor coverage</strong><small>Gold LOS, violet radar, and magenta jammer radii around completed friendly units. Jammers shield friendly units from enemy radar detection.</small></span></div>
+  </div>`;
+  document.body.appendChild(visualKey);
+  const fog=document.createElement('aside');
+  fog.id='review-fog';fog.className='review-float';fog.setAttribute('aria-live','polite');
+  document.body.appendChild(fog);
+
+  const camera={x:0,z:0};
+  viewport=function(){
+    const scale=Math.min(c.clientWidth/obs.map_size.x,c.clientHeight/obs.map_size.z)*mapZoom;
+    return{scale,ox:(c.clientWidth-obs.map_size.x*scale)/2+camera.x,oz:(c.clientHeight-obs.map_size.z*scale)/2+camera.z};
+  };
+  c.addEventListener('wheel',event=>{
+    if(!obs)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    const rect=c.getBoundingClientRect(),before=point(event),factor=event.deltaY<0?1.15:1/1.15;
+    mapZoom=Math.max(.25,Math.min(12,mapZoom*factor));
+    const scale=Math.min(c.clientWidth/obs.map_size.x,c.clientHeight/obs.map_size.z)*mapZoom;
+    camera.x=event.clientX-rect.left-(c.clientWidth-obs.map_size.x*scale)/2-before.x*scale;
+    camera.z=event.clientY-rect.top-(c.clientHeight-obs.map_size.z*scale)/2-before.z*scale;
+    feedback=`zoom ${Math.round(mapZoom*100)}% at cursor`;draw();
+  },{passive:false,capture:true});
+  // Middle-button drag pans the map by shifting the camera offset.
+  let pan=null;
+  c.addEventListener('pointerdown',event=>{
+    if(event.button!==1||!obs)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    pan={id:event.pointerId,x:event.clientX,z:event.clientY};
+    c.setPointerCapture?.(event.pointerId);c.style.cursor='grabbing';
+  },{capture:true});
+  c.addEventListener('pointermove',event=>{
+    if(!pan||event.pointerId!==pan.id)return;
+    camera.x+=event.clientX-pan.x;camera.z+=event.clientY-pan.z;
+    pan.x=event.clientX;pan.z=event.clientY;draw();
+  });
+  const endPan=event=>{
+    if(!pan||event.pointerId!==pan.id)return;
+    pan=null;c.releasePointerCapture?.(event.pointerId);c.style.cursor='';
+  };
+  c.addEventListener('pointerup',endPan);c.addEventListener('pointercancel',endPan);
+  // Suppress the browser's middle-click autoscroll and paste behaviour.
+  c.addEventListener('mousedown',event=>{if(event.button===1)event.preventDefault()});
+  c.addEventListener('auxclick',event=>{if(event.button===1)event.preventDefault()});
+
+  // Recorded MoveDef passability for the first selected friendly unit that
+  // declares a movement class the frame carries a mask for.
+  function selectedMovementClass(){
+    const masks=rawHistoricalFrame?.map?.terrain?.passable_by_movement_class;
+    if(!masks||!obs?.entities)return null;
+    for(const entity of obs.entities){
+      const movementClass=entity.metadata?.movement_class;
+      if(entity.side===obs.side&&selected.has(key(entity.id))&&movementClass&&masks[movementClass])return movementClass;
+    }
+    return null;
+  }
+  const legacyTerrain=terrain;
+  terrain=function(sx,sy){
+    const target=obs?.target_sector,movementClass=document.body.classList.contains('historical')?selectedMovementClass():null,basePassable=obs?.map?.passable;
+    if(target)obs.target_sector=null;
+    if(movementClass)obs.map.passable=Array.from(rawHistoricalFrame.map.terrain.passable_by_movement_class[movementClass],bit=>bit==='1');
+    try{legacyTerrain(sx,sy)}finally{if(movementClass)obs.map.passable=basePassable}
+    if(target)obs.target_sector=target;
+    if(!document.body.classList.contains('historical'))return;
+    const map=rawHistoricalFrame?.map||{},grid=obs?.sector_grid;
+    if(!map.terrain){
+      x.save();x.strokeStyle='#aab4c477';x.setLineDash([5,5]);x.strokeRect(0,0,obs.map_size.x*sx,obs.map_size.z*sy);x.setLineDash([]);x.fillStyle='#d6e3ef';x.font='12px system-ui';x.fillText('Map surface unavailable in this recorded trajectory — route cause cannot be inferred.',8,18);x.restore();
+    }
+    if(target&&grid){
+      const [column,row]=target,width=obs.map_size.x*sx/grid.columns,height=obs.map_size.z*sy/grid.rows,left=column*width,top=row*height;
+      x.save();x.strokeStyle='#ffe066';x.lineWidth=3;x.strokeRect(left,top,width,height);x.fillStyle='#ffe066';x.font='bold 12px system-ui';x.fillText(`GOAL TARGET · sector ${column+1},${row+1}`,left+5,top+16);x.restore();
+    }
+  };
+
+  function arrow(from,to,color){
+    const dx=to.x-from.x,dz=to.z-from.z,length=Math.hypot(dx,dz);if(length<5)return;
+    const ux=dx/length,uz=dz/length,size=Math.min(9,Math.max(5,length*.22));
+    x.fillStyle=color;x.beginPath();x.moveTo(to.x,to.z);x.lineTo(to.x-ux*size-uz*size*.55,to.z-uz*size+ux*size*.55);x.lineTo(to.x-ux*size+uz*size*.55,to.z-uz*size-ux*size*.55);x.closePath();x.fill();
+  }
+  function fadingPath(points,start,end,dashed){
+    if(points.length<2)return;
+    const first=points[0],last=points[points.length-1],gradient=x.createLinearGradient(first.x,first.z,last.x,last.z);
+    gradient.addColorStop(0,start);gradient.addColorStop(.62,end.replace('0.95','0.52'));gradient.addColorStop(1,end);
+    x.strokeStyle=gradient;x.lineWidth=2.25;x.setLineDash(dashed||[]);x.beginPath();x.moveTo(first.x,first.z);for(const point of points.slice(1))x.lineTo(point.x,point.z);x.stroke();x.setLineDash([]);arrow(points[points.length-2],last,end);
+  }
+  function isSensorEnabled(kind){
+    if(document.body.classList.contains('historical')){
+      return !!document.querySelector(`#history-sensor-${kind}`)?.checked;
+    }
+    return !!document.querySelector(`#live-sensor-${kind}`)?.checked;
+  }
+  function drawSensorCoverage(source,v){
+    // One path per sensor kind filled once: the canvas paints each pixel of the
+    // union a single time, so overlapping radii do not darken.
+    const sources=(source.entities||[]).filter(entity=>entity.side===source.side&&entity.sensor_coverage);
+    if(!sources.length)return;
+    x.save();x.translate(v.ox,v.oz);
+    for(const [kind,color,alpha,strokeColor] of [
+      ['radar','#b48cff',.12,'#b48cff44'],
+      ['jammer','#ff54a2',.15,'#ff54a266'],
+      ['los','#ffd27a',.11,'#ffd27a44']
+    ]){
+      if(!isSensorEnabled(kind))continue;
+      x.beginPath();let any=false;
+      for(const entity of sources){
+        const radius=Number(entity.sensor_coverage[kind])*v.scale;if(!(radius>0))continue;
+        const px=entity.position.x*v.scale,pz=entity.position.z*v.scale;any=true;
+        x.moveTo(px+radius,pz);x.arc(px,pz,radius,0,Math.PI*2);
+      }
+      if(!any)continue;
+      x.globalAlpha=alpha*(rawHistoricalFrame?.future_confirmation?.45:1);x.fillStyle=color;x.fill();
+      if(strokeColor){
+        x.strokeStyle=strokeColor;
+        x.lineWidth=1;
+        x.stroke();
+      }
+    }
+    for(const entity of sources){
+      if(!selected.has(key(entity.id)))continue;
+      const px=entity.position.x*v.scale,pz=entity.position.z*v.scale;
+      for(const [kind,color] of [['radar','#b48cff'],['jammer','#ff54a2'],['los','#ffd27a']]){
+        if(!isSensorEnabled(kind))continue;
+        const radius=Number(entity.sensor_coverage[kind])*v.scale;
+        if(!(radius>0))continue;
+        x.strokeStyle=color;x.lineWidth=1.5;x.setLineDash([4,3]);
+        x.beginPath();x.arc(px,pz,radius,0,Math.PI*2);x.stroke();x.setLineDash([]);
+      }
+    }
+    x.restore();
+  }
+  function drawHistoricalMotion(source,v){
+    const all=document.querySelector('#history-all-motion')?.checked,limit=Math.max(0,Number(document.querySelector('#history-trail')?.value||0)),selectedIds=new Set(selected.keys());
+    // A selection is the review focus and shows only the selected units'
+    // motion. All motion shows every friendly unit, dimming unselected ones
+    // when there is also a selection. With neither, the canvas stays quiet.
+    if(!all&&!selectedIds.size)return;
+    x.save();x.translate(v.ox,v.oz);
+    for(const entity of source.entities){
+      if(entity.side!==source.side)continue;
+      const focused=selectedIds.has(key(entity.id));
+      if(!all&&!focused)continue;
+      x.save();
+      if(selectedIds.size&&!focused)x.globalAlpha=.5;
+      // The server already excludes immobile UnitDefs.  Keep this defensive
+      // boundary in the shared viewer as well, so a malformed historical
+      // payload can never depict a structure as moving.
+      const route=entity.metadata?.mobile===true&&Array.isArray(entity.planned_route)?entity.planned_route:[];
+      if(limit&&route.length>1){
+        const points=route.slice(-(limit+1)).map(point=>({x:point.x*v.scale,z:point.z*v.scale}));
+        const current={x:entity.position.x*v.scale,z:entity.position.z*v.scale};
+        if(Math.hypot(points.at(-1).x-current.x,points.at(-1).z-current.z)>1)points.push(current);
+        const inferred=entity.trail_evidence==='derived';
+        fadingPath(points,inferred?'rgba(201,183,237,0.10)':'rgba(102,217,239,0.10)',inferred?'rgba(201,183,237,0.95)':'rgba(143,227,204,0.95)',inferred?[2,4]:[5,3]);
+      }
+      for(const order of entity.commands||[]){
+        const target=order.destination||order.target_position;if(!target)continue;
+        const points=[{x:entity.position.x*v.scale,z:entity.position.z*v.scale},{x:target.x*v.scale,z:target.z*v.scale}];
+        fadingPath(points,'rgba(255,224,138,0.18)','rgba(255,224,138,0.95)',[6,4]);
+      }
+      x.restore();
+    }
+    x.restore();
+  }
+  function drawTopUnits(source,v){
+    const showLabels=!!document.querySelector('#history-labels')?.checked;
+    x.save();x.translate(v.ox,v.oz);if(rawHistoricalFrame?.future_confirmation)x.globalAlpha=.45;
+    for(const entity of source.entities){
+      const px=entity.position.x*v.scale,pz=entity.position.z*v.scale,r=Math.max(3,(entity.radius||8)*v.scale),bar=Math.max(14,r*2);
+      x.strokeStyle=entity.side===source.side?'#66d9efcc':'#ff6b6bcc';x.lineWidth=1.5;x.beginPath();x.arc(px,pz,r,0,Math.PI*2);x.stroke();
+      if(entity.visibility==='radar'){x.strokeStyle='#c9b7ed';x.setLineDash([2,2]);x.beginPath();x.arc(px,pz,r+4,0,Math.PI*2);x.stroke();x.setLineDash([]);x.fillStyle='#c9b7ed';x.font='bold 10px system-ui';x.fillText('?',px-3,pz+3)}
+      if(entity.heading!=null)facing(px,pz,entity.heading,r*.7,r*1.42,entity.side===source.side?'#eff7ff':'#ffd0d0',2);
+      if(entity.turret_heading!=null)facing(px,pz,entity.turret_heading,r*.08,r*.58,'#ffe066',1.5);
+      x.fillStyle=entity.visibility==='radar'?'#b7bec8':entity.side===source.side?'#66d9ef':entity.kind==='feature'?'#9ca3af':'#ff6b6b';
+      const toggle=document.querySelector('#history-labels');if(toggle)toggle.checked=false;symbol(entity,px,pz,r*.65);if(toggle)toggle.checked=showLabels;
+      if(entity.health_fraction!=null){x.fillStyle='#111';x.fillRect(px-bar/2,pz-r-5,bar,3);x.fillStyle=entity.side===source.side?'#62d97b':'#ed6a5e';x.fillRect(px-bar/2,pz-r-5,bar*Math.max(0,Math.min(1,entity.health_fraction)),3)}
+      if(entity.construction_progress!=null){x.fillStyle='#ffd166';x.fillRect(px-bar/2,pz+r+3,bar*Math.max(0,Math.min(1,entity.construction_progress)),2)}
+      if(selected.has(key(entity.id))){x.strokeStyle='#fff';x.lineWidth=2;x.strokeRect(px-r-3,pz-r-3,(r+3)*2,(r+3)*2)}
+      if(showLabels){const label=entity.metadata?.display_name||entity.definition||entity.metadata?.role||(entity.visibility==='radar'?'radar contact':'unknown');x.font='11px system-ui';const width=x.measureText(label).width;x.fillStyle='#10151ddd';x.fillRect(px+r+2,pz-r-13,width+6,14);x.fillStyle='#f5f7fa';x.fillText(label,px+r+5,pz-r-2)}
+    }
+    x.restore();
+  }
+  function updateFog(source){
+    if(!document.body.classList.contains('historical')||!rawHistoricalFrame){fog.hidden=true;return}fog.hidden=false;
+    const enemies=source.entities.filter(entity=>entity.side!==source.side),radar=enemies.filter(entity=>entity.visibility==='radar').length,los=enemies.filter(entity=>entity.visibility==='line_of_sight').length,terrain=rawHistoricalFrame.map?.terrain,evidence=rawHistoricalFrame.command_evidence||{},unbound=Number(evidence.unbound_event_count)||0,linked=Number(evidence.shown_latest_event_count)||0;
+    const movementClass=selectedMovementClass(),sensors=rawHistoricalFrame.sensor_coverage,sensorCount=Number(sensors?.source_count)||0;
+    const terrainText=terrain?`Recorded terrain (${terrain.columns}×${terrain.rows} grid). ${movementClass?`Passability shown for movement class ${movementClass} (selected unit).`:'Darkened cells are below water; select a unit to see its movement-class passability.'}`:'Map surface was not recorded in this trajectory; re-extract the replay to add terrain and passability.';
+    const losCount=Number(sensors?.los_sources??sensors?.source_count)||0,radarCount=Number(sensors?.radar_sources)||0,jammerCount=Number(sensors?.jammer_sources)||0;
+    const jammerDetail=jammerCount?`, ${jammerCount} jammer`:'';
+    const rangeDetail=sensors?.max_los!=null?` (max LOS ${Math.round(sensors.max_los)}, radar ${Math.round(sensors.max_radar||0)}${sensors.max_jammer?`, jammer ${Math.round(sensors.max_jammer)}`:''})`:'';
+    const sensorText=sensors?.evidence==='derived'?(sensorCount?`Sensor coverage (derived): ${losCount} LOS, ${radarCount} radar${jammerDetail} sources across ${sensorCount} completed friendly unit${sensorCount===1?'':'s'}${rangeDetail}. Jammers shield from enemy radar.`:`Sensor coverage (derived): ${sensors.detail||'no sensor sources'}.`):`Sensor coverage unavailable: ${sensors?.detail||'not recorded'}. Re-extract the replay to add catalog sensor radii.`;
+    const commands=unbound?`<div class="review-fog-unavailable">Commands: ${unbound} recorded event${unbound===1?'':'s'} lacked an exact unit track, so no per-unit arrows are drawn. ${linked?`${linked} exactly linked latest event${linked===1?'':'s'} shown.`:'No current command queue was recorded.'}</div>`:`<div class="review-fog-unavailable">${linked?`${linked} latest exactly linked command event${linked===1?'':'s'} shown; active/queued state was not recorded.`:'No exactly linked command events in this frame.'}</div>`;
+    fog.innerHTML=`<div class="review-fog-title">Recorded fog of war · policy-visible frame</div><div><span class="review-fog-los">${los} LOS contact${los===1?'':'s'}</span> · <span class="review-fog-radar">${radar} radar-only contact${radar===1?'':'s'}</span></div><div class="review-map-title">Map: ${rawHistoricalFrame.map?.name||'unavailable'}</div><div class="review-fog-unavailable">${terrainText}</div><div class="review-fog-unavailable">${sensorText}</div>${commands}`;
+  }
+  // Recorded review tracks give a unit the same id in every frame of one
+  // replay, so a selection survives playback and frame steps. Ids restart per
+  // replay, so a different prediction starts with an empty selection.
+  let selectionPrediction=null;
+  function keepSelection(predictionId){
+    if(predictionId!==selectionPrediction){selected.clear();selectionPrediction=predictionId;return}
+    for(const id of [...selected.keys()]){
+      const current=obs.entities.find(entity=>key(entity.id)===id&&entity.side===obs.side);
+      if(current)selected.set(id,current);else selected.delete(id);
+    }
+  }
+  const legacyDraw=draw;
+  draw=function(){
+    if(!document.body.classList.contains('historical')||!obs?.entities){
+      legacyDraw();
+      if(obs?.entities){
+        const v=viewport();
+        drawSensorCoverage(obs,v);
+      }
+      return;
+    }
+    const source=obs,labels=document.querySelector('#history-labels'),showLabels=!!labels?.checked;
+    try{
+      // The legacy renderer owns non-motion visual effects. Hide only its
+      // route/order pass, then render the directional evidence under a final
+      // unit layer so no other unit's line can cover a contact.
+      obs={...source,entities:source.entities.map(entity=>({...entity,planned_route:[],commands:[]}))};
+      if(labels)labels.checked=false;legacyDraw();
+    }finally{if(labels)labels.checked=showLabels;obs=source}
+    const v=viewport();drawSensorCoverage(source,v);drawHistoricalMotion(source,v);drawTopUnits(source,v);updateFog(source);
+    if(!selected.size&&!document.querySelector('#history-all-motion')?.checked){details.textContent='Select a friendly unit to show its motion and latest command. Enable All motion to inspect the whole formation.'}
+  };
+
+  loadHistorical=async function(index){
+    const allowFuture=!!document.querySelector('#history-future')?.checked;
+    const policyIndex=Number.isInteger(viewerConfig.policy_frame_index)?viewerConfig.policy_frame_index:viewerConfig.initial_frame_index;
+    const ceiling=allowFuture?viewerConfig.frame_count-1:policyIndex;
+    index=Math.max(0,Math.min(ceiling,index));
+    const predictionId=viewerConfig.prediction_id;if(!predictionId)throw new Error('historical frame has no selected prediction');
+    const loadToken=++historicalLoadToken;
+    const response=await fetch(`${viewerConfig.frame_endpoint}?index=${encodeURIComponent(index)}&prediction_id=${encodeURIComponent(predictionId)}&future=${allowFuture?'1':'0'}`,{cache:'no-store'});
+    if(!response.ok)throw new Error(`frame request failed (${response.status})`);
+    const frame=await response.json();
+    if(loadToken!==historicalLoadToken||viewerConfig.prediction_id!==predictionId)return;
+    if(frame.schema!=='visigoth.viewer_frame'||frame.schema_version!==1)throw new Error('unsupported ViewerFrame schema/version');
+    if(frame.prediction_id!==predictionId)throw new Error('historical frame does not match the selected review');
+    rawHistoricalFrame=frame;historicalIndex=frame.frame_index;displayedGameTime=frame.game_time_seconds;obs=normalizeHistorical(frame);state={displayed_tick:obs.tick,paused:!historicalPlaying};keepSelection(frame.prediction_id);
+    const slider=document.querySelector('#history-time');slider.max=Math.max(0,ceiling);slider.value=historicalIndex;
+    status.className=frame.decision_frame?'decision-frame':frame.future_confirmation?'future-warning':'';
+    feedback=frame.future_confirmation?'NOT AVAILABLE TO POLICY':frame.decision_frame?'DECISION FRAME':'';renderReviewInspectors(frame);draw();
+  };
+  document.querySelector('#history-future')?.addEventListener('change',()=>{
+    historicalPlaying=false;clearInterval(historicalTimer);const play=document.querySelector('#history-play');if(play)play.textContent='Play';
+    loadHistorical(historicalIndex).catch(error=>{feedback=error.message;draw()});
+  });
+})();
+</script>
