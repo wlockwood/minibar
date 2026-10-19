@@ -1,0 +1,4 @@
+- Ensure that we try starting conditions other than "two forces facing each other within firing range". We need:
+  - Head-on, crossing, or overtaking.
+  - Neither side is aware of the other, one side is aware of the other, both sides know about the other. And within each of these is radar vs LOS contacts.
+- Late game starting snapshots so we don't hyper-optimize for the first five minutes. We could probably base these off of replay data.
