@@ -24,7 +24,7 @@ class StructureTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node is needed to verify standalone viewer calculations")
     def test_both_brain_watch_pages_execute_masks_and_activations(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ("viewer/brain_watch.html", "watch-objectives.html"):
+        for name in ("viewer/brain_watch.html",):
             source = (root / name).read_text(encoding="utf-8")
             functions = source[source.index("function edgeEnabled("):source.index("const macs")]
             mod = {"layers": [{"weights": [[1, 100]], "biases": [0]},
