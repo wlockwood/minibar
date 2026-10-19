@@ -25,7 +25,7 @@ trains two kinds of brain:
   which enemy objective each group of units goes after.
 
 The rest of the hierarchy is a design, not yet code. The design lives in
-[ach/](ach/) and [Tiered Brains](docs/Tiered%20Brains.md).
+[ach/](ach/): start with [Hierarchical Brains v2](ach/Hierarchical-Brains-v2.md).
 
 ## Why
 
@@ -140,12 +140,10 @@ longer curriculum, and lists other commands to try.
 
 **I want to know what we have learned**
 - [Findings](docs/FINDINGS.md): what each experiment showed, newest first.
-- [Curriculum review](docs/CAMPAIGN_CURRICULUM_REVIEW.md) and the [latest checkpoint](docs/TRAINING_CHECKPOINT_20261019.md).
 
 **I want to know where this is going**
 - [Hierarchical Brains v2](ach/Hierarchical-Brains-v2.md) and [Training Workflow v2](ach/AI-Training-Workflow-v2.md): the ACH architecture and how to train it.
-- [Tiered Brains](docs/Tiered%20Brains.md): an earlier layered design, with a list of BAR facts it got wrong.
-- [Platoon layer](docs/PLATOON_LAYER_PLAN.md), [objectives](docs/OBJECTIVES_PLAN.md), [replay imitation](docs/REPLAY_IMITATION_PLAN.md), [sensor research](docs/MLP_SENSOR_RESEARCH.md) and [Planetary Annihilation's AI](docs/PA_AI_REFERENCE.md) as prior art.
+- [Planetary Annihilation's AI](docs/PA_AI_REFERENCE.md): prior art, with what we verified about it.
 - [Implementation plan](IMPLEMENTATION_PLAN.md), [strategic design](STRATEGIC_DESIGN.md) and [placement design](DESIGN_PLACEMENT_OCCUPANCY.md): simulator roadmap.
 
 **I want to change the code**

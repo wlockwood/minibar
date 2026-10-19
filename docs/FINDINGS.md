@@ -180,10 +180,11 @@ script with the exporter's conversions, not exported from a running game.
 - **Next stage, after the win rate flattens on the T1 platoon mix:** objectives, where a
   side attacks a target or defends one, instead of only fighting to the death. Requested
   by the user; not started. It needs a target entity in the arena, an objective term in
-  `objective.rs`, and probably the platoon layer (`docs/PLATOON_LAYER_PLAN.md`).
+  `objective.rs`, and probably the platoon layer (now designed in `ach/`).
 
 - Does a shared platoon decision (focus fire, one posture, assigned ring slots) beat
-  per-unit decisions? See `docs/PLATOON_LAYER_PLAN.md`.
+  per-unit decisions? The platoon tier in `ach/Hierarchical-Brains-v2.md` replaces the
+  earlier plan for this.
 - Does a Pawn-trained council learn to close on long-range Thugs that hold or kite
   (the starting point is 40+ timeouts out of 48)? See the Thug experiment in
   `docs/REFERENCE.md`.

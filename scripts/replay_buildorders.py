@@ -2,7 +2,7 @@
 """Extract human build orders from the visigoth replay trajectories.
 
 Input : visigoth per-replay Parquet shards (one row = one player, one 10 s sample;
-        see docs/REPLAY_IMITATION_PLAN.md) + the replay .json sidecars + the dataset
+        see the visigoth replay pipeline guide) + the replay .json sidecars + the dataset
         split files (train / validation / test_ood).
 Output: one JSON line per player-game with, for each 10 s sample, the player's economy
         and unit counts at the sample and the build decisions issued in the interval.
