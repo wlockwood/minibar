@@ -1,0 +1,80 @@
+{
+  "name": "from_replays_scale_128",
+  "brain_kind": "tactical_v4",
+  "hidden": 8,
+  "init_from": "baseline.json",
+  "generations": 3,
+  "es": {
+    "population": 8,
+    "sigma": 0.08,
+    "learning_rate": 0.02,
+    "seed": 20261016
+  },
+  "seeds_per_battle": 1,
+  "validation_seeds": 1,
+  "validation_every": 1,
+  "opponents": [
+    "charge"
+  ],
+  "max_time": 15,
+  "layout_jitter": 0,
+  "scenarios": [
+    {
+      "name": "armada 64v64",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 64
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 64
+        }
+      ],
+      "separation": 300
+    },
+    {
+      "name": "cortex 64v64",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 64
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 64
+        }
+      ],
+      "separation": 300
+    },
+    {
+      "name": "legion 64v64",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 64
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 64
+        }
+      ],
+      "separation": 300
+    }
+  ],
+  "arena": {
+    "map": "../maps/center-command.vsgmap",
+    "movement_class": "bot2",
+    "cell_size": 64,
+    "center": [
+      6400.0,
+      2048.0
+    ]
+  }
+}

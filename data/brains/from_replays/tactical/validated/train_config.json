@@ -1,0 +1,333 @@
+{
+  "name": "from_replays_tactical",
+  "brain_kind": "tactical_v4",
+  "arena": {
+    "map": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\../maps/center-command.vsgmap",
+    "movement_class": "bot2",
+    "cell_size": 64.0,
+    "center": [
+      6400.0,
+      2048.0
+    ]
+  },
+  "hidden": 8,
+  "init_from": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline.json",
+  "start": "template",
+  "train_modules": [],
+  "generations": 3,
+  "es": {
+    "population": 8,
+    "sigma": 0.08,
+    "learning_rate": 0.02,
+    "weight_decay": 0.0,
+    "l1": 0.0,
+    "seed": 20261016
+  },
+  "objective": {
+    "win": 1.0,
+    "exchange": 0.5,
+    "underdog_exponent": 1.0,
+    "underdog_cap": 4.0,
+    "underdog_threshold": 1.2,
+    "timeout_underdog": 0.3,
+    "timeout_penalty": 0.6,
+    "win_stake_floor": 1.0,
+    "worst_case_weight": 0.3,
+    "key_unit_bonus": 0.5,
+    "key_unit_penalty": 0.5
+  },
+  "key_units": [],
+  "seeds_per_battle": 1,
+  "validation_seeds": 2,
+  "validation_every": 1,
+  "opponents": [
+    "charge",
+    "kite",
+    "strike",
+    "guard"
+  ],
+  "max_time": 40.0,
+  "layout_jitter": 8.0,
+  "scenarios": [
+    {
+      "name": "armada skirmish",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "armrock",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "corstorm",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": null,
+      "separation": 350.0
+    },
+    {
+      "name": "armada attack",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "armrock",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "corstorm",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": {
+        "kind": "attack",
+        "target": "corlab"
+      },
+      "separation": 350.0
+    },
+    {
+      "name": "armada defend",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "armrock",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "corstorm",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": {
+        "kind": "defend",
+        "target": "armlab"
+      },
+      "separation": 350.0
+    },
+    {
+      "name": "cortex skirmish",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "corstorm",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "legcen",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": null,
+      "separation": 350.0
+    },
+    {
+      "name": "cortex attack",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "corstorm",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "legcen",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": {
+        "kind": "attack",
+        "target": "leglab"
+      },
+      "separation": 350.0
+    },
+    {
+      "name": "cortex defend",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "corstorm",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "legcen",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": {
+        "kind": "defend",
+        "target": "corlab"
+      },
+      "separation": 350.0
+    },
+    {
+      "name": "legion skirmish",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "legcen",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "armrock",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": null,
+      "separation": 350.0
+    },
+    {
+      "name": "legion attack",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "legcen",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "armrock",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": {
+        "kind": "attack",
+        "target": "armlab"
+      },
+      "separation": 350.0
+    },
+    {
+      "name": "legion defend",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "legcen",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 4,
+          "platoon": 0
+        },
+        {
+          "unit": "armrock",
+          "count": 2,
+          "platoon": 0
+        }
+      ],
+      "objective": {
+        "kind": "defend",
+        "target": "leglab"
+      },
+      "separation": 350.0
+    }
+  ],
+  "matchups": null
+}

@@ -1,0 +1,188 @@
+{
+  "archive_size": 8,
+  "format": "minibar-campaign",
+  "generations": 2,
+  "max_stage_regression": 0.15,
+  "min_gain": 0.005,
+  "name": "smoke campaign",
+  "promotion_seeds": 0,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "seed": 20261017,
+  "tracks": [
+    {
+      "brain": "assets/data/brains/from_replays/tactical/baseline.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 20261017,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        }
+      ],
+      "name": "tactical",
+      "train_modules": [],
+      "training": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-tactical-1.json",
+              "kind": "tactical"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-tactical-2.json",
+              "kind": "tactical"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-tactical-3.json",
+              "kind": "tactical"
+            },
+            "weight": 0.4
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-tactical-1.json",
+              "kind": "tactical"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-tactical-2.json",
+              "kind": "tactical"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-tactical-3.json",
+              "kind": "tactical"
+            },
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "brain": "assets/data/brains/from_replays/strategic/baseline.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 20261117,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        }
+      ],
+      "name": "strategic",
+      "train_modules": [],
+      "training": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-strategic-1.json",
+              "kind": "strategic"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-strategic-2.json",
+              "kind": "strategic"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-strategic-3.json",
+              "kind": "strategic"
+            },
+            "weight": 0.4
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-strategic-1.json",
+              "kind": "strategic"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-strategic-2.json",
+              "kind": "strategic"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/examples/campaign/stages/smoke-strategic-3.json",
+              "kind": "strategic"
+            },
+            "weight": 0.4
+          }
+        ]
+      }
+    }
+  ],
+  "validation_every": 1,
+  "version": 1
+}

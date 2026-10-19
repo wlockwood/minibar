@@ -1,0 +1,26 @@
+{
+  "status": "completed",
+  "completed_generations": 200,
+  "target_generations": 200,
+  "waiting_jobs": 0,
+  "tracks": [
+    {
+      "best_fitness": 0.18212466344825734,
+      "best_generation": 70,
+      "diagnostic_challengers": 0,
+      "holdout_fitness": -0.09197883913664245,
+      "initial_fitness": 0.24841532970700078,
+      "name": "tactical",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        },
+        {
+          "count": 0,
+          "name": "wide"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "archive_size": 8,
+  "format": "minibar-campaign",
+  "frontier_limit": 8,
+  "generations": 1,
+  "max_faction_regression": 0.05,
+  "max_stage_regression": 0.15,
+  "min_gain": 0.005,
+  "name": "quality / no-count-v1 / 2026101701",
+  "promotion_seeds": 0,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "seed": 2026101701,
+  "tracks": [
+    {
+      "brain": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\source\\tactical-champion.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 2026101701,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        }
+      ],
+      "name": "tactical",
+      "reference_brain": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\source\\tactical-reference.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\package\\assets\\data\\brains\\from_replays\\catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\tactical-training-0.json",
+              "kind": "tactical"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\tactical-training-1.json",
+              "kind": "tactical"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\tactical-training-2.json",
+              "kind": "tactical"
+            },
+            "weight": 0.4
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\package\\assets\\data\\brains\\from_replays\\catalog.json",
+        "layouts": 2,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\tactical-validation-0.json",
+              "kind": "tactical"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\tactical-validation-1.json",
+              "kind": "tactical"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\tactical-validation-2.json",
+              "kind": "tactical"
+            },
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "brain": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\source\\strategic-champion.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 2026102701,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        }
+      ],
+      "name": "strategic",
+      "reference_brain": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\source\\strategic-reference.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\package\\assets\\data\\brains\\from_replays\\catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\strategic-training-0.json",
+              "kind": "strategic"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\strategic-training-1.json",
+              "kind": "strategic"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\strategic-training-2.json",
+              "kind": "strategic"
+            },
+            "weight": 0.4
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\package\\assets\\data\\brains\\from_replays\\catalog.json",
+        "layouts": 2,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\strategic-validation-0.json",
+              "kind": "strategic"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\strategic-validation-1.json",
+              "kind": "strategic"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "D:\\code\\BAR\\minibar\\data\\experiments\\training-quality-smoke-20261017\\arms\\no-count-v1\\seed-2026101701\\stages\\strategic-validation-2.json",
+              "kind": "strategic"
+            },
+            "weight": 0.4
+          }
+        ]
+      }
+    }
+  ],
+  "validation_every": 1,
+  "version": 1
+}

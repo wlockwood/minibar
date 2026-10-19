@@ -1,0 +1,42 @@
+{
+  "status": "completed",
+  "completed_generations": 2,
+  "target_generations": 2,
+  "waiting_jobs": 0,
+  "tracks": [
+    {
+      "best_fitness": -0.23589424635601897,
+      "best_generation": 1,
+      "holdout_fitness": -0.6068887427226048,
+      "initial_fitness": -0.3746158000794758,
+      "name": "tactical",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        },
+        {
+          "count": 0,
+          "name": "wide"
+        }
+      ]
+    },
+    {
+      "best_fitness": 0.5257828319684307,
+      "best_generation": 1,
+      "holdout_fitness": 0.010865921374130469,
+      "initial_fitness": 0.4995160052315101,
+      "name": "strategic",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        },
+        {
+          "count": 0,
+          "name": "wide"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,239 @@
+{
+  "format": "minibar-campaign",
+  "version": 1,
+  "name": "bounded native campaign verification",
+  "generations": 2,
+  "seed": 20261017,
+  "validation_every": 1,
+  "min_gain": 0.005,
+  "max_stage_regression": 0.15,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "archive_size": 8,
+  "tracks": [
+    {
+      "name": "tactical",
+      "brain": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-objectives.json"
+            }
+          }
+        ],
+        "seeds": 1
+      },
+      "validation": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-validation-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-validation-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-validation-objectives.json"
+            }
+          }
+        ],
+        "seeds": 1
+      },
+      "holdout": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.json",
+        "stages": [
+          {
+            "name": "unselected-tactical-holdout",
+            "difficulty": 3,
+            "weight": 1,
+            "task": {
+              "kind": "tactical",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\tactical-holdout.json"
+            }
+          }
+        ],
+        "seeds": 1
+      },
+      "islands": [
+        {
+          "name": "local",
+          "es": {
+            "population": 2,
+            "sigma": 0.04,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261017
+          },
+          "restart": false
+        },
+        {
+          "name": "wide",
+          "es": {
+            "population": 2,
+            "sigma": 0.16,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261018
+          },
+          "restart": true
+        }
+      ]
+    },
+    {
+      "name": "strategic",
+      "brain": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-objectives.json"
+            }
+          }
+        ],
+        "seeds": 1
+      },
+      "validation": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-validation-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-validation-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-validation-objectives.json"
+            }
+          }
+        ],
+        "seeds": 1
+      },
+      "holdout": {
+        "catalog": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.json",
+        "stages": [
+          {
+            "name": "unselected-strategic-holdout",
+            "difficulty": 3,
+            "weight": 1,
+            "task": {
+              "kind": "strategic",
+              "config": "D:\\code\\BAR\\minibar\\examples\\campaign\\stages\\strategic-holdout.json"
+            }
+          }
+        ],
+        "seeds": 1
+      },
+      "islands": [
+        {
+          "name": "local",
+          "es": {
+            "population": 2,
+            "sigma": 0.04,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261117
+          },
+          "restart": false
+        },
+        {
+          "name": "wide",
+          "es": {
+            "population": 2,
+            "sigma": 0.16,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261118
+          },
+          "restart": true
+        }
+      ]
+    }
+  ]
+}

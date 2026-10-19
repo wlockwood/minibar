@@ -1,0 +1,196 @@
+{
+  "archive_size": 8,
+  "format": "minibar-campaign",
+  "frontier_limit": 8,
+  "generations": 1,
+  "max_faction_regression": 0.05,
+  "max_stage_regression": 0.15,
+  "min_gain": 0.005,
+  "name": "quality / audited-comparison / 2026101701",
+  "promotion_seeds": 0,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "seed": 2026101701,
+  "tracks": [
+    {
+      "brain": "assets/data/experiments/training-quality-smoke-20261017/source/tactical-champion.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 2026101701,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        }
+      ],
+      "name": "tactical",
+      "reference_brain": "assets/data/experiments/training-quality-smoke-20261017/source/tactical-reference.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "assets/data/experiments/training-quality-smoke-20261017/package/assets/data/brains/from_replays/catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/tactical-training-0.json",
+              "kind": "tactical"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/tactical-training-1.json",
+              "kind": "tactical"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/tactical-training-2.json",
+              "kind": "tactical"
+            },
+            "weight": 0.4
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "assets/data/experiments/training-quality-smoke-20261017/package/assets/data/brains/from_replays/catalog.json",
+        "layouts": 2,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/tactical-validation-0.json",
+              "kind": "tactical"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/tactical-validation-1.json",
+              "kind": "tactical"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/tactical-validation-2.json",
+              "kind": "tactical"
+            },
+            "weight": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "brain": "assets/data/experiments/training-quality-smoke-20261017/upgrades/1929d513b719647a6e00975abf1d20861d39faaaf2607549ad5b4f0f19722ee2.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 2026102701,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        }
+      ],
+      "name": "strategic",
+      "reference_brain": "assets/data/experiments/training-quality-smoke-20261017/upgrades/c5cb187020b2208707a9ea83ab4c4c926802b63273fd90424a860c464ad459dd.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "assets/data/experiments/training-quality-smoke-20261017/package/assets/data/brains/from_replays/catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/strategic-training-0.json",
+              "kind": "strategic"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/strategic-training-1.json",
+              "kind": "strategic"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/strategic-training-2.json",
+              "kind": "strategic"
+            },
+            "weight": 0.4
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "assets/data/experiments/training-quality-smoke-20261017/package/assets/data/brains/from_replays/catalog.json",
+        "layouts": 2,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/strategic-validation-0.json",
+              "kind": "strategic"
+            },
+            "weight": 0.25
+          },
+          {
+            "difficulty": 2,
+            "name": "mixed",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/strategic-validation-1.json",
+              "kind": "strategic"
+            },
+            "weight": 0.35
+          },
+          {
+            "difficulty": 3,
+            "name": "objectives",
+            "task": {
+              "config": "assets/data/experiments/training-quality-smoke-20261017/comparison-profile/stages/strategic-validation-2.json",
+              "kind": "strategic"
+            },
+            "weight": 0.4
+          }
+        ]
+      }
+    }
+  ],
+  "validation_every": 1,
+  "version": 1
+}

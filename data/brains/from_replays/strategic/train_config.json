@@ -1,0 +1,105 @@
+{
+  "name": "from_replays_strategic",
+  "hidden": 8,
+  "init_from": "baseline.json",
+  "generations": 3,
+  "es": {
+    "population": 6,
+    "sigma": 0.08,
+    "learning_rate": 0.02,
+    "seed": 20261016
+  },
+  "maps": [
+    {
+      "map": "../maps/center-command.vsgmap",
+      "movement_class": "bot2",
+      "cell_size": 64,
+      "starts": [
+        {
+          "x": 384.0,
+          "z": 192.0
+        },
+        {
+          "x": 7808.0,
+          "z": 3904.0
+        }
+      ]
+    },
+    {
+      "map": "../maps/zed-remake.vsgmap",
+      "movement_class": "bot2",
+      "cell_size": 64,
+      "starts": [
+        {
+          "x": 1440.0,
+          "z": 1056.0
+        },
+        {
+          "x": 4704.0,
+          "z": 5088.0
+        }
+      ]
+    },
+    {
+      "map": "../maps/synthetic-2048.vsgmap",
+      "movement_class": "bot2",
+      "cell_size": 64,
+      "starts": [
+        {
+          "x": 96.0,
+          "z": 96.0
+        },
+        {
+          "x": 1952.0,
+          "z": 1952.0
+        }
+      ]
+    }
+  ],
+  "factions": [
+    {
+      "name": "armada",
+      "builder": "armck",
+      "mex": "armmex",
+      "power": "armsolar",
+      "factory": "armlab",
+      "combat": [
+        "armpw",
+        "armrock"
+      ]
+    },
+    {
+      "name": "cortex",
+      "builder": "corck",
+      "mex": "cormex",
+      "power": "corsolar",
+      "factory": "corlab",
+      "combat": [
+        "corak",
+        "corstorm"
+      ]
+    },
+    {
+      "name": "legion",
+      "builder": "legck",
+      "mex": "legmex",
+      "power": "legsolar",
+      "factory": "leglab",
+      "combat": [
+        "leggob",
+        "legcen",
+        "leglob",
+        "legbal"
+      ]
+    }
+  ],
+  "max_ticks": 5400,
+  "cadence_ticks": 30,
+  "train_seeds": 1,
+  "validation_seeds": 1,
+  "starting_metal": 1000,
+  "starting_energy": 1000,
+  "base_metal_income": 2,
+  "base_energy_income": 25,
+  "combat": true
+}

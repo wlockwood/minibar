@@ -1,0 +1,37 @@
+# data/ holds everything training produces. Track results, not process:
+# champions, hall-of-fame checkpoints, summaries and the small baselines tests
+# need. Per-generation history, optimizer state, work caches, watch pages,
+# binaries, packages and replays stay untracked.
+*
+!*/
+!.gitignore
+
+# Notes and reports
+!*.md
+
+# Champions and checkpoints of champions
+!champion*.json
+!brain.best.json
+!brain.initial.json
+!brain.reference.json
+
+# Outcome of a run or campaign
+!summary.json
+!campaign.json
+!receipt.json
+!evolve.log
+
+# Baselines and inputs that tests and README commands read
+!brains/from_replays/**
+brains/from_replays/runs/**
+brains/from_replays/maps/**
+brains/from_replays/catalog.expanded*.json
+
+# Never track bulky or reproducible trees, even if a name above matches
+packages/
+campaign-package-*/
+**/work/
+**/bin/
+**/assets/
+**/final/watch*.html
+**/rounds/

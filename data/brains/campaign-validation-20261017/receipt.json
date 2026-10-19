@@ -1,0 +1,13 @@
+{
+  "command": [
+    "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+    "--train-campaign",
+    "D:\\code\\BAR\\minibar\\data\\brains\\campaign-validation-20261017\\campaign.json",
+    "--train-out",
+    "D:\\code\\BAR\\minibar\\data\\brains\\campaign-validation-20261017\\run",
+    "--threads",
+    "4"
+  ],
+  "seconds": 190.6639815999988,
+  "exit_code": 0
+}

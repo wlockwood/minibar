@@ -1,0 +1,214 @@
+[
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--seed-brain",
+      "tactical_v4",
+      "--brain-out",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline.json",
+      "--hidden",
+      "8"
+    ],
+    "seconds": 0.011739099980331957,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\seed.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\seed.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--seed-brain",
+      "strategic_v1",
+      "--brain-out",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline.json",
+      "--hidden",
+      "8"
+    ],
+    "seconds": 0.010291900020092726,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\seed.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\seed.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--train",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\train_config.json",
+      "--train-out",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline-v1"
+    ],
+    "seconds": 6.156185900093988,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline-v1\\stdout.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline-v1\\stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--train-strategy",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\train_config.json",
+      "--train-out",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1"
+    ],
+    "seconds": 84.01047199999448,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1\\stdout.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1\\stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\large_scale_128.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "2000000000"
+    ],
+    "seconds": 0.6509808999253437,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale.baseline.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale.baseline.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline-v1\\brain.best.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\large_scale_128.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "2000000000"
+    ],
+    "seconds": 0.6745069000171497,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale.best.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale.best.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\large_scale_512.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "2000000000"
+    ],
+    "seconds": 7.864429600071162,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale512.baseline.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale512.baseline.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline-v1\\brain.best.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\large_scale_512.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "2000000000"
+    ],
+    "seconds": 8.452106600045227,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale512.best.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\scale512.best.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\zed-remake.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "2000000000"
+    ],
+    "seconds": 0.3820197000168264,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\zed.baseline.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\zed.baseline.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\baseline-v1\\brain.best.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\zed-remake.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "2000000000"
+    ],
+    "seconds": 0.42022960004396737,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\zed.best.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\zed.best.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate-strategy",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1\\brain.best.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1\\train_config.json",
+      "--eval-seeds",
+      "1",
+      "--eval-seed-base",
+      "1000000000"
+    ],
+    "seconds": 6.52763829997275,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\strategy.reloaded.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\strategy.reloaded.stderr.txt"
+  },
+  {
+    "command": [
+      "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+      "--catalog",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\catalog.expanded.json",
+      "--evaluate-strategy",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1\\brain.best.json",
+      "--train-config",
+      "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\strategic\\baseline-v1\\train_config.json",
+      "--eval-seeds",
+      "2",
+      "--eval-seed-base",
+      "3000000000"
+    ],
+    "seconds": 13.107588000013493,
+    "exit_code": 0,
+    "stdout": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\strategy.heldout.evaluation.json",
+    "stderr": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\runs\\baseline-v1\\strategy.heldout.stderr.txt"
+  }
+]

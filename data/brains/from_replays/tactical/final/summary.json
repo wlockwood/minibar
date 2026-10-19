@@ -1,0 +1,1896 @@
+{
+  "name": "from_replays_tactical",
+  "parameters_trained": 743,
+  "initial": {
+    "total": {
+      "battles": 144,
+      "wins": 80,
+      "draws": 0,
+      "timeouts": 21,
+      "losses": 43,
+      "fitness_sum": 61.674869446139326,
+      "exchange_sum": 1.4931497229905173,
+      "key_term_sum": 6.0,
+      "duration_sum": 4260.797325134277,
+      "underdog_battles": 48,
+      "underdog_wins": 16
+    },
+    "rows": [
+      {
+        "scenario": "armada skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -5.369441985353802,
+          "exchange_sum": -1.6777149146509036,
+          "key_term_sum": 0.0,
+          "duration_sum": 93.8332748413086,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 3,
+          "fitness_sum": -5.00897843722401,
+          "exchange_sum": -1.8629047239969885,
+          "key_term_sum": 0.0,
+          "duration_sum": 133.99959564208984,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -5.2147489386760135,
+          "exchange_sum": -1.3683288212953244,
+          "key_term_sum": 0.0,
+          "duration_sum": 116.29959869384766,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.757805842642859,
+          "exchange_sum": -0.07891025165169624,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.6442227207195925,
+          "exchange_sum": -0.7695076602695194,
+          "key_term_sum": 0.0,
+          "duration_sum": 52.33347225189209,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.897624559947902,
+          "exchange_sum": -1.2763113387261378,
+          "key_term_sum": 0.0,
+          "duration_sum": 58.06698799133301,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.771892849979898,
+          "exchange_sum": -1.0248479187901298,
+          "key_term_sum": 0.0,
+          "duration_sum": 46.83350467681885,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.761978063103749,
+          "exchange_sum": -1.0050183450378318,
+          "key_term_sum": 0.0,
+          "duration_sum": 46.40016555786133,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.318969667983205,
+          "exchange_sum": -1.3620606640335913,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -12.116815334902773,
+          "exchange_sum": -2.6638698772797724,
+          "key_term_sum": -2.0,
+          "duration_sum": 133.5326690673828,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.079650835351477,
+          "exchange_sum": 0.1593016707029533,
+          "key_term_sum": 0.0,
+          "duration_sum": 98.19987487792969,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.5084363955301554,
+          "exchange_sum": -0.9831272089396885,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.948607543493548,
+          "exchange_sum": 1.627798608249981,
+          "key_term_sum": 0.0,
+          "duration_sum": 49.133535385131836,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.0958373790295175,
+          "exchange_sum": 0.4519418863241198,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 3,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 0,
+          "fitness_sum": 2.9758946783586007,
+          "exchange_sum": 0.9106311587601545,
+          "key_term_sum": 0.0,
+          "duration_sum": 110.13325786590576,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 5.0015607734454175,
+          "exchange_sum": 1.7337050681537214,
+          "key_term_sum": 0.0,
+          "duration_sum": 40.40008544921875,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 2,
+          "fitness_sum": 2.489794942266911,
+          "exchange_sum": 0.6405353587148468,
+          "key_term_sum": 0.5,
+          "duration_sum": 115.23321533203125,
+          "underdog_battles": 4,
+          "underdog_wins": 1
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 10.583310399873966,
+          "exchange_sum": 0.8559672076087557,
+          "key_term_sum": 2.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 2,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 2,
+          "fitness_sum": 4.488359915549097,
+          "exchange_sum": 0.783300926654863,
+          "key_term_sum": 1.0,
+          "duration_sum": 92.56659698486328,
+          "underdog_battles": 4,
+          "underdog_wins": 2
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -1.7294938068715557,
+          "exchange_sum": 0.46482816950940153,
+          "key_term_sum": 0.0,
+          "duration_sum": 133.6326675415039,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.270591299577104,
+          "exchange_sum": 0.5411825991542072,
+          "key_term_sum": 0.0,
+          "duration_sum": 52.10012722015381,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.737297076574154,
+          "exchange_sum": -0.5254058468516918,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.55257918011987,
+          "exchange_sum": 1.1051583602397388,
+          "key_term_sum": 0.0,
+          "duration_sum": 38.60006141662598,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.9612027620826624,
+          "exchange_sum": -0.07759447583467559,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 3,
+          "losses": 0,
+          "fitness_sum": -0.041038424694175735,
+          "exchange_sum": 1.0118707209556526,
+          "key_term_sum": 0.0,
+          "duration_sum": 159.0330810546875,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.202799705341955,
+          "exchange_sum": -0.025016855345064322,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.964755784201323,
+          "exchange_sum": 1.1635541837621246,
+          "key_term_sum": 0.0,
+          "duration_sum": 132.4660186767578,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 5.268143572043446,
+          "exchange_sum": 1.770329759446371,
+          "key_term_sum": 0.0,
+          "duration_sum": 91.23331451416016,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 3,
+          "losses": 0,
+          "fitness_sum": 5.29265621216679,
+          "exchange_sum": 1.5115757606561764,
+          "key_term_sum": 0.5,
+          "duration_sum": 154.5664825439453,
+          "underdog_battles": 4,
+          "underdog_wins": 1
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 11.124762122906873,
+          "exchange_sum": 1.2521839012297347,
+          "key_term_sum": 2.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -1.9320694344778162,
+          "exchange_sum": -0.09884390500600454,
+          "key_term_sum": 0.0,
+          "duration_sum": 83.86676025390625,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 11.258695401696897,
+          "exchange_sum": 1.520050458809786,
+          "key_term_sum": 2.0,
+          "duration_sum": 148.33297729492188,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.638919345566923,
+          "exchange_sum": -0.7221613088661533,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.9789061181864893,
+          "exchange_sum": -0.04218776362702213,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.8014915109222036,
+          "exchange_sum": -0.39701697815559217,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.9750313912078585,
+          "exchange_sum": -0.049937217584282476,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      }
+    ],
+    "robust_fitness": -0.04638751296363314
+  },
+  "best_generation": 1,
+  "best": {
+    "total": {
+      "battles": 144,
+      "wins": 82,
+      "draws": 0,
+      "timeouts": 25,
+      "losses": 37,
+      "fitness_sum": 72.62390637511268,
+      "exchange_sum": 3.813489796179731,
+      "key_term_sum": 7.0,
+      "duration_sum": 4217.899213790894,
+      "underdog_battles": 48,
+      "underdog_wins": 18
+    },
+    "rows": [
+      {
+        "scenario": "armada skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -5.319709600801413,
+          "exchange_sum": -1.5782501455461235,
+          "key_term_sum": 0.0,
+          "duration_sum": 84.13333797454834,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 3,
+          "fitness_sum": -5.0440572953115534,
+          "exchange_sum": -1.9330624401720753,
+          "key_term_sum": 0.0,
+          "duration_sum": 124.09974670410156,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 3,
+          "fitness_sum": -4.714102621418516,
+          "exchange_sum": -1.2731530923859993,
+          "key_term_sum": 0.0,
+          "duration_sum": 122.99976348876953,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.835109599084152,
+          "exchange_sum": -0.2335177645342837,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.57673787950979,
+          "exchange_sum": -0.6345379778499138,
+          "key_term_sum": 0.0,
+          "duration_sum": 51.133562088012695,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.879285979235631,
+          "exchange_sum": -1.2396341773015962,
+          "key_term_sum": 0.0,
+          "duration_sum": 65.6002607345581,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.7159458187348986,
+          "exchange_sum": -0.9129538563001314,
+          "key_term_sum": 0.0,
+          "duration_sum": 47.90018558502197,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.708894944894102,
+          "exchange_sum": -0.8988521086185383,
+          "key_term_sum": 0.0,
+          "duration_sum": 47.53351402282715,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.267093985250453,
+          "exchange_sum": -1.4658120294990946,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -12.12690347908711,
+          "exchange_sum": -2.6840461656484473,
+          "key_term_sum": -2.0,
+          "duration_sum": 129.63272857666016,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.140610306382425,
+          "exchange_sum": 0.2812206127648503,
+          "key_term_sum": 0.0,
+          "duration_sum": 89.16667938232422,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.5194760935654132,
+          "exchange_sum": -0.9610478128691737,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.903229257759176,
+          "exchange_sum": 1.5370420367812399,
+          "key_term_sum": 0.0,
+          "duration_sum": 50.133548736572266,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.0983082430459588,
+          "exchange_sum": 0.44700015829123685,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.720843935057305,
+          "exchange_sum": 1.1722713913774963,
+          "key_term_sum": 0.0,
+          "duration_sum": 61.967040061950684,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.995065975088528,
+          "exchange_sum": 1.7207154714399415,
+          "key_term_sum": 0.0,
+          "duration_sum": 40.40008544921875,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 3,
+          "losses": 1,
+          "fitness_sum": 1.7469568195892093,
+          "exchange_sum": 0.804970526760233,
+          "key_term_sum": 0.0,
+          "duration_sum": 146.79993438720703,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 10.579189095458792,
+          "exchange_sum": 0.8477245987784092,
+          "key_term_sum": 2.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 10.90929968561088,
+          "exchange_sum": 1.5079457790825852,
+          "key_term_sum": 2.0,
+          "duration_sum": 117.29985046386719,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 2,
+          "fitness_sum": 2.6206876930091685,
+          "exchange_sum": 0.9023208601993615,
+          "key_term_sum": 0.5,
+          "duration_sum": 108.69998168945312,
+          "underdog_battles": 4,
+          "underdog_wins": 1
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.253331450996191,
+          "exchange_sum": 0.5066629019923813,
+          "key_term_sum": 0.0,
+          "duration_sum": 52.76682949066162,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.7305548644265865,
+          "exchange_sum": -0.5388902711468279,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.569403058380971,
+          "exchange_sum": 1.1388061167619417,
+          "key_term_sum": 0.0,
+          "duration_sum": 37.766716957092285,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.960733371858022,
+          "exchange_sum": -0.07853325628395671,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -1.6404232122075961,
+          "exchange_sum": 1.0997361309236533,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.164597565343428,
+          "exchange_sum": 0.05138742465198927,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 5.046912244791475,
+          "exchange_sum": 1.3278671049424298,
+          "key_term_sum": 0.0,
+          "duration_sum": 118.13290405273438,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 5.225421212195219,
+          "exchange_sum": 1.6848850397499169,
+          "key_term_sum": 0.0,
+          "duration_sum": 91.93330383300781,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 3,
+          "losses": 0,
+          "fitness_sum": 5.242418676721401,
+          "exchange_sum": 1.4111006897653966,
+          "key_term_sum": 0.5,
+          "duration_sum": 159.3664093017578,
+          "underdog_battles": 4,
+          "underdog_wins": 1
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 11.0981735705843,
+          "exchange_sum": 1.1990067965845874,
+          "key_term_sum": 2.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -1.8164978653176447,
+          "exchange_sum": 0.13229923331433768,
+          "key_term_sum": 0.0,
+          "duration_sum": 94.06660461425781,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 11.187717652881542,
+          "exchange_sum": 1.3780949611790723,
+          "key_term_sum": 2.0,
+          "duration_sum": 149.23296356201172,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.6827718009974393,
+          "exchange_sum": -0.6344563980051208,
+          "key_term_sum": 0.0,
+          "duration_sum": 147.13326263427734,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.052898490571368,
+          "exchange_sum": 0.10579698114273677,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.85364377581908,
+          "exchange_sum": -0.29271244836184,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.9580474621095303,
+          "exchange_sum": -0.08390507578093913,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      }
+    ],
+    "robust_fitness": 0.012026651395043553
+  },
+  "last": {
+    "total": {
+      "battles": 144,
+      "wins": 79,
+      "draws": 0,
+      "timeouts": 22,
+      "losses": 43,
+      "fitness_sum": 59.969103637411834,
+      "exchange_sum": 1.6363343690273862,
+      "key_term_sum": 5.0,
+      "duration_sum": 4155.465320587158,
+      "underdog_battles": 48,
+      "underdog_wins": 14
+    },
+    "rows": [
+      {
+        "scenario": "armada skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -5.304535701950924,
+          "exchange_sum": -1.5479023478451444,
+          "key_term_sum": 0.0,
+          "duration_sum": 81.56674098968506,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -5.481138175686235,
+          "exchange_sum": -1.9011072953157693,
+          "key_term_sum": 0.0,
+          "duration_sum": 140.09923553466797,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -5.20281400903442,
+          "exchange_sum": -1.3444589620121372,
+          "key_term_sum": 0.0,
+          "duration_sum": 103.63312530517578,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.8974578053646405,
+          "exchange_sum": -0.3582141770952594,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.6206334589817324,
+          "exchange_sum": -0.7223291367937986,
+          "key_term_sum": 0.0,
+          "duration_sum": 43.76679706573486,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.9031728500184,
+          "exchange_sum": -1.2874079188671341,
+          "key_term_sum": 0.0,
+          "duration_sum": 63.46696472167969,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.6722200294242153,
+          "exchange_sum": -0.8255022776787642,
+          "key_term_sum": 0.0,
+          "duration_sum": 43.10012149810791,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -2.6269607945198983,
+          "exchange_sum": -0.7349838078701298,
+          "key_term_sum": 0.0,
+          "duration_sum": 46.033493995666504,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.2174858911741318,
+          "exchange_sum": -1.5650282176517365,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -12.14913584036755,
+          "exchange_sum": -2.7285108882093234,
+          "key_term_sum": -2.0,
+          "duration_sum": 133.59933471679688,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.125392925691745,
+          "exchange_sum": 0.25078585138349063,
+          "key_term_sum": 0.0,
+          "duration_sum": 92.93328857421875,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "armada defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.5096839478899304,
+          "exchange_sum": -0.9806321042201389,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.795822248910337,
+          "exchange_sum": 1.3222280190835618,
+          "key_term_sum": 0.0,
+          "duration_sum": 42.36677837371826,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.133258575302854,
+          "exchange_sum": 0.3770994937774465,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.742861577785197,
+          "exchange_sum": 1.216306676833279,
+          "key_term_sum": 0.0,
+          "duration_sum": 60.333645820617676,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.975541697804359,
+          "exchange_sum": 1.6816669168716059,
+          "key_term_sum": 0.0,
+          "duration_sum": 40.53342056274414,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 3,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 0,
+          "fitness_sum": 9.103503574375965,
+          "exchange_sum": 1.750717935237111,
+          "key_term_sum": 1.5,
+          "duration_sum": 115.5998764038086,
+          "underdog_battles": 4,
+          "underdog_wins": 3
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 10.592713771592427,
+          "exchange_sum": 0.8747739510456786,
+          "key_term_sum": 2.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 3,
+          "fitness_sum": 1.4325736905421516,
+          "exchange_sum": 0.7303458204888946,
+          "key_term_sum": 0.5,
+          "duration_sum": 112.96631622314453,
+          "underdog_battles": 4,
+          "underdog_wins": 1
+        }
+      },
+      {
+        "scenario": "cortex attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 3,
+          "fitness_sum": -0.6748494408835621,
+          "exchange_sum": 0.36986393626182257,
+          "key_term_sum": 0.0,
+          "duration_sum": 103.16673278808594,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.272856792270568,
+          "exchange_sum": 0.5457135845411365,
+          "key_term_sum": 0.0,
+          "duration_sum": 46.166829109191895,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.725134312195582,
+          "exchange_sum": -0.5497313756088364,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 4.556046650542839,
+          "exchange_sum": 1.1120933010856788,
+          "key_term_sum": 0.0,
+          "duration_sum": 39.50007343292236,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "cortex defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.928375801736063,
+          "exchange_sum": -0.1432483965278748,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 1,
+          "draws": 0,
+          "timeouts": 3,
+          "losses": 0,
+          "fitness_sum": 0.0424566505199333,
+          "exchange_sum": 1.1788608713838706,
+          "key_term_sum": 0.0,
+          "duration_sum": 149.93321990966797,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": -2.227212267665777,
+          "exchange_sum": -0.0738419799927083,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 5.0244053196641785,
+          "exchange_sum": 1.2828532546878366,
+          "key_term_sum": 0.0,
+          "duration_sum": 126.53277587890625,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion skirmish",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 5.205987315936541,
+          "exchange_sum": 1.6460172472325632,
+          "key_term_sum": 0.0,
+          "duration_sum": 88.66668701171875,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 4,
+          "losses": 0,
+          "fitness_sum": 3.121891675402561,
+          "exchange_sum": 1.1445812474299193,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 11.096746501336813,
+          "exchange_sum": 1.1961526580896142,
+          "key_term_sum": 2.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 4,
+          "underdog_wins": 4
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 0,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 4,
+          "fitness_sum": -1.781634773805595,
+          "exchange_sum": 0.20202541633843796,
+          "key_term_sum": 0.0,
+          "duration_sum": 96.36656951904297,
+          "underdog_battles": 4,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion attack",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 2,
+          "draws": 0,
+          "timeouts": 1,
+          "losses": 1,
+          "fitness_sum": 5.897801056352815,
+          "exchange_sum": 0.9634551555572302,
+          "key_term_sum": 1.0,
+          "duration_sum": 145.13329315185547,
+          "underdog_battles": 4,
+          "underdog_wins": 2
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "charge",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.796296831592062,
+          "exchange_sum": -0.40740633681587524,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "kite",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.9721537646196685,
+          "exchange_sum": -0.0556924707606632,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "strike",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.7547481731515377,
+          "exchange_sum": -0.49050365369692484,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      },
+      {
+        "scenario": "legion defend",
+        "opponent": "guard",
+        "tally": {
+          "battles": 4,
+          "wins": 4,
+          "draws": 0,
+          "timeouts": 0,
+          "losses": 0,
+          "fitness_sum": 3.7536471893302115,
+          "exchange_sum": -0.49270562133957724,
+          "key_term_sum": 0.0,
+          "duration_sum": 160.0,
+          "underdog_battles": 0,
+          "underdog_wins": 0
+        }
+      }
+    ],
+    "robust_fitness": -0.05730076286270375
+  },
+  "output_dir": "D:\\code\\BAR\\minibar\\data\\brains\\from_replays\\tactical\\final"
+}

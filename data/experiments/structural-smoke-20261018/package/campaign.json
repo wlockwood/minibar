@@ -1,0 +1,152 @@
+{
+  "archive_size": 8,
+  "format": "minibar-campaign",
+  "generations": 2,
+  "max_stage_regression": 0.15,
+  "min_gain": 1000,
+  "name": "Structural feature smoke \u2014 short tests, not performance evidence / branch-f2eed42f59a1c985ec3df7d1",
+  "promotion_seeds": 0,
+  "restart_after": 0,
+  "restart_scale": 0.25,
+  "seed": 2026101801,
+  "tracks": [
+    {
+      "brain": "best/tactical.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 15274754906575844253,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        },
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 15561754213718579966,
+            "sigma": 0.16,
+            "weight_decay": 0
+          },
+          "name": "wide",
+          "restart": false,
+          "structural_search": {
+            "every": 1
+          }
+        }
+      ],
+      "name": "tactical",
+      "reference_brain": "best/tactical.reference.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/structural-smoke-20261018/tactical-training.json",
+              "kind": "tactical"
+            },
+            "weight": 1
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/structural-smoke-20261018/tactical-validation.json",
+              "kind": "tactical"
+            },
+            "weight": 1
+          }
+        ]
+      }
+    },
+    {
+      "brain": "best/strategic.json",
+      "holdout": null,
+      "islands": [
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 11718144488598334780,
+            "sigma": 0.04,
+            "weight_decay": 0
+          },
+          "name": "local",
+          "restart": false
+        },
+        {
+          "es": {
+            "l1": 0,
+            "learning_rate": 0.01,
+            "population": 2,
+            "seed": 11257600508707154727,
+            "sigma": 0.16,
+            "weight_decay": 0
+          },
+          "name": "wide",
+          "restart": false,
+          "structural_search": {
+            "every": 1
+          }
+        }
+      ],
+      "name": "strategic",
+      "reference_brain": "best/strategic.reference.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/structural-smoke-20261018/strategic-training.json",
+              "kind": "strategic"
+            },
+            "weight": 1
+          }
+        ]
+      },
+      "validation": {
+        "catalog": "assets/data/brains/from_replays/catalog.json",
+        "layouts": 1,
+        "seeds": 1,
+        "stages": [
+          {
+            "difficulty": 1,
+            "name": "easy",
+            "task": {
+              "config": "assets/data/experiments/structural-smoke-20261018/strategic-validation.json",
+              "kind": "strategic"
+            },
+            "weight": 1
+          }
+        ]
+      }
+    }
+  ],
+  "validation_every": 1,
+  "version": 1
+}

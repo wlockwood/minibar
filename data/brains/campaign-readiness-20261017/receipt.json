@@ -1,0 +1,157 @@
+{
+  "binary_sha256": "285b725b869741057e6e8153314aeda596b019b5eab8385d7363298b7b2c0aad",
+  "campaign_sha256": "bb306861195e605fe49afab478ba146057c633fb7d1ab6b78e29b8dd18be1358",
+  "started_utc": "2026-10-17T18:34:21.941347+00:00",
+  "invocations": [
+    {
+      "name": "timed-stop",
+      "command": [
+        "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+        "--train-campaign",
+        "D:\\code\\BAR\\minibar\\data\\brains\\campaign-readiness-20261017\\campaign.json",
+        "--train-out",
+        "D:\\code\\BAR\\minibar\\data\\brains\\campaign-readiness-20261017\\run",
+        "--threads",
+        "4",
+        "--max-seconds",
+        "5"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 11.79517080000005,
+      "summary": {
+        "status": "stopped",
+        "completed_generations": 0,
+        "target_generations": 1,
+        "waiting_jobs": 0,
+        "tracks": [
+          {
+            "best_fitness": -0.3746158000794758,
+            "best_generation": 0,
+            "holdout_fitness": null,
+            "initial_fitness": -0.3746158000794758,
+            "name": "tactical",
+            "restarts": [
+              {
+                "count": 0,
+                "name": "local"
+              },
+              {
+                "count": 0,
+                "name": "wide"
+              }
+            ]
+          },
+          {
+            "best_fitness": 0.3805546251021577,
+            "best_generation": 0,
+            "holdout_fitness": null,
+            "initial_fitness": 0.3805546251021577,
+            "name": "strategic",
+            "restarts": [
+              {
+                "count": 0,
+                "name": "local"
+              },
+              {
+                "count": 0,
+                "name": "wide"
+              }
+            ]
+          }
+        ]
+      },
+      "cached_jobs": 0,
+      "cached_results": 0,
+      "progress": {
+        "status": "stopped",
+        "track": "strategic",
+        "plan": "validation",
+        "label": "initial/stage-2",
+        "stage": "objectives",
+        "stage_index": 2,
+        "jobs_total": 1,
+        "jobs_completed": 1,
+        "jobs_cached": 0,
+        "jobs_waiting": 0,
+        "elapsed_seconds": 11.7833981,
+        "stop_reason": "max_seconds"
+      }
+    },
+    {
+      "name": "resume",
+      "command": [
+        "D:\\code\\BAR\\minibar\\target\\release\\visigoth-simulator.exe",
+        "--train-campaign",
+        "D:\\code\\BAR\\minibar\\data\\brains\\campaign-readiness-20261017\\campaign.json",
+        "--train-out",
+        "D:\\code\\BAR\\minibar\\data\\brains\\campaign-readiness-20261017\\run",
+        "--threads",
+        "4",
+        "--resume",
+        "--max-seconds",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 134.22588840000026,
+      "summary": {
+        "status": "completed",
+        "completed_generations": 1,
+        "target_generations": 1,
+        "waiting_jobs": 0,
+        "tracks": [
+          {
+            "best_fitness": -0.3746158000794758,
+            "best_generation": 0,
+            "holdout_fitness": -0.8060603426565525,
+            "initial_fitness": -0.3746158000794758,
+            "name": "tactical",
+            "restarts": [
+              {
+                "count": 0,
+                "name": "local"
+              },
+              {
+                "count": 0,
+                "name": "wide"
+              }
+            ]
+          },
+          {
+            "best_fitness": 0.3805546251021577,
+            "best_generation": 0,
+            "holdout_fitness": -0.2694458873313747,
+            "initial_fitness": 0.3805546251021577,
+            "name": "strategic",
+            "restarts": [
+              {
+                "count": 0,
+                "name": "local"
+              },
+              {
+                "count": 0,
+                "name": "wide"
+              }
+            ]
+          }
+        ]
+      },
+      "cached_jobs": 0,
+      "cached_results": 0,
+      "progress": {
+        "status": "completed",
+        "track": "strategic",
+        "plan": "holdout",
+        "label": "holdout/stage-0",
+        "stage": "unselected-strategic-holdout",
+        "stage_index": 0,
+        "jobs_total": 1,
+        "jobs_completed": 1,
+        "jobs_cached": 0,
+        "jobs_waiting": 0,
+        "elapsed_seconds": 134.2128046,
+        "stop_reason": null
+      }
+    }
+  ],
+  "wall_seconds": 146.0210592000003
+}

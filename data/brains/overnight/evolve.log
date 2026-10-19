@@ -1,0 +1,184 @@
+evolving into data\brains\overnight; Ctrl+C or create data\brains\overnight\STOP to stop; log: data\brains\overnight\evolve.log
+round    0 (4.7 min): PROMOTED c0
+    c0        score +0.363  win  62% timeout  15% loss  20% underdog   24%  control (incumbent settings) <-
+    c1        score +0.055  win  44% timeout  35% loss  20% underdog   14%  population 64->48; l1 0->0.05
+    c2        score -0.220  win  40% timeout  11% loss  48% underdog    8%  train only strafe; population 64->96
+    c3        score +0.187  win  55% timeout  27% loss  18% underdog   33%  sigma 0.1->0.07328; l1 0->0
+    simulated 1.32M training battles = 19,932 hours of fighting (2.3 years) in 4.7 min = 252,917x realtime
+    best vs (win rate): charge 46%  kite 79%  orbit 60%   -> next focus: charge
+round    1 (7.3 min): PROMOTED c0
+    champion  score +0.059  win  62% timeout  14% loss  20% underdog   19%  
+    c0        score +0.350  win  79% timeout   2% loss  18% underdog   45%  control (incumbent settings) <-
+    c1        score +0.023  win  41% timeout  28% loss  26% underdog    2%  focus: train only vs weakest baseline (charge)
+    c2        score +0.326  win  78% timeout   0% loss  20% underdog   47%  sigma 0.1->0.09628; layout_jitter 30->20
+    c3        score +0.294  win  76% timeout   2% loss  20% underdog   44%  population 64->48; seeds_per_battle 4->2
+    simulated 1.20M training battles = 17,943 hours of fighting (2.0 years) in 7.3 min = 146,552x realtime
+    best vs (win rate): charge 50%  kite 88%  orbit 99%   -> next focus: charge
+round    2 (19.6 min): PROMOTED c2
+    champion  score +0.181  win  79% timeout   2% loss  17% underdog   37%  
+    c0        score +0.240  win  68% timeout  15% loss  17% underdog   20%  control (incumbent settings)
+    c1        score +0.255  win  57% timeout  22% loss  20% underdog   16%  focus: train only vs weakest baseline (charge)
+    c2        score +0.258  win  68% timeout  14% loss  17% underdog   21%  seeds_per_battle 4->2; sigma 0.1->0.1098 <-
+    c3        score +0.181  win  79% timeout   2% loss  17% underdog   37%  seeds_per_battle 4->8; train only target_selector
+    simulated 2.13M training battles = 34,227 hours of fighting (3.9 years) in 19.6 min = 105,001x realtime
+    best vs (win rate): charge 51%  kite 86%  orbit 67%   -> next focus: charge
+round    3 (5.7 min): PROMOTED c0
+    champion  score +0.146  win  71% timeout  12% loss  16% underdog   22%  
+    c0        score +0.182  win  68% timeout  16% loss  15% underdog   17%  control (incumbent settings) <-
+    c1        score +0.122  win  62% timeout  18% loss  19% underdog   17%  focus: train only vs weakest baseline (charge)
+    c2        score +0.151  win  67% timeout  16% loss  17% underdog   19%  sigma 0.1098->0.11313; train only target_selector+spacing
+    c3        score +0.147  win  68% timeout  16% loss  15% underdog   19%  learning_rate 0.03->0.02214; seeds_per_battle 2->2
+    simulated 0.94M training battles = 14,691 hours of fighting (1.7 years) in 5.7 min = 155,200x realtime
+    best vs (win rate): charge 56%  kite 87%  orbit 60%   -> next focus: charge
+round    4 (7.5 min): champion kept
+    champion  score +0.142  win  67% timeout  17% loss  16% underdog   17%   <-
+    c0        score +0.124  win  66% timeout  16% loss  17% underdog   17%  control (incumbent settings)
+    c1        score +0.108  win  69% timeout  15% loss  15% underdog   18%  focus: train only vs weakest baseline (charge)
+    c2        score +0.131  win  68% timeout  15% loss  16% underdog   18%  layout_jitter 30->20; population 64->96
+    c3        score +0.142  win  67% timeout  17% loss  16% underdog   17%  l1 0->0; layout_jitter 30->40
+    simulated 1.06M training battles = 16,570 hours of fighting (1.9 years) in 7.5 min = 132,883x realtime
+    best vs (win rate): charge 55%  kite 87%  orbit 59%   -> next focus: charge
+round    5 (5.6 min): PROMOTED c2
+    champion  score +0.110  win  66% timeout  16% loss  17% underdog   16%  
+    c0        score +0.056  win  67% timeout  15% loss  17% underdog   18%  control (incumbent settings)
+    c1        score +0.102  win  67% timeout  18% loss  15% underdog   16%  focus: train only vs weakest baseline (charge)
+    c2        score +0.162  win  68% timeout  16% loss  15% underdog   18%  sigma 0.1098->0.10255; layout_jitter 30->40 <-
+    c3        score +0.149  win  67% timeout  17% loss  16% underdog   15%  layout_jitter 30->40; learning_rate 0.03->0.02958
+    simulated 0.94M training battles = 14,578 hours of fighting (1.7 years) in 5.6 min = 156,762x realtime
+    best vs (win rate): charge 57%  kite 90%  orbit 58%   -> next focus: charge
+round    6 (9.5 min): PROMOTED c0
+    champion  score +0.063  win  68% timeout  16% loss  15% underdog   17%  
+    c0        score +0.170  win  70% timeout  14% loss  15% underdog   20%  control (incumbent settings) <-
+    c1        score +0.063  win  68% timeout  16% loss  15% underdog   17%  focus: train only vs weakest baseline (charge)
+    c2        score +0.160  win  66% timeout  19% loss  15% underdog   15%  l1 0->0.05; seeds_per_battle 2->4
+    c3        score +0.106  win  67% timeout  16% loss  16% underdog   19%  layout_jitter 40->50; population 64->48
+    simulated 1.13M training battles = 17,787 hours of fighting (2.0 years) in 9.5 min = 112,084x realtime
+    best vs (win rate): charge 54%  kite 98%  orbit 60%   -> next focus: charge
+round    7 (7.7 min): PROMOTED c2
+    champion  score +0.136  win  70% timeout  15% loss  14% underdog   19%  
+    c0        score +0.158  win  70% timeout  15% loss  15% underdog   21%  control (incumbent settings)
+    c1        score +0.136  win  70% timeout  15% loss  14% underdog   19%  focus: train only vs weakest baseline (charge)
+    c2        score +0.161  win  71% timeout  14% loss  15% underdog   20%  population 64->96; learning_rate 0.03->0.02428 <-
+    c3        score +0.142  win  72% timeout  14% loss  15% underdog   20%  layout_jitter 40->30; learning_rate 0.03->0.0261
+    simulated 1.06M training battles = 16,717 hours of fighting (1.9 years) in 7.7 min = 129,664x realtime
+    best vs (win rate): charge 55%  kite 99%  orbit 59%   -> next focus: charge
+round    8 (11.3 min): PROMOTED c3
+    champion  score +0.087  win  70% timeout  15% loss  15% underdog   18%  
+    c0        score +0.098  win  68% timeout  17% loss  15% underdog   17%  control (incumbent settings)
+    c1        score +0.101  win  70% timeout  16% loss  14% underdog   19%  focus: train only vs weakest baseline (charge)
+    c2        score +0.084  win  70% timeout  14% loss  15% underdog   19%  population 96->144; train only cohesion
+    c3        score +0.106  win  70% timeout  15% loss  16% underdog   19%  sigma 0.10255->0.12524; layout_jitter 40->30 <-
+    simulated 1.59M training battles = 24,885 hours of fighting (2.8 years) in 11.3 min = 132,481x realtime
+    best vs (win rate): charge 54%  kite 94%  orbit 61%   -> next focus: charge
+round    9 (10.4 min): champion kept
+    champion  score +0.134  win  71% timeout  14% loss  14% underdog   21%   <-
+    c0        score +0.068  win  70% timeout  15% loss  15% underdog   19%  control (incumbent settings)
+    c1        score +0.120  win  69% timeout  16% loss  15% underdog   20%  focus: train only vs weakest baseline (charge)
+    c2        score +0.101  win  69% timeout  17% loss  14% underdog   17%  learning_rate 0.02428->0.03402; layout_jitter 30->20
+    c3        score +0.127  win  70% timeout  15% loss  15% underdog   21%  population 96->144; layout_jitter 30->40
+    simulated 1.59M training battles = 23,968 hours of fighting (2.7 years) in 10.4 min = 138,090x realtime
+    best vs (win rate): charge 57%  kite 98%  orbit 60%   -> next focus: charge
+round   10 (7.8 min): PROMOTED c2
+    champion  score +0.102  win  71% timeout  14% loss  14% underdog   20%  
+    c0        score +0.103  win  72% timeout  13% loss  15% underdog   22%  control (incumbent settings)
+    c1        score +0.089  win  69% timeout  17% loss  14% underdog   18%  focus: train only vs weakest baseline (charge)
+    c2        score +0.151  win  69% timeout  15% loss  15% underdog   19%  layout_jitter 30->40; learning_rate 0.02428->0.02454 <-
+    c3        score +0.123  win  73% timeout  13% loss  14% underdog   21%  sigma 0.12524->0.13852; train only cohesion
+    simulated 1.40M training battles = 21,251 hours of fighting (2.4 years) in 7.8 min = 162,743x realtime
+    best vs (win rate): charge 55%  kite 93%  orbit 59%   -> next focus: charge
+round   11 (10.7 min): PROMOTED c2
+    champion  score +0.111  win  69% timeout  16% loss  15% underdog   20%  
+    c0        score +0.104  win  73% timeout  13% loss  14% underdog   22%  control (incumbent settings)
+    c1        score +0.128  win  68% timeout  17% loss  15% underdog   19%  focus: train only vs weakest baseline (charge)
+    c2        score +0.155  win  72% timeout  14% loss  15% underdog   20%  population 96->72; layout_jitter 40->50 <-
+    c3        score +0.111  win  69% timeout  16% loss  15% underdog   20%  population 96->144; l1 0->0
+    simulated 1.49M training battles = 22,494 hours of fighting (2.6 years) in 10.7 min = 126,113x realtime
+    best vs (win rate): charge 56%  kite 99%  orbit 60%   -> next focus: charge
+round   12 (14.7 min): PROMOTED c2
+    champion  score +0.136  win  72% timeout  14% loss  14% underdog   20%  
+    c0        score +0.150  win  72% timeout  13% loss  15% underdog   21%  control (incumbent settings)
+    c1        score +0.138  win  72% timeout  14% loss  14% underdog   20%  focus: train only vs weakest baseline (charge)
+    c2        score +0.151  win  71% timeout  14% loss  15% underdog   20%  population 72->108; seeds_per_battle 2->4 <-
+    c3        score +0.125  win  72% timeout  13% loss  15% underdog   21%  sigma 0.12524->0.08753; l1 0->0
+    simulated 1.63M training battles = 24,443 hours of fighting (2.8 years) in 14.7 min = 99,808x realtime
+    best vs (win rate): charge 55%  kite 99%  orbit 59%   -> next focus: charge
+round   13 (16.9 min): PROMOTED c3
+    champion  score +0.101  win  70% timeout  15% loss  14% underdog   19%  
+    c0        score +0.144  win  73% timeout  12% loss  15% underdog   23%  control (incumbent settings)
+    c1        score +0.101  win  70% timeout  15% loss  14% underdog   19%  focus: train only vs weakest baseline (charge)
+    c2        score +0.127  win  71% timeout  14% loss  15% underdog   20%  train only spacing+cohesion; layout_jitter 50->40
+    c3        score +0.165  win  71% timeout  13% loss  16% underdog   21%  sigma 0.12524->0.16752; layout_jitter 50->60 <-
+    simulated 3.14M training battles = 46,330 hours of fighting (5.3 years) in 16.9 min = 164,841x realtime
+    best vs (win rate): charge 52%  kite 99%  orbit 60%   -> next focus: charge
+round   14 (16.0 min): PROMOTED c2
+    champion  score +0.094  win  70% timeout  14% loss  15% underdog   19%  
+    c0        score +0.094  win  70% timeout  14% loss  15% underdog   19%  control (incumbent settings)
+    c1        score +0.071  win  68% timeout  18% loss  14% underdog   16%  focus: train only vs weakest baseline (charge)
+    c2        score +0.117  win  71% timeout  14% loss  15% underdog   19%  l1 0->0.05; layout_jitter 60->70 <-
+    c3        score +0.094  win  70% timeout  14% loss  15% underdog   19%  sigma 0.16752->0.19764; learning_rate 0.02454->0.01914
+    simulated 3.14M training battles = 45,639 hours of fighting (5.2 years) in 16.0 min = 170,876x realtime
+    best vs (win rate): charge 56%  kite 94%  orbit 63%   -> next focus: charge
+round   15 (22.4 min): PROMOTED c0
+    champion  score +0.115  win  70% timeout  14% loss  16% underdog   20%  
+    c0        score +0.146  win  72% timeout  12% loss  15% underdog   22%  control (incumbent settings) <-
+    c1        score +0.115  win  70% timeout  14% loss  16% underdog   20%  focus: train only vs weakest baseline (charge)
+    c2        score +0.115  win  70% timeout  14% loss  16% underdog   20%  population 108->160; layout_jitter 70->80
+    c3        score +0.129  win  71% timeout  14% loss  15% underdog   21%  layout_jitter 70->60; l1 0.05->0.1
+    simulated 3.56M training battles = 51,639 hours of fighting (5.9 years) in 22.4 min = 138,259x realtime
+    best vs (win rate): charge 54%  kite 99%  orbit 64%   -> next focus: charge
+round   16 (29.4 min): PROMOTED c0
+    champion  score +0.123  win  72% timeout  13% loss  15% underdog   22%  
+    c0        score +0.154  win  75% timeout  11% loss  14% underdog   25%  control (incumbent settings) <-
+    c1        score +0.070  win  69% timeout  17% loss  14% underdog   19%  focus: train only vs weakest baseline (charge)
+    c2        score +0.123  win  72% timeout  13% loss  15% underdog   22%  seeds_per_battle 4->8; layout_jitter 70->60
+    c3        score +0.124  win  73% timeout  11% loss  15% underdog   24%  seeds_per_battle 4->2; population 108->160
+    simulated 3.78M training battles = 54,564 hours of fighting (6.2 years) in 29.4 min = 111,308x realtime
+    best vs (win rate): charge 59%  kite 99%  orbit 68%   -> next focus: charge
+round   17 (22.8 min): PROMOTED c0
+    champion  score +0.107  win  74% timeout  11% loss  15% underdog   24%  
+    c0        score +0.143  win  75% timeout  10% loss  14% underdog   26%  control (incumbent settings) <-
+    c1        score +0.110  win  69% timeout  16% loss  15% underdog   18%  focus: train only vs weakest baseline (charge)
+    c2        score +0.096  win  69% timeout  16% loss  15% underdog   18%  layout_jitter 70->60; population 108->160
+    c3        score +0.087  win  70% timeout  14% loss  16% underdog   20%  l1 0.05->0.1; sigma 0.16752->0.09766
+    simulated 3.56M training battles = 52,012 hours of fighting (5.9 years) in 22.8 min = 136,912x realtime
+    best vs (win rate): charge 56%  kite 98%  orbit 71%   -> next focus: charge
+round   18 (22.3 min): champion kept
+    champion  score +0.155  win  73% timeout  11% loss  15% underdog   23%   <-
+    c0        score +0.155  win  73% timeout  11% loss  15% underdog   23%  control (incumbent settings)
+    c1        score +0.155  win  73% timeout  11% loss  15% underdog   23%  focus: train only vs weakest baseline (charge)
+    c2        score +0.134  win  70% timeout  14% loss  15% underdog   20%  population 108->160; sigma 0.16752->0.17597
+    c3        score +0.104  win  72% timeout  14% loss  14% underdog   20%  layout_jitter 70->80; l1 0.05->0.1
+    simulated 3.56M training battles = 51,347 hours of fighting (5.9 years) in 22.3 min = 137,882x realtime
+    best vs (win rate): charge 54%  kite 99%  orbit 67%   -> next focus: charge
+round   19 (22.4 min): champion kept
+    champion  score +0.144  win  77% timeout   8% loss  14% underdog   28%   <-
+    c0        score +0.144  win  77% timeout   8% loss  14% underdog   28%  control (incumbent settings)
+    c1        score +0.093  win  69% timeout  16% loss  15% underdog   18%  focus: train only vs weakest baseline (charge)
+    c2        score +0.144  win  77% timeout   8% loss  14% underdog   28%  population 108->160; train only spacing+strafe
+    c3        score +0.144  win  77% timeout   8% loss  14% underdog   28%  train only cohesion; seeds_per_battle 4->2
+    simulated 3.12M training battles = 45,075 hours of fighting (5.1 years) in 22.4 min = 120,681x realtime
+    best vs (win rate): charge 56%  kite 100%  orbit 75%   -> next focus: charge
+round   20 (16.1 min): champion kept
+    champion  score +0.148  win  74% timeout  11% loss  14% underdog   24%   <-
+    c0        score +0.148  win  74% timeout  11% loss  14% underdog   24%  control (incumbent settings)
+    c1        score +0.148  win  74% timeout  11% loss  14% underdog   24%  focus: train only vs weakest baseline (charge)
+    c2        score +0.148  win  74% timeout  11% loss  14% underdog   24%  sigma 0.16752->0.1288; train only cohesion+target_selector
+    c3        score +0.143  win  72% timeout  13% loss  15% underdog   23%  layout_jitter 70->80; population 108->80
+    simulated 2.92M training battles = 41,956 hours of fighting (4.8 years) in 16.1 min = 156,748x realtime
+    best vs (win rate): charge 56%  kite 98%  orbit 67%   -> next focus: charge
+round   21 (21.8 min): champion kept
+    champion  score +0.121  win  77% timeout   9% loss  15% underdog   28%   <-
+    c0        score +0.121  win  77% timeout   9% loss  15% underdog   28%  control (incumbent settings)
+    c1        score +0.121  win  77% timeout   9% loss  15% underdog   28%  focus: train only vs weakest baseline (charge)
+    c2        score +0.121  win  77% timeout   9% loss  15% underdog   28%  l1 0.05->0.1; population 108->160
+    c3        score +0.101  win  75% timeout  10% loss  15% underdog   26%  layout_jitter 70->60; learning_rate 0.02454->0.02012
+    simulated 3.56M training battles = 51,197 hours of fighting (5.8 years) in 21.8 min = 140,794x realtime
+    best vs (win rate): charge 56%  kite 98%  orbit 76%   -> next focus: charge
+STOP file found; finishing.
+saved to data\brains\overnight\final:
+  champion.json   the best council found (round 17, score +0.121)
+  report.md       what each module does, measured    (ok)
+  watch.html      open in a browser to replay it      (ok)
+  summary.json    22 rounds, 16 promotions, 709,247 simulated hours of fighting
+champion: data\brains\overnight\champion.json (round 17)
+read it:  --explain data\brains\overnight\champion.json --train-config data\brains\overnight\base_config.json

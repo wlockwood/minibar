@@ -1,0 +1,36 @@
+{
+  "status": "running",
+  "completed_generations": 1,
+  "target_generations": 3,
+  "waiting_jobs": 0,
+  "tracks": [
+    {
+      "best_fitness": -0.1623754217091239,
+      "best_generation": 0,
+      "diagnostic_challengers": 0,
+      "holdout_fitness": null,
+      "initial_fitness": -0.1623754217091239,
+      "name": "ground",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        }
+      ]
+    },
+    {
+      "best_fitness": -0.29938237071003915,
+      "best_generation": 0,
+      "diagnostic_challengers": 0,
+      "holdout_fitness": null,
+      "initial_fitness": -0.29938237071003915,
+      "name": "air",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        }
+      ]
+    }
+  ]
+}

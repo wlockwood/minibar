@@ -1,0 +1,176 @@
+{
+  "name": "from_replays_scale_512",
+  "brain_kind": "tactical_v4",
+  "hidden": 8,
+  "init_from": "baseline.json",
+  "generations": 3,
+  "es": {
+    "population": 8,
+    "sigma": 0.08,
+    "learning_rate": 0.02,
+    "seed": 20261016
+  },
+  "seeds_per_battle": 1,
+  "validation_seeds": 1,
+  "validation_every": 1,
+  "opponents": [
+    "charge"
+  ],
+  "max_time": 15,
+  "layout_jitter": 0,
+  "scenarios": [
+    {
+      "name": "armada 256v256",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 0
+        },
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 1
+        },
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 2
+        },
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 3
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 0
+        },
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 1
+        },
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 2
+        },
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 3
+        }
+      ],
+      "separation": 300
+    },
+    {
+      "name": "cortex 256v256",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 0
+        },
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 1
+        },
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 2
+        },
+        {
+          "unit": "corak",
+          "count": 64,
+          "platoon": 3
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 0
+        },
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 1
+        },
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 2
+        },
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 3
+        }
+      ],
+      "separation": 300
+    },
+    {
+      "name": "legion 256v256",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 0
+        },
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 1
+        },
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 2
+        },
+        {
+          "unit": "leggob",
+          "count": 64,
+          "platoon": 3
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 0
+        },
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 1
+        },
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 2
+        },
+        {
+          "unit": "armpw",
+          "count": 64,
+          "platoon": 3
+        }
+      ],
+      "separation": 300
+    }
+  ],
+  "arena": {
+    "map": "../maps/synthetic-2048.vsgmap",
+    "movement_class": "bot2",
+    "cell_size": 64,
+    "center": [
+      1024.0,
+      1024.0
+    ]
+  }
+}

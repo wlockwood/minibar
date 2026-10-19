@@ -1,0 +1,231 @@
+seeded from data\brains\overnight\final\champion.json: it is the first champion and also a hall-of-fame opponent
+evolving into data\brains\t1; Ctrl+C or create data\brains\t1\STOP to stop; log: data\brains\t1\evolve.log
+watch it:  python scripts/watch.py --catalog examples/t1-catalog.json --dir data\brains\t1
+round    0 (13.4 min): PROMOTED c2
+    champion  score -0.150  win  57% timeout  11% loss  32% underdog   17%  
+    c0        score -0.092  win  61% timeout   9% loss  30% underdog   19%  control (incumbent settings)
+    c1        score -0.150  win  57% timeout  11% loss  32% underdog   17%  l1 0->0.05; learning_rate 0.03->0.03366
+    c2        score -0.039  win  63% timeout   9% loss  28% underdog   24%  layout_jitter 30->20; l1 0->0.05 <-
+    c3        score -0.148  win  59% timeout   8% loss  33% underdog   19%  seeds_per_battle 2->2; layout_jitter 30->40
+    simulated 0.94M training battles = 10,848 hours of fighting (1.2 years) in 13.4 min = 48,711x realtime
+    best vs (win rate): charge 79%  hold 79%  kite 47%  orbit 48%   -> next focus: kite
+round    1 (16.3 min): PROMOTED c1
+    champion  score -0.329  win  59% timeout  10% loss  31% underdog   25%  
+    c0        score -0.329  win  59% timeout  10% loss  31% underdog   25%  control (incumbent settings)
+    c1        score -0.291  win  60% timeout  11% loss  29% underdog   26%  focus: train only vs orbit (alternating between the two weakest baselines) <-
+    c2        score -0.329  win  59% timeout  10% loss  31% underdog   25%  layout_jitter 20->10; sigma 0.1->0.11767
+    c3        score -0.297  win  62% timeout  10% loss  29% underdog   32%  l1 0.05->0; layout_jitter 20->10
+    simulated 0.99M training battles = 11,068 hours of fighting (1.3 years) in 16.3 min = 40,624x realtime
+    best vs (win rate): charge 53%  hold 96%  kite 43%  orbit 51%   -> next focus: kite
+reached 2 rounds; finishing.
+saved to data\brains\t1\final:
+  champion.json   the best council found (round 1, score -0.291)
+  report.md       what each module does, measured    (ok)
+  watch.html      open in a browser to replay it      (ok)
+  summary.json    2 rounds, 2 promotions, 21,917 simulated hours of fighting
+champion: data\brains\t1\champion.json (round 1)
+read it:  --explain data\brains\t1\champion.json --train-config data\brains\t1\base_config.json
+
+==================== CLAUDE ANALYSIS, CYCLE 1 (rounds 0-1) ====================
+What happened: 2 rounds (13.4 + 16.3 min), 19-unit T1 roster, 12 fresh generated matchups per generation,
+seeded from the overnight Pawn-mirror champion. Both rounds promoted a child (c2 then c1).
+The in-round scores are NOT comparable (each round benchmarks on new matchups plus new hall-of-fame
+opponents), so I re-measured on one identical batch: 60 unseen matchups x 4 seeds x 2 sides x 4 baselines
+(1920 battles per brain, scripts/analyze_matchups.py, saved in analysis_cycle1.txt).
+
+  overnight Pawn champion -> after 2 rounds:  win 54% -> 62%, timeout 26% -> 20%, loss 20% -> 19%
+  underdog fights 32% -> 45% wins, even 59% -> 66%, overdog 76% -> 78%
+  scouts 37% -> 51%, brawl 47% -> 57%, line 56% -> 65%, raid 73% -> 79%, artillery 50% -> 53%
+  bots 57% -> 66%, vehicles 40% -> 49%, mixed bot+veh sides 70% -> 74%
+  vs hold 72 -> 84%, kite 46 -> 55%, orbit 37 -> 46% (still 52% timeouts), charge 59 -> 61%
+
+What we learned:
+ 1. The improvement is on matchups the council never trained on, so it is generalising, not memorising.
+    The overnight champion was already decent on unfamiliar units (54% overall); most of the gain
+    came from underdog, scout and brawl fights, where the Pawn-trained habits were wrong
+    (it kited the wrong things and sat out of range).
+ 2. Vehicles (49%) and artillery (53%) are the weakest groups. Vehicles turn slowly and cannot
+    strafe like bots; artillery has a minimum useful engagement geometry (long range, slow reload).
+    The council has no inputs for turn rate or reload time, so it cannot tell them apart from bots.
+ 3. charge is near its ceiling (61%): a third of the matchups are underdog by design, and charging
+    opponents trade evenly. Do not read that number as a failure.
+ 4. orbit still times out half the time. A timeout costs 0.6 for even matchups, so the objective keeps
+    pressing on it, but the gain per round there is small.
+
+What to change (applied for cycle 2):
+ - Swap in the extended roster (26 units: + Janus, Samson, Mist, Skimmers, Anaconda/Snapper hover
+   tanks) so breadth keeps growing instead of the council specialising on 19 units.
+ - Raise --min-gain from 0.005 to 0.01: round scores are on different batches, so tiny gains are noise.
+ - Keep population/seeds as they are; rounds stay about 15 minutes.
+What to watch next: vehicle and artillery win rates, and whether the run starts to overfit the
+hall-of-fame opponents (compare the identical batch, not the round score).
+Ideas not yet tried: inputs for own turn rate and reload time; a platoon-level focus-fire target.
+resuming from data\brains\t1\state.json
+evolving into data\brains\t1; Ctrl+C or create data\brains\t1\STOP to stop; log: data\brains\t1\evolve.log
+watch it:  python scripts/watch.py --catalog examples/t1-catalog.json --dir data\brains\t1
+round    2 (14.4 min): champion kept
+    champion  score +0.007  win  58% timeout  20% loss  22% underdog   29%   <-
+    c0        score +0.007  win  58% timeout  20% loss  22% underdog   29%  control (incumbent settings)
+    c1        score +0.004  win  57% timeout  18% loss  24% underdog   28%  focus: train only vs kite (alternating between the two weakest baselines)
+    c2        score -0.008  win  57% timeout  18% loss  25% underdog   29%  learning_rate 0.03->0.04217; seeds_per_battle 2->2
+    c3        score +0.007  win  58% timeout  20% loss  22% underdog   29%  l1 0.05->0.1; seeds_per_battle 2->2
+    simulated 0.99M training battles = 10,785 hours of fighting (1.2 years) in 14.4 min = 44,919x realtime
+    best vs (win rate): charge 59%  hold 83%  kite 42%  orbit 46%   -> next focus: kite
+round    3 (15.1 min): PROMOTED c3
+    champion  score +0.242  win  75% timeout  12% loss  13% underdog   67%  
+    c0        score +0.245  win  77% timeout   9% loss  14% underdog   69%  control (incumbent settings)
+    c1        score +0.242  win  75% timeout  12% loss  13% underdog   67%  focus: train only vs charge (alternating between the two weakest baselines)
+    c2        score +0.247  win  74% timeout  13% loss  13% underdog   69%  sigma 0.1->0.10303; train only target_selector+spacing
+    c3        score +0.261  win  77% timeout   9% loss  13% underdog   72%  learning_rate 0.03->0.02214; seeds_per_battle 2->2 <-
+    simulated 0.99M training battles = 10,570 hours of fighting (1.2 years) in 15.1 min = 42,060x realtime
+    best vs (win rate): charge 75%  hold 92%  kite 74%  orbit 69%   -> next focus: kite
+reached 4 rounds; finishing.
+saved to data\brains\t1\final:
+  champion.json   the best council found (round 3, score +0.261)
+  report.md       what each module does, measured    (ok)
+  watch.html      open in a browser to replay it      (ok)
+  summary.json    4 rounds, 3 promotions, 43,271 simulated hours of fighting
+champion: data\brains\t1\champion.json (round 3)
+read it:  --explain data\brains\t1\champion.json --train-config data\brains\t1\base_config.json
+
+==================== CLAUDE ANALYSIS, CYCLE 2 (rounds 2-3) ====================
+What happened: extended 26-unit roster, min-gain 0.01. Round 2: no child beat the champion (kept).
+Round 3: c3 promoted at +0.019 on that round's benchmark. Round scores swung from +0.007 (round 2) to
++0.242 (round 3) for essentially the same brain, i.e. the benchmark batch (12 fresh matchups) moves the
+score far more than any child does.
+
+Identical-batch check (60 unseen matchups x 4 seeds, new roster; analysis_cycle2.txt):
+  overnight Pawn champion 60% win | cycle-1 champion (round 1) 62% | current champion (round 3) 62%
+=> cycle 2 produced NO measurable improvement; the round-3 promotion is noise (r1 and now are within 1 SE).
+The gain over the Pawn champion also shrank on this batch (60 -> 62, versus 54 -> 62 in cycle 1's batch):
+the extended roster is easier for the old champion, or most of the available gain was taken in cycle 1.
+
+New yardstick (answers "is the win rate asymptotic?"): metal is a poor measure of strength (24 Fleas
+have a lot of metal and almost no power; 4 Rockets cannot hit 19 Farks). I added each fight's POWER ratio
+(health x damage/s, the doctrine's own measure) to the matchup names and the analysis. By power:
+  stronger (>=1.5x): 87% win, 6% timeout, 7% loss   (vs charge 95, hold 96, kite 80, orbit 76)
+  close:             68% win                         (vs charge 67, hold 84, kite 63, orbit 55)
+  weaker (<=0.67x):  28% win, 33% timeout, 39% loss  (vs charge 18, hold 78, kite 12, orbit 3 / 92% timeouts)
+Reading: against a charging or kiting opponent a weaker side loses for physical reasons, so that part is
+close to a ceiling. Real headroom is where we are stronger or even and still fail to finish: stronger vs
+kite (17% losses) and orbit (20% timeouts), close vs kite/orbit (63%/55%). That is chasing evasive units,
+and it likely depends on speed and turn rate, which the council cannot see.
+
+What to change (applied for cycle 3):
+ - Benchmark with 48 matchups and 6 seeds (--eval-matchups 48 --eval-seeds 6) instead of 12 matchups x 16
+   seeds, so promotions stop following batch luck.
+ - Keep min-gain 0.01, run 4 more rounds (2 cycles of 2 rounds) and judge on the fixed analysis batch.
+Not yet changed, candidates if cycle 3 is flat too: add own/enemy speed-advantage and turn-rate inputs so the
+council can learn when chasing is hopeless; a platoon focus-fire target; accept the plateau and move on to the
+objective stage (attack/defend a target) as planned.
+resuming from data\brains\t1\state.json
+evolving into data\brains\t1; Ctrl+C or create data\brains\t1\STOP to stop; log: data\brains\t1\evolve.log
+watch it:  python scripts/watch.py --catalog examples/t1-catalog.json --dir data\brains\t1
+round    4 (18.0 min): PROMOTED c2
+    champion  score -0.182  win  55% timeout  19% loss  27% underdog   25%  
+    c0        score -0.182  win  55% timeout  19% loss  27% underdog   25%  control (incumbent settings)
+    c1        score -0.161  win  56% timeout  17% loss  27% underdog   26%  focus: train only vs kite (alternating between the two weakest baselines)
+    c2        score -0.151  win  57% timeout  16% loss  27% underdog   27%  layout_jitter 20->10; population 48->72 <-
+    c3        score -0.182  win  55% timeout  19% loss  27% underdog   25%  l1 0.05->0; layout_jitter 20->30
+    simulated 1.13M training battles = 12,031 hours of fighting (1.4 years) in 18.0 min = 40,189x realtime
+    best vs (win rate): charge 59%  hold 79%  kite 41%  orbit 47%   -> next focus: kite
+round    5 (20.8 min): champion kept
+    champion  score +0.154  win  70% timeout  12% loss  18% underdog   43%   <-
+    c0        score +0.134  win  70% timeout  12% loss  18% underdog   40%  control (incumbent settings)
+    c1        score +0.163  win  70% timeout  12% loss  18% underdog   42%  focus: train only vs orbit (alternating between the two weakest baselines)
+    c2        score +0.150  win  70% timeout  11% loss  18% underdog   42%  layout_jitter 10->0; seeds_per_battle 2->2
+    c3        score +0.137  win  70% timeout  12% loss  18% underdog   39%  seeds_per_battle 2->2; layout_jitter 10->20
+    simulated 1.47M training battles = 15,809 hours of fighting (1.8 years) in 20.8 min = 45,590x realtime
+    best vs (win rate): charge 66%  hold 89%  kite 66%  orbit 60%   -> next focus: charge
+reached 6 rounds; finishing.
+saved to data\brains\t1\final:
+  champion.json   the best council found (round 4, score +0.154)
+  report.md       what each module does, measured    (ok)
+  watch.html      open in a browser to replay it      (ok)
+  summary.json    6 rounds, 4 promotions, 71,111 simulated hours of fighting
+champion: data\brains\t1\champion.json (round 4)
+read it:  --explain data\brains\t1\champion.json --train-config data\brains\t1\base_config.json
+
+==================== CLAUDE ANALYSIS, CYCLE 3 (rounds 4-5) ====================
+What happened: benchmark now 48 matchups x 6 seeds. Round 4 promoted c2 (layout_jitter 20->10, population 48->72);
+round 5 kept the champion (c1, the orbit-focus child, scored +0.163 vs +0.154 but under the 0.01 bar).
+The two rounds took 18.0 and 20.8 minutes: the population-72 tweak raised the cost (the same drift as the
+overnight run), so the cycle ran about 39 minutes instead of 30.
+
+Identical batch (60 unseen matchups x 4 seeds, analysis_cycle3.txt), overnight champion -> round 3 -> now:
+  all:      60% -> 62% -> 64% win   (timeouts 20 -> 18 -> 16%, losses unchanged at 20%)
+  power:    stronger 84 -> 87 -> 88%, close 64 -> 68 -> 70%, weaker 27 -> 28 -> 31%
+  opponent: orbit 44 -> 46 -> 52% (timeouts 52 -> 49 -> 44%), hold 82 -> 87 -> 88%, charge 61 -> 62 -> 64%, kite 51 -> 53 -> 54%
+  type:     brawl 46 -> 55%, line 63 -> 71%, scout 47 -> 49%, artillery 59 -> 61%, raid 82 -> 84%
+  close vs orbit 49 -> 63%, stronger vs orbit 73 -> 81%.
+
+What we learned:
+ 1. The climb is real but slow: +2 points over two rounds, and nearly all of it is against orbit (the council
+    is learning to close on circling units), plus line and brawl platoons. Kite and scouts did not move.
+ 2. Against charge and kite the remaining losses are mostly physical: weaker side vs charge 22%, vs kite 12%.
+    Stronger vs kite still loses 16% (a faster kiting platoon cannot be caught), unchanged by training.
+ 3. Cycle-by-cycle gain on a fixed batch: +8 (cycle 1, different batch), 0 (cycle 2), +2 (cycle 3). I read the win
+    rate as close to asymptotic for this council and objective: the remaining headroom is in kite-chasing, which
+    probably needs inputs the council does not have (speed advantage, turn rate).
+ 4. Selection pressure toward cost happened again, so population is now capped at 56.
+
+What to change (applied for cycle 4): population cap 56 (incumbent reset to 48); everything else as cycle 3.
+Decision rule for the objectives stage: if cycle 4 gains less than 1 point on the same batch, treat the win rate as
+asymptotic and start the attack/defend objectives (scenario design in docs/OBJECTIVES_PLAN.md).
+resuming from data\brains\t1\state.json
+evolving into data\brains\t1; Ctrl+C or create data\brains\t1\STOP to stop; log: data\brains\t1\evolve.log
+watch it:  python scripts/watch.py --catalog examples/t1-catalog.json --dir data\brains\t1
+round    6 (22.9 min): PROMOTED c2
+    champion  score -0.060  win  62% timeout  17% loss  21% underdog   33%  
+    c0        score -0.033  win  64% timeout  17% loss  20% underdog   35%  control (incumbent settings)
+    c1        score -0.096  win  57% timeout  24% loss  20% underdog   25%  focus: train only vs charge (alternating between the two weakest baselines)
+    c2        score -0.005  win  64% timeout  17% loss  19% underdog   36%  l1 0.05->0.1; seeds_per_battle 2->4 <-
+    c3        score -0.052  win  62% timeout  18% loss  20% underdog   34%  layout_jitter 10->20; population 48->36
+    simulated 1.20M training battles = 12,013 hours of fighting (1.4 years) in 22.9 min = 31,435x realtime
+    best vs (win rate): charge 64%  hold 89%  kite 52%  orbit 48%   -> next focus: kite
+round    7 (29.6 min): champion kept
+    champion  score -0.009  win  63% timeout  16% loss  21% underdog   31%   <-
+    c0        score -0.009  win  63% timeout  16% loss  21% underdog   31%  control (incumbent settings)
+    c1        score -0.020  win  62% timeout  17% loss  21% underdog   24%  focus: train only vs charge (alternating between the two weakest baselines)
+    c2        score -0.009  win  63% timeout  16% loss  21% underdog   31%  population 48->56; learning_rate 0.02214->0.01792
+    c3        score -0.009  win  63% timeout  16% loss  21% underdog   31%  layout_jitter 10->0; learning_rate 0.02214->0.01926
+    simulated 2.07M training battles = 20,652 hours of fighting (2.4 years) in 29.6 min = 41,902x realtime
+    best vs (win rate): charge 65%  hold 90%  kite 48%  orbit 51%   -> next focus: kite
+reached 8 rounds; finishing.
+saved to data\brains\t1\final:
+  champion.json   the best council found (round 6, score -0.009)
+  report.md       what each module does, measured    (ok)
+  watch.html      open in a browser to replay it      (ok)
+  summary.json    8 rounds, 5 promotions, 103,775 simulated hours of fighting
+champion: data\brains\t1\champion.json (round 6)
+read it:  --explain data\brains\t1\champion.json --train-config data\brains\t1\base_config.json
+
+==================== CLAUDE ANALYSIS, CYCLE 4 (rounds 6-7) ====================
+What happened: population capped at 56, otherwise as cycle 3. Round 6 promoted c2 (l1 0.05->0.1, seeds_per_battle 2->4),
+round 7 kept the champion. The rounds took 22.9 and 29.6 minutes: seeds_per_battle 4 and population 56 were adopted/tried and
+cost 2x per child, so this cycle ran about 52 minutes. Selection sees score, not cost; I did not cap seeds_per_battle at 2.
+
+Identical batch (analysis_cycle4.txt): round-4 champion 64% win -> current champion (round 6) 63%. Within noise, if anything
+slightly worse: orbit 52 -> 49, kite 54 -> 51, charge 64 -> 62, hold 88 -> 91. By power: stronger 88 -> 87, close 70 -> 68,
+weaker 31 -> 31. The round-6 promotion was noise again, even with a 48-matchup benchmark.
+
+Conclusion: the win rate is asymptotic for this council, objective and roster: +8, 0, +2, -1 points over four cycles
+on fixed batches. The decision rule from cycle 3 (< 1 point gain => start objectives) is met. Reference champion for the
+next stage is the ROUND-4 champion (hall_of_fame/champion-r0004.json, 64%), not the round-6 one.
+
+What we learned overall: (1) generated platoon matchups gave a large early gain in generalisation (cycle 1) and then a
+plateau; (2) the remaining losses are mostly physical (weaker side vs charge/kite) or chase problems (stronger vs kite, 16%
+losses) that the council cannot learn without speed/turn-rate inputs; (3) round-to-round scores cannot be trusted below about
+0.05, so promotions should be judged on a fixed batch, which analyze_matchups.py does; (4) the loop's cost drifts upward
+whenever a bigger setting is tried, so any knob that raises cost needs a hard cap.
+
+What to change: stop the plain platoon-matchup loop here and begin the objectives stage (docs/OBJECTIVES_PLAN.md): engine
+objective ending, attack/defend baseline with the round-4 champion, then tactical_v4 inputs. Possible later retest of the plain
+loop after v4 adds speed-advantage / turn-rate inputs, which is the main remaining hypothesis for kite/scout weakness.
+
+==================== CLAUDE: STAGE CHANGE ====================
+The plain platoon loop is stopped (asymptote reached, see cycle 4). Objectives work continues in data/brains/obj/ (its own
+evolve.log): engine-side outcome rules for attack/defend, a target structure behind its owner's platoons, objective-aware
+baselines `strike` and `guard`, and a baseline of the round-4 champion (data/brains/obj/baseline_v3.txt).
+Baseline of the unchanged council on objective fights: attack 67% win (vs guard 82% with 18% timeouts, vs charge 51%, kite 47%),
+defend 79% win (vs strike 77%, charge 60%, kite 64%, orbit 74%). Plain fights in the same batch: 66%.

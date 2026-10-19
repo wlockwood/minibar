@@ -1,9 +1,8 @@
 # Build output
 target/
 
-# Generated data: training runs, brains, replays, catalogs, packages, dashboards.
-# Everything here is reproducible from scripts/ and examples/ (see README).
-data/
+# Generated data lives in data/; data/.gitignore decides which small, durable
+# results (champions, summaries, baselines) are tracked.
 
 # Scratch space for quality / regression experiments
 .quality-work/

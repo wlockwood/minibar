@@ -1,0 +1,7806 @@
+{
+ "inputs": {
+  "catalog": "D:\\code\\BAR\\minibar\\data\\replay\\catalog-simulable.json",
+  "manifest": "D:\\code\\BAR\\minibar\\data\\replay\\catalog-manifest.json",
+  "bar_commit": "905b691212bcdc6057c3c0f66beacd68d223eb5f",
+  "units_audited": 354
+ },
+ "legend": {
+  "direct": "exported and consumed",
+  "approximate": "exported and consumed but simplified",
+  "unsupported": "no runtime consumer",
+  "export_gap": "runtime implements it; converter does not export it",
+  "wrong_behavior": "unit actively misbehaves in the sim rather than merely lacking the mechanic"
+ },
+ "directly_represented": [
+  {
+   "id": "armour_damage",
+   "title": "Per-armour-class damage tables (damage_by_armour)",
+   "runtime": "src/engine.rs:3203,3325"
+  },
+  {
+   "id": "hitscan_beams",
+   "title": "BeamLaser/LaserCannon/Melee hitscan with damage_duration",
+   "runtime": "src/engine.rs:2558"
+  },
+  {
+   "id": "aoe_edge",
+   "title": "Area of effect and edge effectiveness",
+   "runtime": "src/engine.rs"
+  },
+  {
+   "id": "paralysis",
+   "title": "EMP/paralyzer damage with stun time and paralyze_multiplier",
+   "runtime": "src/engine.rs:28,1079"
+  },
+  {
+   "id": "economy",
+   "title": "Metal/energy income, storage, solar (negative upkeep), geothermal, tidal, mex",
+   "runtime": "src/world.rs:3090-3110"
+  },
+  {
+   "id": "construction",
+   "title": "Builders, factories, build options, assist, repair, reclaim, yardmaps, footprints, slope/water limits",
+   "runtime": "src/construction.rs, src/placement.rs"
+  },
+  {
+   "id": "sensors_basic",
+   "title": "Line of sight and radar radius with 2D masks",
+   "runtime": "src/world.rs:1568-1631"
+  },
+  {
+   "id": "activation",
+   "title": "onoffable/activate_when_built",
+   "runtime": "src/world.rs:4053"
+  }
+ ],
+ "features": [
+  {
+   "id": "manual_fire_weapons",
+   "title": "Command-fire (manual) weapons: D-Gun, nukes, special launchers",
+   "status": "export_gap",
+   "severity": "high",
+   "wrong_behavior": true,
+   "units_affected": 14,
+   "player_games_weight": 1112,
+   "build_order_weight": 1260,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "armsilo",
+    "legcom",
+    "corsilo",
+    "armjuno",
+    "armemp",
+    "corjuno"
+   ],
+   "units": {
+    "armcom": [
+     "Disintegrator"
+    ],
+    "armdecom": [
+     "Decoy-disintegrator"
+    ],
+    "armemp": [
+     "Heavy long-range g2g EMP starburst rocket"
+    ],
+    "armjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "armsilo": [
+     "Intercontinental ballistic nuclear warhead"
+    ],
+    "corcom": [
+     "Disintegrator"
+    ],
+    "cordecom": [
+     "Disintegrator"
+    ],
+    "corjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "corsilo": [
+     "Intercontinental thermonuclear ballistic missile"
+    ],
+    "cortron": [
+     "Long range tactical g2g nuclear warheads"
+    ],
+    "legcom": [
+     "Disintegrator"
+    ],
+    "legdecom": [
+     "Disintegrator"
+    ],
+    "legjuno": [
+     "Anti-Radar/Jammer/Mine Electromagnetic Payload"
+    ],
+    "legsilo": [
+     "Intercontinental Thermonuclear Ballistic Missile"
+    ]
+   },
+   "evidence_runtime": "src/engine.rs:1139,1872 and src/world.rs:1368,3302,3649 exclude weapon.manual_fire from automatic targeting",
+   "evidence_exporter": "scripts/make_catalog.py:131 reads `manualfire`; BAR sources use `commandfire` (e.g. armcom DISINTEGRATOR), so manual_fire is always false",
+   "current_behavior": "Commanders auto-fire the 99999-damage D-Gun (range 250) at any target; nuke/special launchers auto-fire too",
+   "suggested_fix": "Treat `commandfire` as manual_fire in make_catalog.weapon_entry"
+  },
+  {
+   "id": "interceptor_weapons",
+   "title": "Anti-nuke interceptors (coverage, intercept classes)",
+   "status": "export_gap",
+   "severity": "high",
+   "wrong_behavior": true,
+   "units_affected": 6,
+   "player_games_weight": 89,
+   "build_order_weight": 1454,
+   "example_units": [
+    "armamd",
+    "corfmd",
+    "armscab",
+    "legabm",
+    "cormabm",
+    "legavantinuke"
+   ],
+   "units": {
+    "armamd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armscab": [
+     "ICBM intercepting missile launcher"
+    ],
+    "corfmd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "cormabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "legabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "legavantinuke": [
+     "ICBM Interceptor Missile Launcher"
+    ]
+   },
+   "evidence_runtime": "src/engine.rs:781,1140,1874 consume weapon.interceptor / coverage_range / targetable; CAPABILITY_INTERCEPTORS implemented",
+   "evidence_exporter": "make_catalog.weapon_entry/prepare_from_replays.unit_entry never write interceptor, coverage_range or targetable",
+   "current_behavior": "armamd/corfmd-style launchers export as ordinary stockpiled StarburstLaunchers (damage 1500, range 72000 elmos) with no interceptor fields; by the engine.rs gates they are ordinary ground-targeting weapons, i.e. probable map-wide artillery (not observed in a run)",
+   "suggested_fix": "Export interceptor bitmask + coverage_range and targetable on nuclear weapons"
+  },
+  {
+   "id": "bogus_weapons",
+   "title": "`bogus` helper weapons with damage",
+   "status": "export_gap",
+   "severity": "medium",
+   "wrong_behavior": true,
+   "units_affected": 2,
+   "player_games_weight": 13,
+   "build_order_weight": 49,
+   "example_units": [
+    "armvader",
+    "corkorg"
+   ],
+   "units": {
+    "armvader": [
+     "Self-destruction"
+    ],
+    "corkorg": [
+     "KrogCrush",
+     "KrogCrush"
+    ]
+   },
+   "evidence_runtime": "all exported weapons are treated as real",
+   "evidence_exporter": "customparams.bogus not filtered",
+   "current_behavior": "Display/targeting helper weapons would deal real damage",
+   "suggested_fix": "Drop weapons with customparams.bogus"
+  },
+  {
+   "id": "energy_converters",
+   "title": "Energy-to-metal converters (metal makers)",
+   "status": "export_gap",
+   "severity": "high",
+   "wrong_behavior": false,
+   "units_affected": 6,
+   "player_games_weight": 384,
+   "build_order_weight": 39129,
+   "example_units": [
+    "armmakr",
+    "cormakr",
+    "armmmkr",
+    "cormmkr",
+    "legeconv",
+    "legadveconv"
+   ],
+   "units": {
+    "armmakr": [
+     "unit"
+    ],
+    "armmmkr": [
+     "unit"
+    ],
+    "cormakr": [
+     "unit"
+    ],
+    "cormmkr": [
+     "unit"
+    ],
+    "legadveconv": [
+     "unit"
+    ],
+    "legeconv": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "src/world.rs:3100-3102 only pays metal_make/energy_make and (negative) upkeep; there is no conversion gadget model",
+   "evidence_exporter": "customparams.energyconv_capacity/efficiency (applied by BAR luarules gadgets) are ignored; exported metal_make, energy_upkeep and metal_upkeep are all 0",
+   "current_behavior": "armmmkr (24,848 human build orders) and other makers cost resources but produce no metal and use no energy",
+   "suggested_fix": "Approximate as metal_make = capacity*efficiency with energy_upkeep = capacity when energy is available, or add a converter rule in world economy"
+  },
+  {
+   "id": "shield_weapons",
+   "title": "Shield generators (repulsor)",
+   "status": "export_gap",
+   "severity": "high",
+   "wrong_behavior": false,
+   "units_affected": 4,
+   "player_games_weight": 20,
+   "build_order_weight": 815,
+   "example_units": [
+    "armgate",
+    "corgate",
+    "legdeflector",
+    "leggatet3"
+   ],
+   "units": {
+    "armgate": [
+     "PlasmaRepulsor"
+    ],
+    "corgate": [
+     "PlasmaRepulsor"
+    ],
+    "legdeflector": [
+     "PlasmaRepulsor"
+    ],
+    "leggatet3": [
+     "PlasmaRepulsor"
+    ]
+   },
+   "evidence_runtime": "src/engine.rs:778,1138,1147 implement shield charge/regen/absorb; src/model.rs:471-489 define is_shield, shield_radius, shield_power, regen, delay, exterior, smart",
+   "evidence_exporter": "the BAR `shield = {power, radius, powerregen, ...}` table is never read; the weapon exports as damage 0 range 0 with no is_shield",
+   "current_behavior": "armgate/corgate/leg equivalents exist but protect nothing (inert 0-range weapon)",
+   "suggested_fix": "Map weapondef.shield.* to is_shield/shield_* fields and set intercepted_by_shield_type"
+  },
+  {
+   "id": "death_explosions_wrecks",
+   "title": "Death explosions and wrecks/corpses",
+   "status": "export_gap",
+   "severity": "medium",
+   "wrong_behavior": false,
+   "units_affected": 353,
+   "player_games_weight": 19416,
+   "build_order_weight": 812159,
+   "example_units": [
+    "armmex",
+    "armcom",
+    "armllt",
+    "armrad",
+    "armnanotc",
+    "armwin",
+    "armsolar",
+    "armlab"
+   ],
+   "units": {
+    "armaak": [
+     "unit"
+    ],
+    "armaap": [
+     "unit"
+    ],
+    "armack": [
+     "unit"
+    ],
+    "armacv": [
+     "unit"
+    ],
+    "armadvsol": [
+     "unit"
+    ],
+    "armafus": [
+     "unit"
+    ],
+    "armageo": [
+     "unit"
+    ],
+    "armah": [
+     "unit"
+    ],
+    "armalab": [
+     "unit"
+    ],
+    "armamb": [
+     "unit"
+    ],
+    "armamd": [
+     "unit"
+    ],
+    "armamex": [
+     "unit"
+    ],
+    "armamph": [
+     "unit"
+    ],
+    "armanac": [
+     "unit"
+    ],
+    "armanni": [
+     "unit"
+    ],
+    "armap": [
+     "unit"
+    ],
+    "armarad": [
+     "unit"
+    ],
+    "armart": [
+     "unit"
+    ],
+    "armaser": [
+     "unit"
+    ],
+    "armavp": [
+     "unit"
+    ],
+    "armbanth": [
+     "unit"
+    ],
+    "armbeamer": [
+     "unit"
+    ],
+    "armbeaver": [
+     "unit"
+    ],
+    "armbrtha": [
+     "unit"
+    ],
+    "armbull": [
+     "unit"
+    ],
+    "armch": [
+     "unit"
+    ],
+    "armcir": [
+     "unit"
+    ],
+    "armck": [
+     "unit"
+    ],
+    "armckfus": [
+     "unit"
+    ],
+    "armcom": [
+     "unit"
+    ],
+    "armconsul": [
+     "unit"
+    ],
+    "armcroc": [
+     "unit"
+    ],
+    "armcv": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "armdf": [
+     "unit"
+    ],
+    "armdl": [
+     "unit"
+    ],
+    "armdrag": [
+     "unit"
+    ],
+    "armemp": [
+     "unit"
+    ],
+    "armestor": [
+     "unit"
+    ],
+    "armeyes": [
+     "unit"
+    ],
+    "armfark": [
+     "unit"
+    ],
+    "armfast": [
+     "unit"
+    ],
+    "armfav": [
+     "unit"
+    ],
+    "armfboy": [
+     "unit"
+    ],
+    "armferret": [
+     "unit"
+    ],
+    "armfido": [
+     "unit"
+    ],
+    "armflak": [
+     "unit"
+    ],
+    "armflash": [
+     "unit"
+    ],
+    "armflea": [
+     "unit"
+    ],
+    "armfmine3": [
+     "unit"
+    ],
+    "armfort": [
+     "unit"
+    ],
+    "armfus": [
+     "unit"
+    ],
+    "armgate": [
+     "unit"
+    ],
+    "armgeo": [
+     "unit"
+    ],
+    "armgmm": [
+     "unit"
+    ],
+    "armgremlin": [
+     "unit"
+    ],
+    "armguard": [
+     "unit"
+    ],
+    "armham": [
+     "unit"
+    ],
+    "armhlt": [
+     "unit"
+    ],
+    "armhp": [
+     "unit"
+    ],
+    "armjam": [
+     "unit"
+    ],
+    "armjamt": [
+     "unit"
+    ],
+    "armjanus": [
+     "unit"
+    ],
+    "armjeth": [
+     "unit"
+    ],
+    "armjuno": [
+     "unit"
+    ],
+    "armlab": [
+     "unit"
+    ],
+    "armllt": [
+     "unit"
+    ],
+    "armlun": [
+     "unit"
+    ],
+    "armmakr": [
+     "unit"
+    ],
+    "armmanni": [
+     "unit"
+    ],
+    "armmar": [
+     "unit"
+    ],
+    "armmark": [
+     "unit"
+    ],
+    "armmart": [
+     "unit"
+    ],
+    "armmav": [
+     "unit"
+    ],
+    "armmercury": [
+     "unit"
+    ],
+    "armmerl": [
+     "unit"
+    ],
+    "armmex": [
+     "unit"
+    ],
+    "armmh": [
+     "unit"
+    ],
+    "armmine1": [
+     "unit"
+    ],
+    "armmine2": [
+     "unit"
+    ],
+    "armmine3": [
+     "unit"
+    ],
+    "armmlv": [
+     "unit"
+    ],
+    "armmmkr": [
+     "unit"
+    ],
+    "armmoho": [
+     "unit"
+    ],
+    "armmstor": [
+     "unit"
+    ],
+    "armnanotc": [
+     "unit"
+    ],
+    "armnanotct2": [
+     "unit"
+    ],
+    "armpb": [
+     "unit"
+    ],
+    "armpincer": [
+     "unit"
+    ],
+    "armpw": [
+     "unit"
+    ],
+    "armrad": [
+     "unit"
+    ],
+    "armraz": [
+     "unit"
+    ],
+    "armrl": [
+     "unit"
+    ],
+    "armrock": [
+     "unit"
+    ],
+    "armsam": [
+     "unit"
+    ],
+    "armscab": [
+     "unit"
+    ],
+    "armsd": [
+     "unit"
+    ],
+    "armseer": [
+     "unit"
+    ],
+    "armsh": [
+     "unit"
+    ],
+    "armshltx": [
+     "unit"
+    ],
+    "armsilo": [
+     "unit"
+    ],
+    "armsnipe": [
+     "unit"
+    ],
+    "armsolar": [
+     "unit"
+    ],
+    "armspid": [
+     "unit"
+    ],
+    "armsptk": [
+     "unit"
+    ],
+    "armspy": [
+     "unit"
+    ],
+    "armstump": [
+     "unit"
+    ],
+    "armtarg": [
+     "unit"
+    ],
+    "armuwadves": [
+     "unit"
+    ],
+    "armuwadvms": [
+     "unit"
+    ],
+    "armuwgeo": [
+     "unit"
+    ],
+    "armvader": [
+     "unit"
+    ],
+    "armvang": [
+     "unit"
+    ],
+    "armveil": [
+     "unit"
+    ],
+    "armvp": [
+     "unit"
+    ],
+    "armvulc": [
+     "unit"
+    ],
+    "armwar": [
+     "unit"
+    ],
+    "armwin": [
+     "unit"
+    ],
+    "armyork": [
+     "unit"
+    ],
+    "coraak": [
+     "unit"
+    ],
+    "coraap": [
+     "unit"
+    ],
+    "corack": [
+     "unit"
+    ],
+    "coracv": [
+     "unit"
+    ],
+    "coradvsol": [
+     "unit"
+    ],
+    "corafus": [
+     "unit"
+    ],
+    "corageo": [
+     "unit"
+    ],
+    "corah": [
+     "unit"
+    ],
+    "corak": [
+     "unit"
+    ],
+    "coralab": [
+     "unit"
+    ],
+    "coramph": [
+     "unit"
+    ],
+    "corap": [
+     "unit"
+    ],
+    "corarad": [
+     "unit"
+    ],
+    "coravp": [
+     "unit"
+    ],
+    "corban": [
+     "unit"
+    ],
+    "corbhmth": [
+     "unit"
+    ],
+    "corbuzz": [
+     "unit"
+    ],
+    "corcan": [
+     "unit"
+    ],
+    "corcat": [
+     "unit"
+    ],
+    "corch": [
+     "unit"
+    ],
+    "corck": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "corcrash": [
+     "unit"
+    ],
+    "corcv": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "cordemon": [
+     "unit"
+    ],
+    "cordl": [
+     "unit"
+    ],
+    "cordoom": [
+     "unit"
+    ],
+    "cordrag": [
+     "unit"
+    ],
+    "corerad": [
+     "unit"
+    ],
+    "corestor": [
+     "unit"
+    ],
+    "coreter": [
+     "unit"
+    ],
+    "corexp": [
+     "unit"
+    ],
+    "coreyes": [
+     "unit"
+    ],
+    "corfast": [
+     "unit"
+    ],
+    "corfav": [
+     "unit"
+    ],
+    "corflak": [
+     "unit"
+    ],
+    "corfmd": [
+     "unit"
+    ],
+    "corfmine3": [
+     "unit"
+    ],
+    "corfort": [
+     "unit"
+    ],
+    "corfus": [
+     "unit"
+    ],
+    "corgant": [
+     "unit"
+    ],
+    "corgarp": [
+     "unit"
+    ],
+    "corgate": [
+     "unit"
+    ],
+    "corgator": [
+     "unit"
+    ],
+    "corgeo": [
+     "unit"
+    ],
+    "corgol": [
+     "unit"
+    ],
+    "corhal": [
+     "unit"
+    ],
+    "corhllt": [
+     "unit"
+    ],
+    "corhlt": [
+     "unit"
+    ],
+    "corhp": [
+     "unit"
+    ],
+    "corhrk": [
+     "unit"
+    ],
+    "corint": [
+     "unit"
+    ],
+    "corjamt": [
+     "unit"
+    ],
+    "corjugg": [
+     "unit"
+    ],
+    "corjuno": [
+     "unit"
+    ],
+    "corkarg": [
+     "unit"
+    ],
+    "corkorg": [
+     "unit"
+    ],
+    "corlab": [
+     "unit"
+    ],
+    "corlevlr": [
+     "unit"
+    ],
+    "corllt": [
+     "unit"
+    ],
+    "cormabm": [
+     "unit"
+    ],
+    "cormadsam": [
+     "unit"
+    ],
+    "cormakr": [
+     "unit"
+    ],
+    "cormando": [
+     "unit"
+    ],
+    "cormart": [
+     "unit"
+    ],
+    "cormaw": [
+     "unit"
+    ],
+    "cormex": [
+     "unit"
+    ],
+    "cormexp": [
+     "unit"
+    ],
+    "cormh": [
+     "unit"
+    ],
+    "cormine1": [
+     "unit"
+    ],
+    "cormine2": [
+     "unit"
+    ],
+    "cormine3": [
+     "unit"
+    ],
+    "cormist": [
+     "unit"
+    ],
+    "cormlv": [
+     "unit"
+    ],
+    "cormmkr": [
+     "unit"
+    ],
+    "cormoho": [
+     "unit"
+    ],
+    "cormort": [
+     "unit"
+    ],
+    "cormstor": [
+     "unit"
+    ],
+    "cormuskrat": [
+     "unit"
+    ],
+    "cornanotc": [
+     "unit"
+    ],
+    "cornanotct2": [
+     "unit"
+    ],
+    "corparrow": [
+     "unit"
+    ],
+    "corpun": [
+     "unit"
+    ],
+    "corpyro": [
+     "unit"
+    ],
+    "corrad": [
+     "unit"
+    ],
+    "corraid": [
+     "unit"
+    ],
+    "correap": [
+     "unit"
+    ],
+    "corrl": [
+     "unit"
+    ],
+    "corroach": [
+     "unit"
+    ],
+    "corsala": [
+     "unit"
+    ],
+    "corscreamer": [
+     "unit"
+    ],
+    "corsd": [
+     "unit"
+    ],
+    "corsent": [
+     "unit"
+    ],
+    "corsh": [
+     "unit"
+    ],
+    "corshiva": [
+     "unit"
+    ],
+    "corshroud": [
+     "unit"
+    ],
+    "corsilo": [
+     "unit"
+    ],
+    "corsktl": [
+     "unit"
+    ],
+    "corsnap": [
+     "unit"
+    ],
+    "corsok": [
+     "unit"
+    ],
+    "corsolar": [
+     "unit"
+    ],
+    "corspec": [
+     "unit"
+    ],
+    "corspy": [
+     "unit"
+    ],
+    "corstorm": [
+     "unit"
+    ],
+    "corsumo": [
+     "unit"
+    ],
+    "cortarg": [
+     "unit"
+    ],
+    "cortermite": [
+     "unit"
+    ],
+    "corthud": [
+     "unit"
+    ],
+    "cortoast": [
+     "unit"
+    ],
+    "cortrem": [
+     "unit"
+    ],
+    "cortron": [
+     "unit"
+    ],
+    "coruwadves": [
+     "unit"
+    ],
+    "coruwadvms": [
+     "unit"
+    ],
+    "corvipe": [
+     "unit"
+    ],
+    "corvoyr": [
+     "unit"
+    ],
+    "corvp": [
+     "unit"
+    ],
+    "corvrad": [
+     "unit"
+    ],
+    "corvroc": [
+     "unit"
+    ],
+    "corwin": [
+     "unit"
+    ],
+    "corwolv": [
+     "unit"
+    ],
+    "legaabot": [
+     "unit"
+    ],
+    "legaap": [
+     "unit"
+    ],
+    "legabm": [
+     "unit"
+    ],
+    "legaceb": [
+     "unit"
+    ],
+    "legack": [
+     "unit"
+    ],
+    "legacv": [
+     "unit"
+    ],
+    "legadvaabot": [
+     "unit"
+    ],
+    "legadveconv": [
+     "unit"
+    ],
+    "legadvestore": [
+     "unit"
+    ],
+    "legadvsol": [
+     "unit"
+    ],
+    "legafcv": [
+     "unit"
+    ],
+    "legafus": [
+     "unit"
+    ],
+    "legageo": [
+     "unit"
+    ],
+    "legah": [
+     "unit"
+    ],
+    "legaheattank": [
+     "unit"
+    ],
+    "legajam": [
+     "unit"
+    ],
+    "legajamk": [
+     "unit"
+    ],
+    "legalab": [
+     "unit"
+    ],
+    "legamph": [
+     "unit"
+    ],
+    "legamphtank": [
+     "unit"
+    ],
+    "legamstor": [
+     "unit"
+    ],
+    "legap": [
+     "unit"
+    ],
+    "legapopupdef": [
+     "unit"
+    ],
+    "legarad": [
+     "unit"
+    ],
+    "legaradk": [
+     "unit"
+    ],
+    "legaskirmtank": [
+     "unit"
+    ],
+    "legaspy": [
+     "unit"
+    ],
+    "legavantinuke": [
+     "unit"
+    ],
+    "legavjam": [
+     "unit"
+    ],
+    "legavp": [
+     "unit"
+    ],
+    "legavrad": [
+     "unit"
+    ],
+    "legavroc": [
+     "unit"
+    ],
+    "legbal": [
+     "unit"
+    ],
+    "legbastion": [
+     "unit"
+    ],
+    "legcar": [
+     "unit"
+    ],
+    "legcen": [
+     "unit"
+    ],
+    "legch": [
+     "unit"
+    ],
+    "legck": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legctl": [
+     "unit"
+    ],
+    "legcv": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ],
+    "legdeflector": [
+     "unit"
+    ],
+    "legdrag": [
+     "unit"
+    ],
+    "legdtr": [
+     "unit"
+    ],
+    "legeconv": [
+     "unit"
+    ],
+    "legeheatraymech": [
+     "unit"
+    ],
+    "legehovertank": [
+     "unit"
+    ],
+    "legerailtank": [
+     "unit"
+    ],
+    "legeshotgunmech": [
+     "unit"
+    ],
+    "legestor": [
+     "unit"
+    ],
+    "legeyes": [
+     "unit"
+    ],
+    "legflak": [
+     "unit"
+    ],
+    "legfloat": [
+     "unit"
+    ],
+    "legforti": [
+     "unit"
+    ],
+    "legfus": [
+     "unit"
+    ],
+    "leggant": [
+     "unit"
+    ],
+    "leggat": [
+     "unit"
+    ],
+    "leggatet3": [
+     "unit"
+    ],
+    "leggeo": [
+     "unit"
+    ],
+    "leggob": [
+     "unit"
+    ],
+    "leghades": [
+     "unit"
+    ],
+    "leghelios": [
+     "unit"
+    ],
+    "leghp": [
+     "unit"
+    ],
+    "leghrk": [
+     "unit"
+    ],
+    "leginc": [
+     "unit"
+    ],
+    "leginfestor": [
+     "unit"
+    ],
+    "legjam": [
+     "unit"
+    ],
+    "legjav": [
+     "unit"
+    ],
+    "legjuno": [
+     "unit"
+    ],
+    "legkark": [
+     "unit"
+    ],
+    "legkeres": [
+     "unit"
+    ],
+    "leglab": [
+     "unit"
+    ],
+    "leglht": [
+     "unit"
+    ],
+    "leglob": [
+     "unit"
+    ],
+    "leglraa": [
+     "unit"
+    ],
+    "leglupara": [
+     "unit"
+    ],
+    "legmed": [
+     "unit"
+    ],
+    "legmex": [
+     "unit"
+    ],
+    "legmext15": [
+     "unit"
+    ],
+    "legmg": [
+     "unit"
+    ],
+    "legmh": [
+     "unit"
+    ],
+    "legmine1": [
+     "unit"
+    ],
+    "legmine2": [
+     "unit"
+    ],
+    "legmine3": [
+     "unit"
+    ],
+    "legmlv": [
+     "unit"
+    ],
+    "legmoho": [
+     "unit"
+    ],
+    "legmohocon": [
+     "unit"
+    ],
+    "legmohoconct": [
+     "unit"
+    ],
+    "legmrv": [
+     "unit"
+    ],
+    "legmstor": [
+     "unit"
+    ],
+    "legnanotc": [
+     "unit"
+    ],
+    "legnanotct2": [
+     "unit"
+    ],
+    "legner": [
+     "unit"
+    ],
+    "legotter": [
+     "unit"
+    ],
+    "legrad": [
+     "unit"
+    ],
+    "legrail": [
+     "unit"
+    ],
+    "legrhapsis": [
+     "unit"
+    ],
+    "legrl": [
+     "unit"
+    ],
+    "legscout": [
+     "unit"
+    ],
+    "legsd": [
+     "unit"
+    ],
+    "legsh": [
+     "unit"
+    ],
+    "legshot": [
+     "unit"
+    ],
+    "legsilo": [
+     "unit"
+    ],
+    "legsnapper": [
+     "unit"
+    ],
+    "legsolar": [
+     "unit"
+    ],
+    "legsrail": [
+     "unit"
+    ],
+    "legstarfall": [
+     "unit"
+    ],
+    "legstr": [
+     "unit"
+    ],
+    "legtarg": [
+     "unit"
+    ],
+    "legvflak": [
+     "unit"
+    ],
+    "legvp": [
+     "unit"
+    ],
+    "legwin": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "src/catalog.rs:788-815 and src/world.rs support death_explosion_*, corpse, reclaimable, corpse_metal",
+   "evidence_exporter": "none of death_explosion_*, corpse*, reclaim_* are exported (explodeas names a weapon in gamedata; corpse metal is in the unit's featuredefs)",
+   "current_behavior": "Units die silently and leave no reclaimable metal; chain explosions (e.g. fusion, nukes) and wreck economy are absent",
+   "suggested_fix": "Resolve explodeas against gamedata and featuredefs.metal for corpse_metal"
+  },
+  {
+   "id": "cloak",
+   "title": "Cloaking (cancloak, initcloaked, cloakcost)",
+   "status": "unsupported",
+   "severity": "medium",
+   "wrong_behavior": false,
+   "units_affected": 31,
+   "player_games_weight": 1300,
+   "build_order_weight": 9424,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "armpb",
+    "armamex",
+    "armferret",
+    "armsnipe",
+    "armamb",
+    "armspy"
+   ],
+   "units": {
+    "armamb": [
+     "unit"
+    ],
+    "armamex": [
+     "unit"
+    ],
+    "armckfus": [
+     "unit"
+    ],
+    "armcom": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "armeyes": [
+     "unit"
+    ],
+    "armferret": [
+     "unit"
+    ],
+    "armfmine3": [
+     "unit"
+    ],
+    "armgremlin": [
+     "unit"
+    ],
+    "armmine1": [
+     "unit"
+    ],
+    "armmine2": [
+     "unit"
+    ],
+    "armmine3": [
+     "unit"
+    ],
+    "armpb": [
+     "unit"
+    ],
+    "armsnipe": [
+     "unit"
+    ],
+    "armspy": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "coreyes": [
+     "unit"
+    ],
+    "corfmine3": [
+     "unit"
+    ],
+    "cormine1": [
+     "unit"
+    ],
+    "cormine2": [
+     "unit"
+    ],
+    "cormine3": [
+     "unit"
+    ],
+    "corsktl": [
+     "unit"
+    ],
+    "corspy": [
+     "unit"
+    ],
+    "legaspy": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ],
+    "legeyes": [
+     "unit"
+    ],
+    "legmine1": [
+     "unit"
+    ],
+    "legmine2": [
+     "unit"
+    ],
+    "legmine3": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "can_cloak exists only in src/catalog.rs/src/model.rs; no consumer in engine.rs/world.rs even though CAPABILITY_CLOAK is listed in IMPLEMENTED_CAPABILITIES",
+   "evidence_exporter": "can_cloak never exported",
+   "current_behavior": "Cloakable units are permanently visible; the declared capability claims support that does not exist",
+   "suggested_fix": "Either implement cloak visibility masks or remove CAPABILITY_CLOAK from IMPLEMENTED_CAPABILITIES and export required_capabilities so scenarios fail loudly"
+  },
+  {
+   "id": "damage_modifier",
+   "title": "damagemodifier (flat damage scaling)",
+   "status": "unsupported",
+   "severity": "medium",
+   "wrong_behavior": false,
+   "units_affected": 23,
+   "player_games_weight": 1188,
+   "build_order_weight": 25938,
+   "example_units": [
+    "armsolar",
+    "corsolar",
+    "armadvsol",
+    "coradvsol",
+    "armpb",
+    "armanni",
+    "armferret",
+    "corvipe"
+   ],
+   "units": {
+    "armadvsol": [
+     "unit"
+    ],
+    "armamb": [
+     "unit"
+    ],
+    "armanni": [
+     "unit"
+    ],
+    "armferret": [
+     "unit"
+    ],
+    "armpb": [
+     "unit"
+    ],
+    "armscab": [
+     "unit"
+    ],
+    "armsolar": [
+     "unit"
+    ],
+    "coradvsol": [
+     "unit"
+    ],
+    "cordoom": [
+     "unit"
+    ],
+    "cormabm": [
+     "unit"
+    ],
+    "cormaw": [
+     "unit"
+    ],
+    "corsolar": [
+     "unit"
+    ],
+    "cortoast": [
+     "unit"
+    ],
+    "corvipe": [
+     "unit"
+    ],
+    "legamph": [
+     "unit"
+    ],
+    "legapopupdef": [
+     "unit"
+    ],
+    "legavantinuke": [
+     "unit"
+    ],
+    "legbastion": [
+     "unit"
+    ],
+    "legdtr": [
+     "unit"
+    ],
+    "leggatet3": [
+     "unit"
+    ],
+    "legkark": [
+     "unit"
+    ],
+    "legshot": [
+     "unit"
+    ],
+    "legsolar": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no consumer",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Damage taken is unscaled (armsolar/corsolar take 100% instead of damagemodifier 0.5)",
+   "suggested_fix": "Export a damage_taken multiplier"
+  },
+  {
+   "id": "wind_output",
+   "title": "Wind generators",
+   "status": "approximate",
+   "severity": "medium",
+   "wrong_behavior": false,
+   "units_affected": 3,
+   "player_games_weight": 872,
+   "build_order_weight": 200416,
+   "example_units": [
+    "armwin",
+    "corwin",
+    "legwin"
+   ],
+   "units": {
+    "armwin": [
+     "unit"
+    ],
+    "corwin": [
+     "unit"
+    ],
+    "legwin": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "src/world.rs:3104 wind_generator * config.wind_output (a global scalar)",
+   "evidence_exporter": "wind_generator exported; BAR's windgenerator is rescaled from map wind in luarules, map wind is not captured (prepare_from_replays WARNINGS)",
+   "current_behavior": "Wind income is a scenario constant, not the map's wind; armwin is the single most-built structure (148k orders)",
+   "suggested_fix": "Capture map wind min/max in the map source"
+  },
+  {
+   "id": "radar_jammers",
+   "title": "Radar jammer radius",
+   "status": "export_gap",
+   "severity": "medium",
+   "wrong_behavior": false,
+   "units_affected": 18,
+   "player_games_weight": 206,
+   "build_order_weight": 986,
+   "example_units": [
+    "armaser",
+    "armjamt",
+    "armjam",
+    "armmlv",
+    "cormaw",
+    "corjamt",
+    "armveil",
+    "coreter"
+   ],
+   "units": {
+    "armaser": [
+     "unit"
+    ],
+    "armjam": [
+     "unit"
+    ],
+    "armjamt": [
+     "unit"
+    ],
+    "armmlv": [
+     "unit"
+    ],
+    "armveil": [
+     "unit"
+    ],
+    "coreter": [
+     "unit"
+    ],
+    "corjamt": [
+     "unit"
+    ],
+    "cormando": [
+     "unit"
+    ],
+    "cormaw": [
+     "unit"
+    ],
+    "cormlv": [
+     "unit"
+    ],
+    "corshroud": [
+     "unit"
+    ],
+    "corspec": [
+     "unit"
+    ],
+    "legajam": [
+     "unit"
+    ],
+    "legajamk": [
+     "unit"
+    ],
+    "legavjam": [
+     "unit"
+    ],
+    "legdtr": [
+     "unit"
+    ],
+    "legjam": [
+     "unit"
+    ],
+    "legmlv": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "src/world.rs:1577-1606 jam radar contacts using strategic.jammer_radius",
+   "evidence_exporter": "radardistancejam is never written to jammer_radius",
+   "current_behavior": "Jammer units do not jam",
+   "suggested_fix": "Export jammer_radius = radardistancejam"
+  },
+  {
+   "id": "reactive_armor",
+   "title": "Reactive armor (damage-triggered restore)",
+   "status": "unsupported",
+   "severity": "medium",
+   "wrong_behavior": false,
+   "units_affected": 3,
+   "player_games_weight": 0,
+   "build_order_weight": 0,
+   "example_units": [
+    "legamph",
+    "legkark",
+    "legshot"
+   ],
+   "units": {
+    "legamph": [
+     "unit"
+    ],
+    "legkark": [
+     "unit"
+    ],
+    "legshot": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no gadget model",
+   "evidence_exporter": "gadget behavior in luarules/gadgets/unit_reactive_armor.lua is not exported",
+   "current_behavior": "Units are plainly squishier than in BAR",
+   "suggested_fix": "Model as extra damage buffer or exclude from curricula"
+  },
+  {
+   "id": "bad_target_categories",
+   "title": "badtargetcategory (target de-prioritisation)",
+   "status": "approximate",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 168,
+   "player_games_weight": 7996,
+   "build_order_weight": 104567,
+   "example_units": [
+    "armcom",
+    "armllt",
+    "armflash",
+    "armpw",
+    "corcom",
+    "armflea",
+    "corllt",
+    "armfav"
+   ],
+   "units": {
+    "armaak": [
+     "Long-Range Anti-Air Missile Launcher",
+     "Medium-Range Anti-Air Missile Launcher"
+    ],
+    "armah": [
+     "Missiles",
+     "Light g2a missile launcher"
+    ],
+    "armamb": [
+     "Pop-up heavy  long range g2g plasma cannon",
+     "Pop-up heavy  long range g2g plasna cannon",
+     "Pop-up heavy  long range g2g plasma cannon"
+    ],
+    "armamd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armamph": [
+     "Light close-quarters laser",
+     "Light g2a missile launcher"
+    ],
+    "armanac": [
+     "Medium g2g plasma cannon"
+    ],
+    "armanni": [
+     "Heavy long-range g2g tachyon accelerator beam"
+    ],
+    "armart": [
+     "Long-range high-trajectory g2g plasma cannon"
+    ],
+    "armbanth": [
+     "Close-quarters impulsion blaster",
+     "High-energy long-range g2g/g2a lazor of DEEEEEEWWWWWWMMMMMM",
+     "Heavy g2g/g2a guided starburst missile launcher"
+    ],
+    "armbeamer": [
+     "Anti-swarm constant wave g2g laser"
+    ],
+    "armbrtha": [
+     "Long-range plasma cannon"
+    ],
+    "armbull": [
+     "Heavy g2g plasma cannon"
+    ],
+    "armcir": [
+     "Rapid-fire long-range g2a missile barrel"
+    ],
+    "armcom": [
+     "Light underwater-combat laser"
+    ],
+    "armcroc": [
+     "Light g2a missile launcher"
+    ],
+    "armdecom": [
+     "J7NSLaser"
+    ],
+    "armdl": [
+     "Depthcharge launcher"
+    ],
+    "armemp": [
+     "Heavy long-range g2g EMP starburst rocket"
+    ],
+    "armfast": [
+     "Rapid-firing close-quarters g2g plasma guns"
+    ],
+    "armfav": [
+     "Light Close-Quarters g2g Laser"
+    ],
+    "armfboy": [
+     "Heavy AoE g2g plasma cannon"
+    ],
+    "armferret": [
+     "Pop-up rapid-fire g2a missile launcher"
+    ],
+    "armfido": [
+     "Ballistic g2g AoE plasma cannon"
+    ],
+    "armflak": [
+     "Heavy g2a flak cannon"
+    ],
+    "armflash": [
+     "Rapid-fire close-quarters plasma gun"
+    ],
+    "armflea": [
+     "Light Close-Quarters Fast-Firing g2g Laser"
+    ],
+    "armgremlin": [
+     "Light close-quarters gauss cannon"
+    ],
+    "armguard": [
+     "Heavy g2g long range plasma cannon",
+     "Heavy g2g long range plasma cannon"
+    ],
+    "armham": [
+     "Light g2g plasma cannon (low trajectory)"
+    ],
+    "armhlt": [
+     "Heavy g2g high energy laser"
+    ],
+    "armjanus": [
+     "Heavy g2g dual-missile launcher"
+    ],
+    "armjeth": [
+     "Missiles",
+     "Light g2a missile launcher"
+    ],
+    "armjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "armllt": [
+     "Light g2g laser turret"
+    ],
+    "armlun": [
+     "Heavy ballistic underwater cannon",
+     "Depthcharge launcher"
+    ],
+    "armmanni": [
+     "Heavy long-range g2g tachyon beam"
+    ],
+    "armmar": [
+     "Double close-quarters gauss cannon"
+    ],
+    "armmart": [
+     "Long-range g2g plasma cannon"
+    ],
+    "armmav": [
+     "Anti-swarm g2g gauss-impulse guns"
+    ],
+    "armmercury": [
+     "Heavy long-range g2a guided missile launcher"
+    ],
+    "armmerl": [
+     "Heavy long-range g2g high-trajectory starburst rocket launcher"
+    ],
+    "armmh": [
+     "Light long-range g2g starburst rocket launcher"
+    ],
+    "armpb": [
+     "Pop-up heavy g2g gauss cannon"
+    ],
+    "armpincer": [
+     "Light close-quarters plasma cannon"
+    ],
+    "armpw": [
+     "Rapid-fire close-quarters g2g plasma guns"
+    ],
+    "armraz": [
+     "Rapid-fire close quarters g2g armor-piercing laser"
+    ],
+    "armrl": [
+     "Light g2a missile launcher"
+    ],
+    "armrock": [
+     "Medium g2g rocket launcher"
+    ],
+    "armsam": [
+     "Light g2a missile launcher",
+     "Light g2g missile launcher"
+    ],
+    "armscab": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armsh": [
+     "Light Close-Quarters Fast-Firing g2g Laser"
+    ],
+    "armsptk": [
+     "Parabolic trajectory g2g multi-rocket launcher"
+    ],
+    "armspy": [
+     "Dummy Weapon"
+    ],
+    "armstump": [
+     "Light g2g plasma cannon"
+    ],
+    "armvader": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "armvang": [
+     "Heavy long-range g2g plasma cannon",
+     "Heavy long-range g2g plasma cannon",
+     "Heavy long-range g2g plasma cannon"
+    ],
+    "armvulc": [
+     "Rapid-fire long-range plasma cannon"
+    ],
+    "armwar": [
+     "Dual close-quarters g2g laser"
+    ],
+    "armyork": [
+     "Missiles",
+     "Heavy g2a flak cannon"
+    ],
+    "coraak": [
+     "Missiles",
+     "Heavy g2a flak cannon"
+    ],
+    "corah": [
+     "Missiles",
+     "Missiles"
+    ],
+    "corak": [
+     "Laser"
+    ],
+    "coramph": [
+     "HighEnergyLaser"
+    ],
+    "corban": [
+     "Banisher"
+    ],
+    "corbhmth": [
+     "Heavy g2g barrage plasma battery",
+     "Heavy g2g barrage plasma battery",
+     "Heavy g2g barrage plasma battery"
+    ],
+    "corbuzz": [
+     "Rapid-fire long-range plasma cannon"
+    ],
+    "corcan": [
+     "HighEnergyLaser"
+    ],
+    "corcat": [
+     "CatapultRockets"
+    ],
+    "corcom": [
+     "J7NSLaser"
+    ],
+    "corcrash": [
+     "Missiles",
+     "Missiles"
+    ],
+    "cordecom": [
+     "J7NSLaser"
+    ],
+    "cordemon": [
+     "Demon's Maw; Heavy long range AoE flamethrower",
+     "ShoulderRockets"
+    ],
+    "cordl": [
+     "Depthcharge launcher"
+    ],
+    "cordoom": [
+     "Long-range g2g tachyon accelerator"
+    ],
+    "corerad": [
+     "Long-range rapid-fire g2a missile launcher"
+    ],
+    "corexp": [
+     "Light close-quarters g2g laser turret"
+    ],
+    "corfav": [
+     "Light Close-Quarters g2g Laser"
+    ],
+    "corflak": [
+     "Heavy g2a flak cannon"
+    ],
+    "corfmd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "corgarp": [
+     "PincerCannon"
+    ],
+    "corgator": [
+     "Laser"
+    ],
+    "corhal": [
+     "HighEnergyLaser"
+    ],
+    "corhllt": [
+     "Close-quarters light g2g laser",
+     "Close-quarters light g2g laser"
+    ],
+    "corhlt": [
+     "High energy g2g laser"
+    ],
+    "corhrk": [
+     "HeavyRockets"
+    ],
+    "corint": [
+     "Long-range plasma cannon"
+    ],
+    "corjugg": [
+     "GaussCannon",
+     "LightLaser"
+    ],
+    "corjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "corkarg": [
+     "KarganethMissiles",
+     "ShoulderRockets"
+    ],
+    "corkorg": [
+     "GaussCannon",
+     "Experimental g2g Eradicator Heat Ray",
+     "HeavyRockets"
+    ],
+    "corlevlr": [
+     "RiotCannon"
+    ],
+    "corllt": [
+     "Light g2g laser"
+    ],
+    "cormabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "cormadsam": [
+     "Advanced g2a rapid missile launcher"
+    ],
+    "cormart": [
+     "PlasmaCannon"
+    ],
+    "cormh": [
+     "Rocket"
+    ],
+    "cormist": [
+     "Light g2a missile launcher",
+     "Light g2g missile launcher"
+    ],
+    "cormort": [
+     "PlasmaCannon"
+    ],
+    "corparrow": [
+     "PoisonArrowCannon"
+    ],
+    "corpun": [
+     "Long-range g2g plasma cannon",
+     "Long-range g2g plasma cannon"
+    ],
+    "corraid": [
+     "LightCannon"
+    ],
+    "correap": [
+     "PlasmaCannon"
+    ],
+    "corrl": [
+     "Light g2a missile launcher"
+    ],
+    "corroach": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "corscreamer": [
+     "Long-range heavy g2a missile launcher"
+    ],
+    "corsent": [
+     "Missiles",
+     "FlakCannon"
+    ],
+    "corshiva": [
+     "HeavyCannon",
+     "HeavyRockets"
+    ],
+    "corsktl": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "corsnap": [
+     "MediumPlasmaCannon"
+    ],
+    "corsok": [
+     "Disruptor Bolt",
+     "Depthcharge launcher"
+    ],
+    "corspy": [
+     "Dummy Weapon"
+    ],
+    "corstorm": [
+     "Rockets"
+    ],
+    "corthud": [
+     "PlasmaCannon"
+    ],
+    "cortoast": [
+     "Pop-up long-range heavy g2g plasma cannon",
+     "Pop-up long-range heavy g2g plasma cannon",
+     "Pop-up long-range heavy g2g plasma cannon"
+    ],
+    "cortrem": [
+     "RapidArtillery"
+    ],
+    "cortron": [
+     "Long range tactical g2g nuclear warheads"
+    ],
+    "corvipe": [
+     "Heavy g2g sabot rocket launcher"
+    ],
+    "corvroc": [
+     "Rocket"
+    ],
+    "corwolv": [
+     "LightArtillery"
+    ],
+    "legaabot": [
+     "Advanced g2a Salvo Missile Launcher"
+    ],
+    "legabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "legadvaabot": [
+     "Rotary Microflak Cannon",
+     "Light Anti-Air Railgun"
+    ],
+    "legah": [
+     "Light G2A Gatling Gun"
+    ],
+    "legaheattank": [
+     "Heavy g2g Cleansing Heat Ray"
+    ],
+    "legamphtank": [
+     "Light Close-quarters Gauss Cannon"
+    ],
+    "legapopupdef": [
+     "Dual Rotary Machine Guns",
+     "Dual Rotary Machine Guns"
+    ],
+    "legaskirmtank": [
+     "Heavy Rotary Plasma Cannon"
+    ],
+    "legaspy": [
+     "coconut.jpg"
+    ],
+    "legavantinuke": [
+     "ICBM Interceptor Missile Launcher"
+    ],
+    "legavroc": [
+     "Heavy Long-Range g2g High-Trajectory Starburst Rocket Launcher"
+    ],
+    "legbal": [
+     "Rockets"
+    ],
+    "legbastion": [
+     "Heavy Sustained Sweepfire Heat Ray"
+    ],
+    "legcar": [
+     "Medium Shotgun"
+    ],
+    "legcen": [
+     "Close-quarters g2g gauss-cannon"
+    ],
+    "legcom": [
+     "Underwater Torpedo Launcher",
+     "Anti-Air Missile Launcher"
+    ],
+    "legctl": [
+     "Homing Torpedo Launcher"
+    ],
+    "legdecom": [
+     "Underwater Torpedo Launcher",
+     "Anti-Air Missile Launcher"
+    ],
+    "legdtr": [
+     "Area Control Riot Cannon"
+    ],
+    "legeheatraymech": [
+     "Experimental Thermal Ordnance Generators",
+     "Experimental Thermal Ordnance Generators",
+     "Ultra Heavy Riot Autocannon",
+     "Ultra Heavy Riot Autocannon"
+    ],
+    "legehovertank": [
+     "Heavy Sweepfire Heatray",
+     "Depthcharge Launcher",
+     "Parabolic Trajectory Multi-Rocket Launcher",
+     "Parabolic Trajectory Multi-Rocket Launcher"
+    ],
+    "legeshotgunmech": [
+     "Targeting System",
+     "Dual Heavy Assault Kinetic Shotgun",
+     "Parabolic Trajectory Multi-Rocket Launcher",
+     "Rotary Microflak Cannon"
+    ],
+    "legflak": [
+     "Dual Rotary Microflak Cannons"
+    ],
+    "legfloat": [
+     "Rapid-fire machine gun"
+    ],
+    "leggat": [
+     "Rapid-fire Machine Gun"
+    ],
+    "leggob": [
+     "Rapid-fire a2g machine guns"
+    ],
+    "leghades": [
+     "Dual-Feed Medium Shotgun"
+    ],
+    "leghelios": [
+     "Light g2g Heat Ray"
+    ],
+    "leghrk": [
+     "CatapultRockets"
+    ],
+    "legjav": [
+     "Twin Rapid-fire Machine Guns"
+    ],
+    "legjuno": [
+     "Anti-Radar/Jammer/Mine Electromagnetic Payload"
+    ],
+    "legkark": [
+     "Light g2g Heat Ray",
+     "Dual-Feed Medium Shotgun"
+    ],
+    "legkeres": [
+     "Heavy rotary cannon",
+     "Heavy rotary cannon"
+    ],
+    "leglht": [
+     "Light g2g Heat Ray"
+    ],
+    "leglob": [
+     "Forwards Plasma Cannon"
+    ],
+    "leglraa": [
+     "Heavy Anti-Air Railgun"
+    ],
+    "leglupara": [
+     "Medium g2a Flak Blunderbuss"
+    ],
+    "legmg": [
+     "Heavy Rapid-fire Machine Gun"
+    ],
+    "legmh": [
+     "Rocket"
+    ],
+    "legmrv": [
+     "Two-Round Burst Fire Plasma Cannon"
+    ],
+    "legner": [
+     "Medium g2g plasma cannon"
+    ],
+    "legrail": [
+     "Railgun",
+     "Railgun"
+    ],
+    "legrhapsis": [
+     "Advanced g2a Salvo Missile Launcher"
+    ],
+    "legrl": [
+     "Light g2a Missile Launcher"
+    ],
+    "legscout": [
+     "Burst-fire Machine Gun"
+    ],
+    "legsh": [
+     "Light Close-Quarters g2g Heat Ray"
+    ],
+    "legsnapper": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "legstarfall": [
+     "Very Long-Range High-Trajectory 63-Salvo Plasma Launcher"
+    ],
+    "legvflak": [
+     "Dual Rotary Microflak Cannons"
+    ]
+   },
+   "evidence_runtime": "only only_target_categories is consumed (src/engine.rs:2794); no target-priority penalty",
+   "evidence_exporter": "badtargetcategory is not exported; Recoil only de-prioritises such targets (RecoilEngine rts/Sim/Weapons/Weapon.cpp:709,745), it does not forbid them",
+   "current_behavior": "Weapons pick e.g. VTOL or ALL-category targets with normal priority instead of last",
+   "suggested_fix": "Optional: add a bad-target priority penalty in target scoring"
+  },
+  {
+   "id": "turret_reaim",
+   "title": "Weapon re-aim delays and aim scripts",
+   "status": "approximate",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 79,
+   "player_games_weight": 4837,
+   "build_order_weight": 43713,
+   "example_units": [
+    "armcom",
+    "armflash",
+    "armpw",
+    "corcom",
+    "armflea",
+    "armfav",
+    "armbeamer",
+    "corak"
+   ],
+   "units": {
+    "armamb": [
+     "unit"
+    ],
+    "armamph": [
+     "unit"
+    ],
+    "armbanth": [
+     "unit"
+    ],
+    "armbeamer": [
+     "unit"
+    ],
+    "armcom": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "armfast": [
+     "unit"
+    ],
+    "armfav": [
+     "unit"
+    ],
+    "armfboy": [
+     "unit"
+    ],
+    "armfido": [
+     "unit"
+    ],
+    "armflash": [
+     "unit"
+    ],
+    "armflea": [
+     "unit"
+    ],
+    "armguard": [
+     "unit"
+    ],
+    "armham": [
+     "unit"
+    ],
+    "armjeth": [
+     "unit"
+    ],
+    "armmar": [
+     "unit"
+    ],
+    "armmav": [
+     "unit"
+    ],
+    "armpw": [
+     "unit"
+    ],
+    "armraz": [
+     "unit"
+    ],
+    "armrock": [
+     "unit"
+    ],
+    "armsnipe": [
+     "unit"
+    ],
+    "armspid": [
+     "unit"
+    ],
+    "armsptk": [
+     "unit"
+    ],
+    "armvang": [
+     "unit"
+    ],
+    "armwar": [
+     "unit"
+    ],
+    "corak": [
+     "unit"
+    ],
+    "coramph": [
+     "unit"
+    ],
+    "corbhmth": [
+     "unit"
+    ],
+    "corcan": [
+     "unit"
+    ],
+    "corcat": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "corcrash": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "cordemon": [
+     "unit"
+    ],
+    "cordoom": [
+     "unit"
+    ],
+    "corfav": [
+     "unit"
+    ],
+    "corgator": [
+     "unit"
+    ],
+    "corhlt": [
+     "unit"
+    ],
+    "corhrk": [
+     "unit"
+    ],
+    "corkarg": [
+     "unit"
+    ],
+    "corkorg": [
+     "unit"
+    ],
+    "cormando": [
+     "unit"
+    ],
+    "cormort": [
+     "unit"
+    ],
+    "corpun": [
+     "unit"
+    ],
+    "corpyro": [
+     "unit"
+    ],
+    "corsala": [
+     "unit"
+    ],
+    "corscreamer": [
+     "unit"
+    ],
+    "corshiva": [
+     "unit"
+    ],
+    "corstorm": [
+     "unit"
+    ],
+    "cortermite": [
+     "unit"
+    ],
+    "corthud": [
+     "unit"
+    ],
+    "cortoast": [
+     "unit"
+    ],
+    "legah": [
+     "unit"
+    ],
+    "legaheattank": [
+     "unit"
+    ],
+    "legamph": [
+     "unit"
+    ],
+    "legaskirmtank": [
+     "unit"
+    ],
+    "legbal": [
+     "unit"
+    ],
+    "legbastion": [
+     "unit"
+    ],
+    "legcen": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ],
+    "legeheatraymech": [
+     "unit"
+    ],
+    "legehovertank": [
+     "unit"
+    ],
+    "legerailtank": [
+     "unit"
+    ],
+    "legeshotgunmech": [
+     "unit"
+    ],
+    "legfloat": [
+     "unit"
+    ],
+    "leggat": [
+     "unit"
+    ],
+    "leggob": [
+     "unit"
+    ],
+    "leghades": [
+     "unit"
+    ],
+    "leghelios": [
+     "unit"
+    ],
+    "leginc": [
+     "unit"
+    ],
+    "legjav": [
+     "unit"
+    ],
+    "legkark": [
+     "unit"
+    ],
+    "legkeres": [
+     "unit"
+    ],
+    "leglob": [
+     "unit"
+    ],
+    "legmed": [
+     "unit"
+    ],
+    "legmrv": [
+     "unit"
+    ],
+    "legrail": [
+     "unit"
+    ],
+    "legstr": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "turret yaw/pitch speeds supported (src/engine.rs); no re-aim latency",
+   "evidence_exporter": "turret speeds from customparams or unit script; reaimtime ignored; scripts with shared CATT include get instant yaw (make_catalog docstring)",
+   "current_behavior": "Aim response is slightly optimistic",
+   "suggested_fix": "Accept"
+  },
+  {
+   "id": "sight_air_sensors",
+   "title": "3D sensor details (air LOS, emit heights)",
+   "status": "approximate",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 54,
+   "player_games_weight": 3474,
+   "build_order_weight": 40770,
+   "example_units": [
+    "armcom",
+    "armrad",
+    "corcom",
+    "corrad",
+    "armap",
+    "armrl",
+    "corap",
+    "corrl"
+   ],
+   "units": {
+    "armaak": [
+     "unit"
+    ],
+    "armaap": [
+     "unit"
+    ],
+    "armah": [
+     "unit"
+    ],
+    "armanni": [
+     "unit"
+    ],
+    "armap": [
+     "unit"
+    ],
+    "armarad": [
+     "unit"
+    ],
+    "armbanth": [
+     "unit"
+    ],
+    "armcir": [
+     "unit"
+    ],
+    "armcom": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "armferret": [
+     "unit"
+    ],
+    "armflak": [
+     "unit"
+    ],
+    "armjeth": [
+     "unit"
+    ],
+    "armmercury": [
+     "unit"
+    ],
+    "armrad": [
+     "unit"
+    ],
+    "armrl": [
+     "unit"
+    ],
+    "armsam": [
+     "unit"
+    ],
+    "armyork": [
+     "unit"
+    ],
+    "coraak": [
+     "unit"
+    ],
+    "coraap": [
+     "unit"
+    ],
+    "corah": [
+     "unit"
+    ],
+    "corap": [
+     "unit"
+    ],
+    "corarad": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "corcrash": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "cordoom": [
+     "unit"
+    ],
+    "corerad": [
+     "unit"
+    ],
+    "corflak": [
+     "unit"
+    ],
+    "cormadsam": [
+     "unit"
+    ],
+    "cormist": [
+     "unit"
+    ],
+    "corrad": [
+     "unit"
+    ],
+    "corrl": [
+     "unit"
+    ],
+    "corscreamer": [
+     "unit"
+    ],
+    "corsent": [
+     "unit"
+    ],
+    "legaabot": [
+     "unit"
+    ],
+    "legaap": [
+     "unit"
+    ],
+    "legadvaabot": [
+     "unit"
+    ],
+    "legah": [
+     "unit"
+    ],
+    "legap": [
+     "unit"
+    ],
+    "legarad": [
+     "unit"
+    ],
+    "legbastion": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ],
+    "legeshotgunmech": [
+     "unit"
+    ],
+    "legflak": [
+     "unit"
+    ],
+    "leglraa": [
+     "unit"
+    ],
+    "leglupara": [
+     "unit"
+    ],
+    "legmg": [
+     "unit"
+    ],
+    "legrad": [
+     "unit"
+    ],
+    "legrail": [
+     "unit"
+    ],
+    "legrhapsis": [
+     "unit"
+    ],
+    "legrl": [
+     "unit"
+    ],
+    "legvflak": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "src/score.rs:499 declares sensors are 2D horizontal masks",
+   "evidence_exporter": "sight_distance and radar_radius exported",
+   "current_behavior": "Emit height and air-specific LOS ignored",
+   "suggested_fix": "Accept"
+  },
+  {
+   "id": "juno_special",
+   "title": "Juno / script-only special weapons",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 30,
+   "player_games_weight": 2019,
+   "build_order_weight": 12737,
+   "example_units": [
+    "armrad",
+    "armflea",
+    "armfav",
+    "corrad",
+    "corfav",
+    "armarad",
+    "armaser",
+    "armmark"
+   ],
+   "units": {
+    "armarad": [
+     "unit"
+    ],
+    "armaser": [
+     "unit"
+    ],
+    "armeyes": [
+     "unit"
+    ],
+    "armfav": [
+     "unit"
+    ],
+    "armflea": [
+     "unit"
+    ],
+    "armjam": [
+     "unit"
+    ],
+    "armjamt": [
+     "unit"
+    ],
+    "armmark": [
+     "unit"
+    ],
+    "armrad": [
+     "unit"
+    ],
+    "armseer": [
+     "unit"
+    ],
+    "armveil": [
+     "unit"
+    ],
+    "corarad": [
+     "unit"
+    ],
+    "coreter": [
+     "unit"
+    ],
+    "coreyes": [
+     "unit"
+    ],
+    "corfav": [
+     "unit"
+    ],
+    "corjamt": [
+     "unit"
+    ],
+    "corrad": [
+     "unit"
+    ],
+    "corshroud": [
+     "unit"
+    ],
+    "corspec": [
+     "unit"
+    ],
+    "corvoyr": [
+     "unit"
+    ],
+    "corvrad": [
+     "unit"
+    ],
+    "legajam": [
+     "unit"
+    ],
+    "legajamk": [
+     "unit"
+    ],
+    "legarad": [
+     "unit"
+    ],
+    "legaradk": [
+     "unit"
+    ],
+    "legavjam": [
+     "unit"
+    ],
+    "legavrad": [
+     "unit"
+    ],
+    "legjam": [
+     "unit"
+    ],
+    "legrad": [
+     "unit"
+    ],
+    "legscout": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no model",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Juno radar/jammer pulse missing",
+   "suggested_fix": "Accept"
+  },
+  {
+   "id": "crush_interaction",
+   "title": "Crushing and crush resistance",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 12,
+   "player_games_weight": 1695,
+   "build_order_weight": 24288,
+   "example_units": [
+    "armpw",
+    "armflea",
+    "armfav",
+    "corak",
+    "corfav",
+    "armdrag",
+    "cordrag",
+    "leggob"
+   ],
+   "units": {
+    "armdrag": [
+     "unit"
+    ],
+    "armfav": [
+     "unit"
+    ],
+    "armflea": [
+     "unit"
+    ],
+    "armfort": [
+     "unit"
+    ],
+    "armpw": [
+     "unit"
+    ],
+    "corak": [
+     "unit"
+    ],
+    "cordrag": [
+     "unit"
+    ],
+    "corfav": [
+     "unit"
+    ],
+    "corfort": [
+     "unit"
+    ],
+    "legdrag": [
+     "unit"
+    ],
+    "legforti": [
+     "unit"
+    ],
+    "leggob": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "only a crushable:false constant (src/world.rs:4426,4457)",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Tracked units do not run over small units",
+   "suggested_fix": "Low priority"
+  },
+  {
+   "id": "missile_flight",
+   "title": "Missile acceleration, starburst climb, overrange/descent",
+   "status": "approximate",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 63,
+   "player_games_weight": 1293,
+   "build_order_weight": 19204,
+   "example_units": [
+    "armrl",
+    "armjanus",
+    "corrl",
+    "armsam",
+    "armjeth",
+    "armrock",
+    "armamd",
+    "cormist"
+   ],
+   "units": {
+    "armaak": [
+     "Long-Range Anti-Air Missile Launcher",
+     "Medium-Range Anti-Air Missile Launcher"
+    ],
+    "armah": [
+     "Light g2a missile launcher"
+    ],
+    "armamd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armamph": [
+     "Light g2a missile launcher"
+    ],
+    "armbanth": [
+     "Heavy g2g/g2a guided starburst missile launcher"
+    ],
+    "armcir": [
+     "Rapid-fire long-range g2a missile barrel"
+    ],
+    "armcroc": [
+     "Light g2a missile launcher"
+    ],
+    "armemp": [
+     "Heavy long-range g2g EMP starburst rocket"
+    ],
+    "armferret": [
+     "Pop-up rapid-fire g2a missile launcher"
+    ],
+    "armjanus": [
+     "Heavy g2g dual-missile launcher",
+     "Heavy g2g dual-missile launcher"
+    ],
+    "armjeth": [
+     "Light g2a missile launcher"
+    ],
+    "armjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "armmar": [
+     "Guided g2a missile launcher"
+    ],
+    "armmercury": [
+     "Heavy long-range g2a guided missile launcher"
+    ],
+    "armmerl": [
+     "Heavy long-range g2g high-trajectory starburst rocket launcher"
+    ],
+    "armmh": [
+     "Light long-range g2g starburst rocket launcher"
+    ],
+    "armrl": [
+     "Light g2a missile launcher"
+    ],
+    "armrock": [
+     "Medium g2g rocket launcher"
+    ],
+    "armsam": [
+     "Light g2a missile launcher",
+     "Light g2g missile launcher"
+    ],
+    "armscab": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armsilo": [
+     "Intercontinental ballistic nuclear warhead"
+    ],
+    "armsptk": [
+     "Parabolic trajectory g2g multi-rocket launcher"
+    ],
+    "coraak": [
+     "Missiles"
+    ],
+    "corah": [
+     "Missiles"
+    ],
+    "corban": [
+     "Banisher"
+    ],
+    "corcat": [
+     "CatapultRockets"
+    ],
+    "corcrash": [
+     "Missiles"
+    ],
+    "cordemon": [
+     "ShoulderRockets"
+    ],
+    "corerad": [
+     "Long-range rapid-fire g2a missile launcher"
+    ],
+    "corfmd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "corhrk": [
+     "HeavyRockets"
+    ],
+    "corjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "corkarg": [
+     "KarganethMissiles",
+     "ShoulderRockets"
+    ],
+    "corkorg": [
+     "HeavyRockets"
+    ],
+    "cormabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "cormadsam": [
+     "Advanced g2a rapid missile launcher"
+    ],
+    "cormexp": [
+     "Heavy g2g/g2a barrage missile launcher"
+    ],
+    "cormh": [
+     "Rocket"
+    ],
+    "cormist": [
+     "Light g2a missile launcher",
+     "Light g2g missile launcher"
+    ],
+    "corrl": [
+     "Light g2a missile launcher"
+    ],
+    "corscreamer": [
+     "Long-range heavy g2a missile launcher"
+    ],
+    "corshiva": [
+     "HeavyRockets"
+    ],
+    "corsilo": [
+     "Intercontinental thermonuclear ballistic missile"
+    ],
+    "corstorm": [
+     "Rockets"
+    ],
+    "cortron": [
+     "Long range tactical g2g nuclear warheads"
+    ],
+    "corvipe": [
+     "Heavy g2g sabot rocket launcher"
+    ],
+    "corvroc": [
+     "Rocket"
+    ],
+    "legaabot": [
+     "Advanced g2a Salvo Missile Launcher"
+    ],
+    "legabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "legavantinuke": [
+     "ICBM Interceptor Missile Launcher"
+    ],
+    "legavroc": [
+     "Heavy Long-Range g2g High-Trajectory Starburst Rocket Launcher"
+    ],
+    "legbal": [
+     "Rockets"
+    ],
+    "legcom": [
+     "Anti-Air Missile Launcher"
+    ],
+    "legdecom": [
+     "Anti-Air Missile Launcher"
+    ],
+    "legehovertank": [
+     "Parabolic Trajectory Multi-Rocket Launcher",
+     "Parabolic Trajectory Multi-Rocket Launcher"
+    ],
+    "legeshotgunmech": [
+     "Parabolic Trajectory Multi-Rocket Launcher"
+    ],
+    "leghrk": [
+     "CatapultRockets"
+    ],
+    "legjuno": [
+     "Anti-Radar/Jammer/Mine Electromagnetic Payload"
+    ],
+    "legmed": [
+     "Hexaburst Homing Siege Rockets"
+    ],
+    "legmh": [
+     "Rocket"
+    ],
+    "legrhapsis": [
+     "Advanced g2a Salvo Missile Launcher"
+    ],
+    "legrl": [
+     "Light g2a Missile Launcher"
+    ],
+    "legsilo": [
+     "Intercontinental Thermonuclear Ballistic Missile"
+    ]
+   },
+   "evidence_runtime": "src/score.rs:495 declares 'weapon acceleration, bounce... omitted'; guided rounds use tracks/projectile_turn_rate (src/engine.rs:775,2085)",
+   "evidence_exporter": "time-averaged missile speed (make_catalog.missile_speed); overrange_distance and descent ignored",
+   "current_behavior": "Missile timing and long-range falloff are approximate",
+   "suggested_fix": "Accept as declared approximation"
+  },
+  {
+   "id": "sonar",
+   "title": "Sonar radius",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 23,
+   "player_games_weight": 1183,
+   "build_order_weight": 826,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "armpincer",
+    "armdl",
+    "corgarp",
+    "armcroc",
+    "legcom",
+    "cordl"
+   ],
+   "units": {
+    "armah": [
+     "unit"
+    ],
+    "armcom": [
+     "unit"
+    ],
+    "armcroc": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "armdl": [
+     "unit"
+    ],
+    "armlun": [
+     "unit"
+    ],
+    "armpincer": [
+     "unit"
+    ],
+    "corah": [
+     "unit"
+    ],
+    "coramph": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "cordl": [
+     "unit"
+    ],
+    "corgarp": [
+     "unit"
+    ],
+    "corparrow": [
+     "unit"
+    ],
+    "corsala": [
+     "unit"
+    ],
+    "corsok": [
+     "unit"
+    ],
+    "legah": [
+     "unit"
+    ],
+    "legamph": [
+     "unit"
+    ],
+    "legamphtank": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legctl": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ],
+    "legehovertank": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "sonar_radius is stored (src/model.rs) but no world/engine consumer exists though CAPABILITY_SONAR is declared",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Moot on land maps (mostly water-bound units)",
+   "suggested_fix": "Low priority"
+  },
+  {
+   "id": "water_weapons",
+   "title": "Water/torpedo weapons on land-capable units",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 21,
+   "player_games_weight": 1126,
+   "build_order_weight": 449,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "armdl",
+    "armspy",
+    "legcom",
+    "cordl",
+    "armvader",
+    "corspy"
+   ],
+   "units": {
+    "armcom": [
+     "Light underwater-combat laser",
+     "Disintegrator"
+    ],
+    "armdecom": [
+     "J7NSLaser",
+     "Decoy-disintegrator"
+    ],
+    "armdl": [
+     "Depthcharge launcher"
+    ],
+    "armlun": [
+     "Depthcharge launcher"
+    ],
+    "armspy": [
+     "Dummy Weapon"
+    ],
+    "armvader": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "coramph": [
+     "Torpedo"
+    ],
+    "corcom": [
+     "J7NSLaser",
+     "Disintegrator"
+    ],
+    "cordecom": [
+     "J7NSLaser",
+     "Disintegrator"
+    ],
+    "cordl": [
+     "Depthcharge launcher"
+    ],
+    "corroach": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "corsktl": [
+     "Crawlingbomb Dummy Weapon"
+    ],
+    "corsok": [
+     "Depthcharge launcher"
+    ],
+    "corspy": [
+     "Dummy Weapon"
+    ],
+    "legamph": [
+     "Depthcharge launcher"
+    ],
+    "legaspy": [
+     "coconut.jpg"
+    ],
+    "legcom": [
+     "Underwater Torpedo Launcher",
+     "Disintegrator"
+    ],
+    "legctl": [
+     "Homing Torpedo Launcher"
+    ],
+    "legdecom": [
+     "Underwater Torpedo Launcher",
+     "Disintegrator"
+    ],
+    "legehovertank": [
+     "Depthcharge Launcher"
+    ],
+    "legsnapper": [
+     "Crawlingbomb Dummy Weapon"
+    ]
+   },
+   "evidence_runtime": "no waterweapon/firesubmersed logic in src/engine.rs",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Torpedo weapons are fired like cannons or never; irrelevant on dry maps",
+   "suggested_fix": "Gate by water depth"
+  },
+  {
+   "id": "auto_heal",
+   "title": "Autoheal / idle autoheal",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 10,
+   "player_games_weight": 1113,
+   "build_order_weight": 328,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "armfark",
+    "armmav",
+    "legcom",
+    "armspid",
+    "cordecom",
+    "legdecom"
+   ],
+   "units": {
+    "armcom": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "armfark": [
+     "unit"
+    ],
+    "armmav": [
+     "unit"
+    ],
+    "armspid": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "cormando": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no consumer",
+   "evidence_exporter": "not exported",
+   "current_behavior": "No passive healing",
+   "suggested_fix": "Add regen fields"
+  },
+  {
+   "id": "capture_terraform",
+   "title": "Capture, restore and terraform orders",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 6,
+   "player_games_weight": 1055,
+   "build_order_weight": 2,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "legcom",
+    "cordecom",
+    "legdecom",
+    "armdecom"
+   ],
+   "units": {
+    "armcom": [
+     "unit"
+    ],
+    "armdecom": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no capture/restore orders in src/strategy.rs StrategyAction",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Capture/restore commands cannot be issued",
+   "suggested_fix": "Low priority"
+  },
+  {
+   "id": "respawn_and_carriers",
+   "title": "Commander respawn pad (spawnpad_unit) and weapon-spawned drones",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 3,
+   "player_games_weight": 1054,
+   "build_order_weight": 0,
+   "example_units": [
+    "armcom",
+    "corcom",
+    "legcom"
+   ],
+   "units": {
+    "armcom": [
+     "unit"
+    ],
+    "corcom": [
+     "unit"
+    ],
+    "legcom": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no spawn model",
+   "evidence_exporter": "not exported (gadget: luarules/gadgets/game_commander_builder.lua)",
+   "current_behavior": "Commanders have no respawn pad; no carried drones",
+   "suggested_fix": "Accept; commander respawn is a game option"
+  },
+  {
+   "id": "radar_stealth",
+   "title": "Radar/sonar stealth flags",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 33,
+   "player_games_weight": 226,
+   "build_order_weight": 9120,
+   "example_units": [
+    "armamex",
+    "armferret",
+    "armmlv",
+    "cormaw",
+    "armspy",
+    "armmerl",
+    "armmine1",
+    "cormlv"
+   ],
+   "units": {
+    "armamex": [
+     "unit"
+    ],
+    "armeyes": [
+     "unit"
+    ],
+    "armferret": [
+     "unit"
+    ],
+    "armfmine3": [
+     "unit"
+    ],
+    "armgremlin": [
+     "unit"
+    ],
+    "armjuno": [
+     "unit"
+    ],
+    "armmerl": [
+     "unit"
+    ],
+    "armmine1": [
+     "unit"
+    ],
+    "armmine2": [
+     "unit"
+    ],
+    "armmine3": [
+     "unit"
+    ],
+    "armmlv": [
+     "unit"
+    ],
+    "armspid": [
+     "unit"
+    ],
+    "armspy": [
+     "unit"
+    ],
+    "coreyes": [
+     "unit"
+    ],
+    "corfmine3": [
+     "unit"
+    ],
+    "corjuno": [
+     "unit"
+    ],
+    "cormaw": [
+     "unit"
+    ],
+    "cormine1": [
+     "unit"
+    ],
+    "cormine2": [
+     "unit"
+    ],
+    "cormine3": [
+     "unit"
+    ],
+    "cormlv": [
+     "unit"
+    ],
+    "corspy": [
+     "unit"
+    ],
+    "corvroc": [
+     "unit"
+    ],
+    "legaspy": [
+     "unit"
+    ],
+    "legavroc": [
+     "unit"
+    ],
+    "legdtr": [
+     "unit"
+    ],
+    "legeyes": [
+     "unit"
+    ],
+    "leginfestor": [
+     "unit"
+    ],
+    "legjuno": [
+     "unit"
+    ],
+    "legmine1": [
+     "unit"
+    ],
+    "legmine2": [
+     "unit"
+    ],
+    "legmine3": [
+     "unit"
+    ],
+    "legmlv": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no `stealth` consumer in src/",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Stealth units show on radar",
+   "suggested_fix": "Add a stealth flag to observation masks"
+  },
+  {
+   "id": "stockpile",
+   "title": "Stockpiled weapons (stockpilelimit)",
+   "status": "approximate",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 16,
+   "player_games_weight": 174,
+   "build_order_weight": 6815,
+   "example_units": [
+    "armamd",
+    "corfmd",
+    "armsilo",
+    "armmercury",
+    "corsilo",
+    "corscreamer",
+    "armjuno",
+    "armemp"
+   ],
+   "units": {
+    "armamd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armemp": [
+     "Heavy long-range g2g EMP starburst rocket"
+    ],
+    "armjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "armmercury": [
+     "Heavy long-range g2a guided missile launcher"
+    ],
+    "armscab": [
+     "ICBM intercepting missile launcher"
+    ],
+    "armsilo": [
+     "Intercontinental ballistic nuclear warhead"
+    ],
+    "corfmd": [
+     "ICBM intercepting missile launcher"
+    ],
+    "corjuno": [
+     "Anti radar/minefield/jammer magnetic impulse rocket"
+    ],
+    "cormabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "corscreamer": [
+     "Long-range heavy g2a missile launcher"
+    ],
+    "corsilo": [
+     "Intercontinental thermonuclear ballistic missile"
+    ],
+    "cortron": [
+     "Long range tactical g2g nuclear warheads"
+    ],
+    "legabm": [
+     "ICBM intercepting missile launcher"
+    ],
+    "legavantinuke": [
+     "ICBM Interceptor Missile Launcher"
+    ],
+    "legjuno": [
+     "Anti-Radar/Jammer/Mine Electromagnetic Payload"
+    ],
+    "legsilo": [
+     "Intercontinental Thermonuclear Ballistic Missile"
+    ]
+   },
+   "evidence_runtime": "src/engine.rs:1446,1487; src/model.rs WeaponState keeps ONE stockpiled round queued",
+   "evidence_exporter": "stockpile + stockpile_time exported; customparams.stockpilelimit ignored",
+   "current_behavior": "Magazine depth is 1 regardless of stockpilelimit",
+   "suggested_fix": "Add a stockpile_limit field"
+  },
+  {
+   "id": "slaved_weapons",
+   "title": "Slaved weapon mounts (shared fire)",
+   "status": "export_gap",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 7,
+   "player_games_weight": 114,
+   "build_order_weight": 596,
+   "example_units": [
+    "armjanus",
+    "legadvaabot",
+    "legapopupdef",
+    "legkeres",
+    "legerailtank",
+    "legeshotgunmech",
+    "legmed"
+   ],
+   "units": {
+    "armjanus": [
+     "JANUS_ROCKET"
+    ],
+    "legadvaabot": [
+     "aa_railgun"
+    ],
+    "legapopupdef": [
+     "standard_minigun",
+     "standard_minigun"
+    ],
+    "legerailtank": [
+     "T3_RAIL_ACCELERATOR",
+     "T3_RAIL_ACCELERATOR"
+    ],
+    "legeshotgunmech": [
+     "SHOTGUN",
+     "adv_rocket"
+    ],
+    "legkeres": [
+     "LEGKERES_GATLING",
+     "LEGKERES_GATLING"
+    ],
+    "legmed": [
+     "LEGMED_MISSILE"
+    ]
+   },
+   "evidence_runtime": "WeaponDef has no slave link; each mount fires independently",
+   "evidence_exporter": "scripts/make_catalog.py:161 merges slaved mounts into projectiles, but prepare_from_replays.unit_entry (used for these catalogs) loops all mounts and does not",
+   "current_behavior": "Slaved barrels (e.g. armjanus: two JANUS_ROCKET mounts) export as two independent weapons: total salvo damage is similar, but they aim and retarget separately and per-shot energy/metal/stockpile costs are doubled",
+   "suggested_fix": "Reuse make_catalog's slaveto merge in unit_entry"
+  },
+  {
+   "id": "self_destruct_mines",
+   "title": "Instant self-destruct and mines",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 15,
+   "player_games_weight": 39,
+   "build_order_weight": 6055,
+   "example_units": [
+    "armmine1",
+    "armmine2",
+    "armvader",
+    "cormine1",
+    "corroach",
+    "cormine2",
+    "cormine3",
+    "corsktl"
+   ],
+   "units": {
+    "armfmine3": [
+     "unit"
+    ],
+    "armmine1": [
+     "unit"
+    ],
+    "armmine2": [
+     "unit"
+    ],
+    "armmine3": [
+     "unit"
+    ],
+    "armvader": [
+     "unit"
+    ],
+    "corfmine3": [
+     "unit"
+    ],
+    "cormine1": [
+     "unit"
+    ],
+    "cormine2": [
+     "unit"
+    ],
+    "cormine3": [
+     "unit"
+    ],
+    "corroach": [
+     "unit"
+    ],
+    "corsktl": [
+     "unit"
+    ],
+    "legmine1": [
+     "unit"
+    ],
+    "legmine2": [
+     "unit"
+    ],
+    "legmine3": [
+     "unit"
+    ],
+    "legsnapper": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no self-destruct or proximity-detonation model; gadgets: unit_instant_self_destruct.lua, unit_minesweeper_detection.lua",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Crawling bombs and mines do not detonate",
+   "suggested_fix": "Add self-destruct order and proximity trigger"
+  },
+  {
+   "id": "bounce_projectiles",
+   "title": "Bouncing projectiles",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 4,
+   "player_games_weight": 37,
+   "build_order_weight": 211,
+   "example_units": [
+    "armdl",
+    "cordl",
+    "legctl",
+    "legamph"
+   ],
+   "units": {
+    "armdl": [
+     "Depthcharge launcher"
+    ],
+    "cordl": [
+     "Depthcharge launcher"
+    ],
+    "legamph": [
+     "Depthcharge launcher"
+    ],
+    "legctl": [
+     "Homing Torpedo Launcher"
+    ]
+   },
+   "evidence_runtime": "src/score.rs:495 states bounce is omitted",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Bounce cannon rounds detonate on first impact",
+   "suggested_fix": "Accept"
+  },
+  {
+   "id": "decoys",
+   "title": "Decoy units (decoyfor)",
+   "status": "unsupported",
+   "severity": "low",
+   "wrong_behavior": false,
+   "units_affected": 7,
+   "player_games_weight": 27,
+   "build_order_weight": 345,
+   "example_units": [
+    "cormaw",
+    "cormexp",
+    "legdtr",
+    "cordecom",
+    "legdecom",
+    "armdecom",
+    "armdf"
+   ],
+   "units": {
+    "armdecom": [
+     "unit"
+    ],
+    "armdf": [
+     "unit"
+    ],
+    "cordecom": [
+     "unit"
+    ],
+    "cormaw": [
+     "unit"
+    ],
+    "cormexp": [
+     "unit"
+    ],
+    "legdecom": [
+     "unit"
+    ],
+    "legdtr": [
+     "unit"
+    ]
+   },
+   "evidence_runtime": "no decoy model",
+   "evidence_exporter": "not exported",
+   "current_behavior": "Decoy commanders have distinct stats but no decoy semantic",
+   "suggested_fix": "Accept"
+  }
+ ],
+ "status_counts": {
+  "export_gap": 8,
+  "unsupported": 14,
+  "approximate": 6
+ },
+ "units_with_any_gap": 353,
+ "units": {
+  "armaak": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 20,
+    "build_orders": 88
+   }
+  },
+  "armaap": {
+   "features": [
+    "death_explosions_wrecks",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 48,
+    "build_orders": 1385
+   }
+  },
+  "armack": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 85,
+    "build_orders": 296
+   }
+  },
+  "armacv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 78,
+    "build_orders": 342
+   }
+  },
+  "armadvsol": {
+   "features": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 135,
+    "build_orders": 2228
+   }
+  },
+  "armafus": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 64,
+    "build_orders": 2079
+   }
+  },
+  "armageo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 30,
+    "build_orders": 88
+   }
+  },
+  "armah": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 34
+   }
+  },
+  "armalab": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 116,
+    "build_orders": 230
+   }
+  },
+  "armamb": {
+   "features": [
+    "cloak",
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 20,
+    "build_orders": 227
+   }
+  },
+  "armamd": {
+   "features": [
+    "interceptor_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 50,
+    "build_orders": 978
+   }
+  },
+  "armamex": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 42,
+    "build_orders": 714
+   }
+  },
+  "armamph": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 2490
+   }
+  },
+  "armanac": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 62
+   }
+  },
+  "armanni": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 31,
+    "build_orders": 1029
+   }
+  },
+  "armap": {
+   "features": [
+    "death_explosions_wrecks",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 297,
+    "build_orders": 403
+   }
+  },
+  "armarad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 39,
+    "build_orders": 164
+   }
+  },
+  "armart": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 33,
+    "build_orders": 144
+   }
+  },
+  "armaser": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 34,
+    "build_orders": 113
+   }
+  },
+  "armavp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 99,
+    "build_orders": 193
+   }
+  },
+  "armbanth": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 20,
+    "build_orders": 89
+   }
+  },
+  "armbeamer": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 319,
+    "build_orders": 8493
+   }
+  },
+  "armbeaver": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 49,
+    "build_orders": 111
+   }
+  },
+  "armbrtha": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 14,
+    "build_orders": 78
+   }
+  },
+  "armbull": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 62,
+    "build_orders": 437
+   }
+  },
+  "armch": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 16,
+    "build_orders": 71
+   }
+  },
+  "armcir": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 36,
+    "build_orders": 459
+   }
+  },
+  "armck": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 427,
+    "build_orders": 2908
+   }
+  },
+  "armckfus": {
+   "features": [
+    "cloak",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 20
+   }
+  },
+  "armcom": {
+   "features": [
+    "manual_fire_weapons",
+    "cloak",
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "auto_heal",
+    "respawn_and_carriers",
+    "capture_terraform",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 693,
+    "build_orders": 0
+   }
+  },
+  "armconsul": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 39,
+    "build_orders": 234
+   }
+  },
+  "armcroc": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 13,
+    "build_orders": 148
+   }
+  },
+  "armcv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 397,
+    "build_orders": 2845
+   }
+  },
+  "armdecom": {
+   "features": [
+    "manual_fire_weapons",
+    "cloak",
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "auto_heal",
+    "decoys",
+    "capture_terraform",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "armdf": {
+   "features": [
+    "death_explosions_wrecks",
+    "decoys"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "armdl": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bounce_projectiles",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 24,
+    "build_orders": 102
+   }
+  },
+  "armdrag": {
+   "features": [
+    "death_explosions_wrecks",
+    "crush_interaction"
+   ],
+   "usage": {
+    "player_games": 99,
+    "build_orders": 6785
+   }
+  },
+  "armemp": {
+   "features": [
+    "manual_fire_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 10
+   }
+  },
+  "armestor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 326,
+    "build_orders": 873
+   }
+  },
+  "armeyes": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 96
+   }
+  },
+  "armfark": {
+   "features": [
+    "death_explosions_wrecks",
+    "auto_heal"
+   ],
+   "usage": {
+    "player_games": 32,
+    "build_orders": 196
+   }
+  },
+  "armfast": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 18,
+    "build_orders": 141
+   }
+  },
+  "armfav": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "juno_special",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 321,
+    "build_orders": 3136
+   }
+  },
+  "armfboy": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 23,
+    "build_orders": 86
+   }
+  },
+  "armferret": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "damage_modifier",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 29,
+    "build_orders": 1473
+   }
+  },
+  "armfido": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 52,
+    "build_orders": 380
+   }
+  },
+  "armflak": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 36,
+    "build_orders": 12734
+   }
+  },
+  "armflash": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 477,
+    "build_orders": 5594
+   }
+  },
+  "armflea": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "juno_special",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 328,
+    "build_orders": 2163
+   }
+  },
+  "armfmine3": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "armfort": {
+   "features": [
+    "death_explosions_wrecks",
+    "crush_interaction"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 199
+   }
+  },
+  "armfus": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 109,
+    "build_orders": 891
+   }
+  },
+  "armgate": {
+   "features": [
+    "shield_weapons",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 13,
+    "build_orders": 55
+   }
+  },
+  "armgeo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 97,
+    "build_orders": 348
+   }
+  },
+  "armgmm": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 7
+   }
+  },
+  "armgremlin": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 35
+   }
+  },
+  "armguard": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 64
+   }
+  },
+  "armham": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 152,
+    "build_orders": 1227
+   }
+  },
+  "armhlt": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 51,
+    "build_orders": 328
+   }
+  },
+  "armhp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 15,
+    "build_orders": 21
+   }
+  },
+  "armjam": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 23,
+    "build_orders": 78
+   }
+  },
+  "armjamt": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 28,
+    "build_orders": 94
+   }
+  },
+  "armjanus": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 111,
+    "build_orders": 568
+   }
+  },
+  "armjeth": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 78,
+    "build_orders": 390
+   }
+  },
+  "armjuno": {
+   "features": [
+    "manual_fire_weapons",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 14
+   }
+  },
+  "armlab": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 488,
+    "build_orders": 813
+   }
+  },
+  "armllt": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 634,
+    "build_orders": 12905
+   }
+  },
+  "armlun": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 40
+   }
+  },
+  "armmakr": {
+   "features": [
+    "energy_converters",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 221,
+    "build_orders": 7003
+   }
+  },
+  "armmanni": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 32,
+    "build_orders": 379
+   }
+  },
+  "armmar": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 29,
+    "build_orders": 207
+   }
+  },
+  "armmark": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 32,
+    "build_orders": 85
+   }
+  },
+  "armmart": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 24,
+    "build_orders": 158
+   }
+  },
+  "armmav": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "auto_heal",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 87
+   }
+  },
+  "armmercury": {
+   "features": [
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 3568
+   }
+  },
+  "armmerl": {
+   "features": [
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 13,
+    "build_orders": 118
+   }
+  },
+  "armmex": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 697,
+    "build_orders": 115416
+   }
+  },
+  "armmh": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 30
+   }
+  },
+  "armmine1": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 4818
+   }
+  },
+  "armmine2": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 235
+   }
+  },
+  "armmine3": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "armmlv": {
+   "features": [
+    "radar_stealth",
+    "radar_jammers",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 21,
+    "build_orders": 86
+   }
+  },
+  "armmmkr": {
+   "features": [
+    "energy_converters",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 42,
+    "build_orders": 24848
+   }
+  },
+  "armmoho": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 152,
+    "build_orders": 18568
+   }
+  },
+  "armmstor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 65,
+    "build_orders": 99
+   }
+  },
+  "armnanotc": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 616,
+    "build_orders": 112147
+   }
+  },
+  "armnanotct2": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 8802
+   }
+  },
+  "armpb": {
+   "features": [
+    "cloak",
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 54,
+    "build_orders": 465
+   }
+  },
+  "armpincer": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 42,
+    "build_orders": 258
+   }
+  },
+  "armpw": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 438,
+    "build_orders": 4932
+   }
+  },
+  "armrad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 618,
+    "build_orders": 3351
+   }
+  },
+  "armraz": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 46,
+    "build_orders": 311
+   }
+  },
+  "armrl": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 196,
+    "build_orders": 1378
+   }
+  },
+  "armrock": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 68,
+    "build_orders": 497
+   }
+  },
+  "armsam": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 80,
+    "build_orders": 514
+   }
+  },
+  "armscab": {
+   "features": [
+    "interceptor_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 16
+   }
+  },
+  "armsd": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 73
+   }
+  },
+  "armseer": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 25,
+    "build_orders": 73
+   }
+  },
+  "armsh": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 14,
+    "build_orders": 80
+   }
+  },
+  "armshltx": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 66,
+    "build_orders": 274
+   }
+  },
+  "armsilo": {
+   "features": [
+    "manual_fire_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight"
+   ],
+   "usage": {
+    "player_games": 24,
+    "build_orders": 210
+   }
+  },
+  "armsnipe": {
+   "features": [
+    "cloak",
+    "death_explosions_wrecks",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 29,
+    "build_orders": 229
+   }
+  },
+  "armsolar": {
+   "features": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 489,
+    "build_orders": 10944
+   }
+  },
+  "armspid": {
+   "features": [
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "auto_heal",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 43
+   }
+  },
+  "armsptk": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 12
+   }
+  },
+  "armspy": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 14,
+    "build_orders": 91
+   }
+  },
+  "armstump": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 200,
+    "build_orders": 1510
+   }
+  },
+  "armtarg": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 16,
+    "build_orders": 78
+   }
+  },
+  "armuwadves": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 14,
+    "build_orders": 79
+   }
+  },
+  "armuwadvms": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 42
+   }
+  },
+  "armuwgeo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "armvader": {
+   "features": [
+    "death_explosions_wrecks",
+    "bogus_weapons",
+    "water_weapons",
+    "bad_target_categories",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 31
+   }
+  },
+  "armvang": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 17,
+    "build_orders": 98
+   }
+  },
+  "armveil": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 17,
+    "build_orders": 127
+   }
+  },
+  "armvp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 443,
+    "build_orders": 1012
+   }
+  },
+  "armvulc": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 1
+   }
+  },
+  "armwar": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 194,
+    "build_orders": 1213
+   }
+  },
+  "armwin": {
+   "features": [
+    "death_explosions_wrecks",
+    "wind_output"
+   ],
+   "usage": {
+    "player_games": 564,
+    "build_orders": 148328
+   }
+  },
+  "armyork": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 31,
+    "build_orders": 148
+   }
+  },
+  "coraak": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 348
+   }
+  },
+  "coraap": {
+   "features": [
+    "death_explosions_wrecks",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 17,
+    "build_orders": 1406
+   }
+  },
+  "corack": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 41,
+    "build_orders": 148
+   }
+  },
+  "coracv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 42,
+    "build_orders": 239
+   }
+  },
+  "coradvsol": {
+   "features": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 83,
+    "build_orders": 1885
+   }
+  },
+  "corafus": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 28,
+    "build_orders": 625
+   }
+  },
+  "corageo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 12,
+    "build_orders": 34
+   }
+  },
+  "corah": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 22
+   }
+  },
+  "corak": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 308,
+    "build_orders": 3413
+   }
+  },
+  "coralab": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 51,
+    "build_orders": 151
+   }
+  },
+  "coramph": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "corap": {
+   "features": [
+    "death_explosions_wrecks",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 151,
+    "build_orders": 219
+   }
+  },
+  "corarad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 18,
+    "build_orders": 117
+   }
+  },
+  "coravp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 56,
+    "build_orders": 180
+   }
+  },
+  "corban": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 122
+   }
+  },
+  "corbhmth": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 3
+   }
+  },
+  "corbuzz": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 28
+   }
+  },
+  "corcan": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 20,
+    "build_orders": 120
+   }
+  },
+  "corcat": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 112
+   }
+  },
+  "corch": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 69
+   }
+  },
+  "corck": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 248,
+    "build_orders": 1655
+   }
+  },
+  "corcom": {
+   "features": [
+    "manual_fire_weapons",
+    "cloak",
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "auto_heal",
+    "respawn_and_carriers",
+    "capture_terraform",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 349,
+    "build_orders": 0
+   }
+  },
+  "corcrash": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 40,
+    "build_orders": 201
+   }
+  },
+  "corcv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 175,
+    "build_orders": 1139
+   }
+  },
+  "cordecom": {
+   "features": [
+    "manual_fire_weapons",
+    "cloak",
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "auto_heal",
+    "decoys",
+    "capture_terraform",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 2
+   }
+  },
+  "cordemon": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 15,
+    "build_orders": 219
+   }
+  },
+  "cordl": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bounce_projectiles",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 10,
+    "build_orders": 98
+   }
+  },
+  "cordoom": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 12,
+    "build_orders": 457
+   }
+  },
+  "cordrag": {
+   "features": [
+    "death_explosions_wrecks",
+    "crush_interaction"
+   ],
+   "usage": {
+    "player_games": 58,
+    "build_orders": 2250
+   }
+  },
+  "corerad": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 146
+   }
+  },
+  "corestor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 161,
+    "build_orders": 415
+   }
+  },
+  "coreter": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 17,
+    "build_orders": 37
+   }
+  },
+  "corexp": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 97,
+    "build_orders": 1750
+   }
+  },
+  "coreyes": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 12
+   }
+  },
+  "corfast": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 13,
+    "build_orders": 152
+   }
+  },
+  "corfav": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "juno_special",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 122,
+    "build_orders": 1261
+   }
+  },
+  "corflak": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 17,
+    "build_orders": 3490
+   }
+  },
+  "corfmd": {
+   "features": [
+    "interceptor_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 27,
+    "build_orders": 227
+   }
+  },
+  "corfmine3": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "corfort": {
+   "features": [
+    "death_explosions_wrecks",
+    "crush_interaction"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "corfus": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 62,
+    "build_orders": 1572
+   }
+  },
+  "corgant": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 30,
+    "build_orders": 92
+   }
+  },
+  "corgarp": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 18,
+    "build_orders": 72
+   }
+  },
+  "corgate": {
+   "features": [
+    "shield_weapons",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 25
+   }
+  },
+  "corgator": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 245,
+    "build_orders": 1998
+   }
+  },
+  "corgeo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 37,
+    "build_orders": 134
+   }
+  },
+  "corgol": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 221
+   }
+  },
+  "corhal": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 5
+   }
+  },
+  "corhllt": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 158,
+    "build_orders": 2379
+   }
+  },
+  "corhlt": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 20,
+    "build_orders": 136
+   }
+  },
+  "corhp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 6
+   }
+  },
+  "corhrk": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 16
+   }
+  },
+  "corint": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 2
+   }
+  },
+  "corjamt": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 18,
+    "build_orders": 50
+   }
+  },
+  "corjugg": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 12
+   }
+  },
+  "corjuno": {
+   "features": [
+    "manual_fire_weapons",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 4
+   }
+  },
+  "corkarg": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 16
+   }
+  },
+  "corkorg": {
+   "features": [
+    "death_explosions_wrecks",
+    "bogus_weapons",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 18
+   }
+  },
+  "corlab": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 267,
+    "build_orders": 1785
+   }
+  },
+  "corlevlr": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 123,
+    "build_orders": 843
+   }
+  },
+  "corllt": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 322,
+    "build_orders": 5537
+   }
+  },
+  "cormabm": {
+   "features": [
+    "interceptor_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 10
+   }
+  },
+  "cormadsam": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 21,
+    "build_orders": 1039
+   }
+  },
+  "cormakr": {
+   "features": [
+    "energy_converters",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 90,
+    "build_orders": 6109
+   }
+  },
+  "cormando": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "auto_heal",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "cormart": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 18
+   }
+  },
+  "cormaw": {
+   "features": [
+    "radar_stealth",
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "damage_modifier",
+    "decoys"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 272
+   }
+  },
+  "cormex": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 351,
+    "build_orders": 76231
+   }
+  },
+  "cormexp": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "decoys"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 38
+   }
+  },
+  "cormh": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 8
+   }
+  },
+  "cormine1": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 597
+   }
+  },
+  "cormine2": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 170
+   }
+  },
+  "cormine3": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 188
+   }
+  },
+  "cormist": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 46,
+    "build_orders": 195
+   }
+  },
+  "cormlv": {
+   "features": [
+    "radar_stealth",
+    "radar_jammers",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 41
+   }
+  },
+  "cormmkr": {
+   "features": [
+    "energy_converters",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 20,
+    "build_orders": 655
+   }
+  },
+  "cormoho": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 71,
+    "build_orders": 7274
+   }
+  },
+  "cormort": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 19,
+    "build_orders": 125
+   }
+  },
+  "cormstor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 30,
+    "build_orders": 116
+   }
+  },
+  "cormuskrat": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 25,
+    "build_orders": 53
+   }
+  },
+  "cornanotc": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 315,
+    "build_orders": 49339
+   }
+  },
+  "cornanotct2": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 564
+   }
+  },
+  "corparrow": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 3
+   }
+  },
+  "corpun": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 13,
+    "build_orders": 54
+   }
+  },
+  "corpyro": {
+   "features": [
+    "death_explosions_wrecks",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 18,
+    "build_orders": 146
+   }
+  },
+  "corrad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 314,
+    "build_orders": 1609
+   }
+  },
+  "corraid": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 116,
+    "build_orders": 694
+   }
+  },
+  "correap": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 43,
+    "build_orders": 461
+   }
+  },
+  "corrl": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 111,
+    "build_orders": 858
+   }
+  },
+  "corroach": {
+   "features": [
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 13
+   }
+  },
+  "corsala": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 15
+   }
+  },
+  "corscreamer": {
+   "features": [
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 535
+   }
+  },
+  "corsd": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 12
+   }
+  },
+  "corsent": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 16,
+    "build_orders": 63
+   }
+  },
+  "corsh": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 10,
+    "build_orders": 49
+   }
+  },
+  "corshiva": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 15,
+    "build_orders": 159
+   }
+  },
+  "corshroud": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 28
+   }
+  },
+  "corsilo": {
+   "features": [
+    "manual_fire_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight"
+   ],
+   "usage": {
+    "player_games": 10,
+    "build_orders": 162
+   }
+  },
+  "corsktl": {
+   "features": [
+    "cloak",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 3
+   }
+  },
+  "corsnap": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 17
+   }
+  },
+  "corsok": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 9
+   }
+  },
+  "corsolar": {
+   "features": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 261,
+    "build_orders": 4304
+   }
+  },
+  "corspec": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 21
+   }
+  },
+  "corspy": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 49
+   }
+  },
+  "corstorm": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 35,
+    "build_orders": 174
+   }
+  },
+  "corsumo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 12,
+    "build_orders": 63
+   }
+  },
+  "cortarg": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 7
+   }
+  },
+  "cortermite": {
+   "features": [
+    "death_explosions_wrecks",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 1
+   }
+  },
+  "corthud": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 130,
+    "build_orders": 909
+   }
+  },
+  "cortoast": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 9,
+    "build_orders": 34
+   }
+  },
+  "cortrem": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 12
+   }
+  },
+  "cortron": {
+   "features": [
+    "manual_fire_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 12
+   }
+  },
+  "coruwadves": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 10
+   }
+  },
+  "coruwadvms": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 2
+   }
+  },
+  "corvipe": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 27,
+    "build_orders": 171
+   }
+  },
+  "corvoyr": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 12
+   }
+  },
+  "corvp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 239,
+    "build_orders": 582
+   }
+  },
+  "corvrad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 15,
+    "build_orders": 42
+   }
+  },
+  "corvroc": {
+   "features": [
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 16
+   }
+  },
+  "corwin": {
+   "features": [
+    "death_explosions_wrecks",
+    "wind_output"
+   ],
+   "usage": {
+    "player_games": 298,
+    "build_orders": 48218
+   }
+  },
+  "corwolv": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 16,
+    "build_orders": 107
+   }
+  },
+  "legaabot": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 13
+   }
+  },
+  "legaap": {
+   "features": [
+    "death_explosions_wrecks",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 22
+   }
+  },
+  "legabm": {
+   "features": [
+    "interceptor_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 223
+   }
+  },
+  "legaceb": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 6
+   }
+  },
+  "legack": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 25
+   }
+  },
+  "legacv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legadvaabot": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 17
+   }
+  },
+  "legadveconv": {
+   "features": [
+    "energy_converters",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 401
+   }
+  },
+  "legadvestore": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 1
+   }
+  },
+  "legadvsol": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 39
+   }
+  },
+  "legafcv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legafus": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 1304
+   }
+  },
+  "legageo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 4
+   }
+  },
+  "legah": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legaheattank": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legajam": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 2
+   }
+  },
+  "legajamk": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 2
+   }
+  },
+  "legalab": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 6,
+    "build_orders": 19
+   }
+  },
+  "legamph": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bounce_projectiles",
+    "water_weapons",
+    "reactive_armor",
+    "damage_modifier",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legamphtank": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 12
+   }
+  },
+  "legamstor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 121
+   }
+  },
+  "legap": {
+   "features": [
+    "death_explosions_wrecks",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 7
+   }
+  },
+  "legapopupdef": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "bad_target_categories",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 3
+   }
+  },
+  "legarad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legaradk": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 2
+   }
+  },
+  "legaskirmtank": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legaspy": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legavantinuke": {
+   "features": [
+    "interceptor_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legavjam": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legavp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 2
+   }
+  },
+  "legavrad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legavroc": {
+   "features": [
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legbal": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legbastion": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 1236
+   }
+  },
+  "legcar": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 4
+   }
+  },
+  "legcen": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 19
+   }
+  },
+  "legch": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 4
+   }
+  },
+  "legck": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 81
+   }
+  },
+  "legcom": {
+   "features": [
+    "manual_fire_weapons",
+    "cloak",
+    "sonar",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "water_weapons",
+    "bad_target_categories",
+    "auto_heal",
+    "respawn_and_carriers",
+    "capture_terraform",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 12,
+    "build_orders": 0
+   }
+  },
+  "legctl": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "bounce_projectiles",
+    "water_weapons",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 11
+   }
+  },
+  "legcv": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 12
+   }
+  },
+  "legdecom": {
+   "features": [
+    "manual_fire_weapons",
+    "cloak",
+    "sonar",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "water_weapons",
+    "bad_target_categories",
+    "auto_heal",
+    "decoys",
+    "capture_terraform",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legdeflector": {
+   "features": [
+    "shield_weapons",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 719
+   }
+  },
+  "legdrag": {
+   "features": [
+    "death_explosions_wrecks",
+    "crush_interaction"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 72
+   }
+  },
+  "legdtr": {
+   "features": [
+    "radar_stealth",
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "damage_modifier",
+    "decoys"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 33
+   }
+  },
+  "legeconv": {
+   "features": [
+    "energy_converters",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 113
+   }
+  },
+  "legeheatraymech": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 5
+   }
+  },
+  "legehovertank": {
+   "features": [
+    "sonar",
+    "death_explosions_wrecks",
+    "missile_flight",
+    "water_weapons",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legerailtank": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legeshotgunmech": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legestor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 8,
+    "build_orders": 8
+   }
+  },
+  "legeyes": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legflak": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 755
+   }
+  },
+  "legfloat": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legforti": {
+   "features": [
+    "death_explosions_wrecks",
+    "crush_interaction"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legfus": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 1223
+   }
+  },
+  "leggant": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 5
+   }
+  },
+  "leggat": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 9
+   }
+  },
+  "leggatet3": {
+   "features": [
+    "shield_weapons",
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 16
+   }
+  },
+  "leggeo": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 12
+   }
+  },
+  "leggob": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 77
+   }
+  },
+  "leghades": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 19
+   }
+  },
+  "leghelios": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 14
+   }
+  },
+  "leghp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 1
+   }
+  },
+  "leghrk": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "leginc": {
+   "features": [
+    "death_explosions_wrecks",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "leginfestor": {
+   "features": [
+    "radar_stealth",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 13
+   }
+  },
+  "legjam": {
+   "features": [
+    "radar_jammers",
+    "death_explosions_wrecks",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legjav": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 10
+   }
+  },
+  "legjuno": {
+   "features": [
+    "manual_fire_weapons",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legkark": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "reactive_armor",
+    "damage_modifier",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legkeres": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 8
+   }
+  },
+  "leglab": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 10,
+    "build_orders": 19
+   }
+  },
+  "leglht": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 12,
+    "build_orders": 233
+   }
+  },
+  "leglob": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 7,
+    "build_orders": 58
+   }
+  },
+  "leglraa": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 613
+   }
+  },
+  "leglupara": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmed": {
+   "features": [
+    "death_explosions_wrecks",
+    "slaved_weapons",
+    "missile_flight",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmex": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 13,
+    "build_orders": 1842
+   }
+  },
+  "legmext15": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 0
+   }
+  },
+  "legmg": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 4,
+    "build_orders": 125
+   }
+  },
+  "legmh": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmine1": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmine2": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmine3": {
+   "features": [
+    "cloak",
+    "radar_stealth",
+    "death_explosions_wrecks",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmlv": {
+   "features": [
+    "radar_stealth",
+    "radar_jammers",
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 2
+   }
+  },
+  "legmoho": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 129
+   }
+  },
+  "legmohocon": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 910
+   }
+  },
+  "legmohoconct": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 0
+   }
+  },
+  "legmrv": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legmstor": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 5
+   }
+  },
+  "legnanotc": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 11,
+    "build_orders": 1097
+   }
+  },
+  "legnanotct2": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 12
+   }
+  },
+  "legner": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legotter": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legrad": {
+   "features": [
+    "death_explosions_wrecks",
+    "juno_special",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 12,
+    "build_orders": 59
+   }
+  },
+  "legrail": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 6
+   }
+  },
+  "legrhapsis": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legrl": {
+   "features": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 3
+   }
+  },
+  "legscout": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "juno_special"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 3
+   }
+  },
+  "legsd": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 0
+   }
+  },
+  "legsh": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 5
+   }
+  },
+  "legshot": {
+   "features": [
+    "death_explosions_wrecks",
+    "reactive_armor",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legsilo": {
+   "features": [
+    "manual_fire_weapons",
+    "death_explosions_wrecks",
+    "stockpile",
+    "missile_flight"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 846
+   }
+  },
+  "legsnapper": {
+   "features": [
+    "death_explosions_wrecks",
+    "water_weapons",
+    "bad_target_categories",
+    "self_destruct_mines"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legsolar": {
+   "features": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "usage": {
+    "player_games": 5,
+    "build_orders": 1135
+   }
+  },
+  "legsrail": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legstarfall": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legstr": {
+   "features": [
+    "death_explosions_wrecks",
+    "turret_reaim"
+   ],
+   "usage": {
+    "player_games": 2,
+    "build_orders": 19
+   }
+  },
+  "legtarg": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 1,
+    "build_orders": 9
+   }
+  },
+  "legvflak": {
+   "features": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "sight_air_sensors"
+   ],
+   "usage": {
+    "player_games": 0,
+    "build_orders": 0
+   }
+  },
+  "legvp": {
+   "features": [
+    "death_explosions_wrecks"
+   ],
+   "usage": {
+    "player_games": 3,
+    "build_orders": 4
+   }
+  },
+  "legwin": {
+   "features": [
+    "death_explosions_wrecks",
+    "wind_output"
+   ],
+   "usage": {
+    "player_games": 10,
+    "build_orders": 3870
+   }
+  }
+ },
+ "roster_impact": {
+  "armada": {
+   "armck": [
+    "death_explosions_wrecks"
+   ],
+   "armham": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "armlab": [
+    "death_explosions_wrecks"
+   ],
+   "armmex": [
+    "death_explosions_wrecks"
+   ],
+   "armpw": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "turret_reaim"
+   ],
+   "armrock": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "armsolar": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ]
+  },
+  "cortex": {
+   "corak": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "turret_reaim"
+   ],
+   "corck": [
+    "death_explosions_wrecks"
+   ],
+   "corlab": [
+    "death_explosions_wrecks"
+   ],
+   "cormex": [
+    "death_explosions_wrecks"
+   ],
+   "corsolar": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ],
+   "corstorm": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "corthud": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ]
+  },
+  "legion": {
+   "legbal": [
+    "death_explosions_wrecks",
+    "missile_flight",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "legcen": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "legck": [
+    "death_explosions_wrecks"
+   ],
+   "leggob": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "crush_interaction",
+    "turret_reaim"
+   ],
+   "leglab": [
+    "death_explosions_wrecks"
+   ],
+   "leglob": [
+    "death_explosions_wrecks",
+    "bad_target_categories",
+    "turret_reaim"
+   ],
+   "legmex": [
+    "death_explosions_wrecks"
+   ],
+   "legsolar": [
+    "death_explosions_wrecks",
+    "damage_modifier"
+   ]
+  }
+ }
+}

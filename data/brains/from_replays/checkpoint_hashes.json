@@ -1,0 +1,8 @@
+{
+  "strategic\\baseline-v1\\brain.best.json": "3bd18b497933b5020cb349b21b91266162b14e45e06a7064f6e092839cdb4db5",
+  "strategic\\baseline-v1\\brain.initial.json": "3bd18b497933b5020cb349b21b91266162b14e45e06a7064f6e092839cdb4db5",
+  "strategic\\baseline-v1\\brain.latest.json": "8e9c3bc3c923380388eeea8117a4e6d84a396e8d3f96dc7cf5b8651f2f4a61df",
+  "tactical\\baseline-v1\\brain.best.json": "e53da0bac35cc4331f64ae85e0949b6fd3fc31e4964b2b7785c8ba50b53a3195",
+  "tactical\\baseline-v1\\brain.initial.json": "2f2a1586743cd30a373a758658f3fac806a24c5739d2989bafbf6636b74e8d54",
+  "tactical\\baseline-v1\\brain.latest.json": "73f7f5c2af54900380ed051ff0ded7f85253841242d6b9bbbf8b4ecd32a34661"
+}

@@ -1,0 +1,120 @@
+{
+  "saved": "20261016-051554",
+  "champion": {
+    "path": "data\\brains\\overnight\\hall_of_fame\\champion-r0017.json",
+    "round": 17,
+    "score": 0.12135198921268714
+  },
+  "rounds": 22,
+  "promotions": [
+    {
+      "round": 0,
+      "winner": "c0",
+      "score": 0.3627489154145058
+    },
+    {
+      "round": 1,
+      "winner": "c0",
+      "score": 0.3504582142614402
+    },
+    {
+      "round": 2,
+      "winner": "c2",
+      "score": 0.2577849104146581
+    },
+    {
+      "round": 3,
+      "winner": "c0",
+      "score": 0.18203696610028405
+    },
+    {
+      "round": 5,
+      "winner": "c2",
+      "score": 0.1620747824590089
+    },
+    {
+      "round": 6,
+      "winner": "c0",
+      "score": 0.1699850307597377
+    },
+    {
+      "round": 7,
+      "winner": "c2",
+      "score": 0.1606248689091621
+    },
+    {
+      "round": 8,
+      "winner": "c3",
+      "score": 0.10562150210373306
+    },
+    {
+      "round": 10,
+      "winner": "c2",
+      "score": 0.15149864191201498
+    },
+    {
+      "round": 11,
+      "winner": "c2",
+      "score": 0.15501449296881534
+    },
+    {
+      "round": 12,
+      "winner": "c2",
+      "score": 0.15057562377314207
+    },
+    {
+      "round": 13,
+      "winner": "c3",
+      "score": 0.16547883049076637
+    },
+    {
+      "round": 14,
+      "winner": "c2",
+      "score": 0.11701488494467857
+    },
+    {
+      "round": 15,
+      "winner": "c0",
+      "score": 0.14612406928549754
+    },
+    {
+      "round": 16,
+      "winner": "c0",
+      "score": 0.15381608007137376
+    },
+    {
+      "round": 17,
+      "winner": "c0",
+      "score": 0.14308466826177127
+    }
+  ],
+  "last_by_opponent": {
+    "charge": {
+      "win": 0.5583333333333333,
+      "timeout": 0.0,
+      "loss": 0.44166666666666665,
+      "fitness": 0.3018731017622065
+    },
+    "kite": {
+      "win": 0.98125,
+      "timeout": 0.01875,
+      "loss": 0.0,
+      "fitness": 1.316046685213553
+    },
+    "orbit": {
+      "win": 0.75625,
+      "timeout": 0.24375,
+      "loss": 0.0,
+      "fitness": 1.0420082105264283
+    }
+  },
+  "last_weakest": {
+    "opponent": "charge",
+    "fitness": 0.3018731017622065
+  },
+  "work": {
+    "battles": 47800800,
+    "sim_seconds": 2553290212.632,
+    "wall_seconds": 18761.009985923767
+  }
+}

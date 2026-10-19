@@ -1,0 +1,76 @@
+{
+  "saved": "20261016-094308",
+  "champion": {
+    "path": "data\\brains\\obj\\hall_of_fame\\champion-r0003.json",
+    "round": 3,
+    "score": 0.5262825285628028
+  },
+  "rounds": 4,
+  "promotions": [
+    {
+      "round": 2,
+      "winner": "c2",
+      "score": 0.1579048726947796
+    },
+    {
+      "round": 3,
+      "winner": "c2",
+      "score": 0.5262825285628028
+    }
+  ],
+  "last_by_opponent": {
+    "charge": {
+      "win": 0.7890625,
+      "timeout": 0.0026041666666666665,
+      "loss": 0.20833333333333334,
+      "fitness": 1.0246357157644037
+    },
+    "hold": {
+      "win": 0.8984375,
+      "timeout": 0.078125,
+      "loss": 0.0234375,
+      "fitness": 1.4692925928189295
+    },
+    "kite": {
+      "win": 0.6510416666666666,
+      "timeout": 0.08072916666666667,
+      "loss": 0.2682291666666667,
+      "fitness": 0.7170629022915885
+    },
+    "orbit": {
+      "win": 0.765625,
+      "timeout": 0.19791666666666666,
+      "loss": 0.036458333333333336,
+      "fitness": 1.1852414213081046
+    },
+    "strike": {
+      "win": 0.7838541666666666,
+      "timeout": 0.018229166666666668,
+      "loss": 0.19791666666666666,
+      "fitness": 1.065646436624595
+    },
+    "guard": {
+      "win": 0.8984375,
+      "timeout": 0.078125,
+      "loss": 0.0234375,
+      "fitness": 1.4752091313779856
+    }
+  },
+  "last_weakest": {
+    "opponent": "kite",
+    "fitness": 0.7170629022915885,
+    "ranked": [
+      "kite",
+      "charge",
+      "strike",
+      "orbit",
+      "hold",
+      "guard"
+    ]
+  },
+  "work": {
+    "battles": 3974880,
+    "sim_seconds": 139592760.81699997,
+    "wall_seconds": 3098.347463607788
+  }
+}
