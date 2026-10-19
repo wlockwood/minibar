@@ -24,7 +24,6 @@
 # Baselines and inputs that tests and README commands read
 !brains/from_replays/**
 brains/from_replays/runs/**
-brains/from_replays/maps/**
 brains/from_replays/catalog.expanded*.json
 
 # Never track bulky or reproducible trees, even if a name above matches

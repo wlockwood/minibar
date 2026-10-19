@@ -1,0 +1,19 @@
+{
+  "capture_cols": 32,
+  "capture_rows": 32,
+  "format": "minibar.replay_coarse_provenance",
+  "game_version": "test-31251-0ceadc7",
+  "header_line": 1,
+  "map_surface_line": 48,
+  "replay_id": "02b3a46ade11f0faca553ab8c65f4f50",
+  "sample_spacing_x": 256.0,
+  "sample_spacing_z": 128.0,
+  "sha256": "def30259fe7bff96a2b24731f6557ee43630fe6ee6b1cf67bd8cebc8a9ae72ea",
+  "source_path": "D:\\code\\BAR\\visigoth\\data\\replay-runs\\02b3a46ade11f0faca553ab8c65f4f50\\replay-extract\\02b3a46ade11f0faca553ab8c65f4f50.jsonl",
+  "version": 1,
+  "warnings": [
+    "32x32 point-sampled terrain/movement/metal data can miss narrow terrain and resource spots; 64-elmo simulation raster does not add captured detail.",
+    "Metal density samples are area-weighted by coarse cell area / 16x16 engine metal-square area; resulting income is an approximation, not calibrated BAR income.",
+    "Map wind, tidal, geothermal vents, static features and full mod options were not recorded and are unavailable; only solar is used in the baseline."
+  ]
+}
