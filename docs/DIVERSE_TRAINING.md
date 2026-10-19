@@ -1,5 +1,10 @@
 # Diverse ground and air training
 
+> On `tiered-brains`, previous training artifacts have been removed. The prepared
+> packages and inherited-champion commands below describe the saved
+> `minibar-training-radar-scouts-20261019` checkpoint. Start a new tiered-brain
+> campaign with fresh inputs; see [data policy](../data/README.md).
+
 The latest prepared successor is `data/branches/recon-training-20261019`.
 It starts from snapshots of the saved ground and air champions in
 `surround-training-20261018` and imports the five preserved air breakthroughs.

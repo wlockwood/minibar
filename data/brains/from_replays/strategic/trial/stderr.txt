@@ -1,3 +1,0 @@
-strategic generation 1: validation 0.06682, best 0.06682
-strategic generation 2: validation 0.06682, best 0.06682
-strategic generation 3: validation 0.06682, best 0.06682

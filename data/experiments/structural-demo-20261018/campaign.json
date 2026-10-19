@@ -1,1 +1,0 @@
-{"name": "demo campaign (synthetic)", "generations": 40, "validation_every": 5, "max_stage_regression": 0.15, "min_gain": 0.005, "restart_after": 30, "tracks": []}
