@@ -1,0 +1,303 @@
+{
+  "type": "hello",
+  "protocol": 1,
+  "game_version": "hand-derived sample: armpw copied from pawn-hello.json; corthud derived from Beyond-All-Reason units/CorBots/corthud.lua and scripts/Units/corthud.bos using the conversions in visigoth/bridge/bar_ai_bridge.lua. Map gravity assumed 130 (Recoil default). NOT a bridge export; regenerate from the bridge for real experiments.",
+  "unit_catalog": {
+    "armpw": {
+      "health": 370.0,
+      "metal_cost": 54.0,
+      "energy_cost": 900.0,
+      "is_mobile": true,
+      "movement_class": "BOT",
+      "sight_distance": 380.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 87.0,
+        "reverse_speed": 0.0,
+        "acceleration": 372.6,
+        "braking": 621.0,
+        "turn_rate": 194.304,
+        "turn_in_place": true,
+        "turn_in_place_angle_limit": 90.0,
+        "radius": 11.0,
+        "weapons": [
+          {
+            "name": "Rapid-fire close-quarters g2g plasma guns",
+            "damage": 9.0,
+            "range": 180.0,
+            "reload": 0.3,
+            "burst": 3,
+            "burst_rate": 0.1,
+            "projectiles": 1,
+            "projectile_speed": 600.0,
+            "weapon_type": "Cannon",
+            "hitscan": false,
+            "turret": true,
+            "turret_yaw_speed": 300.0,
+            "accuracy": 0.0,
+            "moving_accuracy": 0.0,
+            "spray_angle": 0.11313,
+            "target_move_error": 0.0,
+            "lead_limit": -1.0,
+            "predict_boost": 0.0,
+            "area_of_effect": 4.0,
+            "edge_effectiveness": 0.15,
+            "fire_tolerance": 0.47937,
+            "damage_duration": 0.0,
+            "manual_fire": false,
+            "paralyzer": false
+          }
+        ]
+      }
+    },
+    "armck": {
+      "health": 520.0,
+      "metal_cost": 110.0,
+      "energy_cost": 1600.0,
+      "is_builder": true,
+      "is_mobile": true,
+      "movement_class": "BOT",
+      "build_speed": 55.0,
+      "build_distance": 128.0,
+      "can_assist": true,
+      "can_be_assisted": true,
+      "build_options": [
+        "armdrag",
+        "armrl",
+        "armmex",
+        "armsolar",
+        "armlab"
+      ],
+      "sight_distance": 320.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 52.0,
+        "reverse_speed": 0.0,
+        "acceleration": 220.0,
+        "braking": 440.0,
+        "turn_rate": 160.0,
+        "turn_in_place": true,
+        "turn_in_place_angle_limit": 90.0,
+        "radius": 12.0,
+        "weapons": []
+      }
+    },
+    "armdrag": {
+      "health": 2500.0,
+      "metal_cost": 12.0,
+      "energy_cost": 0.0,
+      "is_building": true,
+      "target_categories": [
+        "wall"
+      ],
+      "footprint": [
+        2,
+        2
+      ],
+      "sight_distance": 100.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 0.0,
+        "reverse_speed": 0.0,
+        "acceleration": 0.0,
+        "braking": 0.0,
+        "turn_rate": 0.0,
+        "turn_in_place": false,
+        "turn_in_place_angle_limit": 0.0,
+        "radius": 16.0,
+        "height": 24.0,
+        "weapons": []
+      }
+    },
+    "armrl": {
+      "health": 1200.0,
+      "metal_cost": 300.0,
+      "energy_cost": 3000.0,
+      "is_building": true,
+      "target_categories": [
+        "SURFACE"
+      ],
+      "footprint": [
+        3,
+        3
+      ],
+      "sight_distance": 360.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 0.0,
+        "reverse_speed": 0.0,
+        "acceleration": 0.0,
+        "braking": 0.0,
+        "turn_rate": 0.0,
+        "turn_in_place": false,
+        "turn_in_place_angle_limit": 0.0,
+        "radius": 24.0,
+        "height": 48.0,
+        "weapons": [
+          {
+            "name": "Reference wall turret",
+            "damage": 35.0,
+            "range": 260.0,
+            "reload": 1.0,
+            "burst": 1,
+            "burst_rate": 0.0,
+            "projectiles": 1,
+            "projectile_speed": 400.0,
+            "weapon_type": "Cannon",
+            "hitscan": false,
+            "turret": true,
+            "turret_yaw_speed": 180.0,
+            "accuracy": 0.0,
+            "moving_accuracy": 0.0,
+            "spray_angle": 0.0,
+            "target_move_error": 0.0,
+            "lead_limit": -1.0,
+            "predict_boost": 0.0,
+            "area_of_effect": 4.0,
+            "edge_effectiveness": 0.0,
+            "fire_tolerance": 0.5,
+            "damage_duration": 0.0,
+            "manual_fire": false,
+            "paralyzer": false,
+            "firing_origin": [
+              0.0,
+              36.0,
+              0.0
+            ]
+          }
+        ]
+      }
+    },
+    "armmex": {
+      "health": 560.0,
+      "metal_cost": 50.0,
+      "energy_cost": 500.0,
+      "is_building": true,
+      "extracts_metal": 0.001,
+      "extract_range": 64.0,
+      "metal_make": 2.0,
+      "energy_upkeep": 3.0,
+      "footprint": [
+        3,
+        3
+      ],
+      "sight_distance": 200.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 0.0,
+        "reverse_speed": 0.0,
+        "acceleration": 0.0,
+        "braking": 0.0,
+        "turn_rate": 0.0,
+        "turn_in_place": false,
+        "turn_in_place_angle_limit": 0.0,
+        "radius": 20.0,
+        "weapons": []
+      }
+    },
+    "armsolar": {
+      "health": 940.0,
+      "metal_cost": 145.0,
+      "energy_cost": 0.0,
+      "is_building": true,
+      "energy_make": 20.0,
+      "footprint": [
+        4,
+        4
+      ],
+      "sight_distance": 200.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 0.0,
+        "reverse_speed": 0.0,
+        "acceleration": 0.0,
+        "braking": 0.0,
+        "turn_rate": 0.0,
+        "turn_in_place": false,
+        "turn_in_place_angle_limit": 0.0,
+        "radius": 24.0,
+        "weapons": []
+      }
+    },
+    "armlab": {
+      "health": 2600.0,
+      "metal_cost": 650.0,
+      "energy_cost": 1200.0,
+      "is_building": true,
+      "is_factory": true,
+      "build_speed": 100.0,
+      "build_options": [
+        "armpw",
+        "armck"
+      ],
+      "yardmap": "ooooo ooooo ooooo ooooo ooooo",
+      "footprint": [
+        5,
+        5
+      ],
+      "sight_distance": 280.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 0.0,
+        "reverse_speed": 0.0,
+        "acceleration": 0.0,
+        "braking": 0.0,
+        "turn_rate": 0.0,
+        "turn_in_place": false,
+        "turn_in_place_angle_limit": 0.0,
+        "radius": 36.0,
+        "weapons": []
+      }
+    },
+    "corthud": {
+      "health": 1100.0,
+      "metal_cost": 140.0,
+      "energy_cost": 1150.0,
+      "is_mobile": true,
+      "movement_class": "BOT3",
+      "sight_distance": 380.0,
+      "radar_radius": 0.0,
+      "simulation": {
+        "max_speed": 45.0,
+        "reverse_speed": 0.0,
+        "acceleration": 116.955,
+        "braking": 698.625,
+        "turn_rate": 202.216,
+        "turn_in_place": true,
+        "turn_in_place_angle_limit": 90.0,
+        "radius": 14.5,
+        "weapons": [
+          {
+            "name": "PlasmaCannon",
+            "damage": 104.0,
+            "range": 380.0,
+            "reload": 1.73333,
+            "burst": 1,
+            "burst_rate": 0.0,
+            "projectiles": 1,
+            "projectile_speed": 286.0,
+            "projectile_gravity": 130.0,
+            "high_trajectory": false,
+            "weapon_type": "Cannon",
+            "hitscan": false,
+            "turret": true,
+            "turret_yaw_speed": 140.0,
+            "turret_pitch_speed": 50.0,
+            "accuracy": 0.0,
+            "moving_accuracy": 0.0,
+            "spray_angle": 0.0,
+            "target_move_error": 0.0,
+            "lead_limit": -1.0,
+            "predict_boost": 0.4,
+            "area_of_effect": 18.0,
+            "edge_effectiveness": 0.15,
+            "fire_tolerance": 0.34898,
+            "damage_duration": 0.0,
+            "manual_fire": false,
+            "paralyzer": false
+          }
+        ]
+      }
+    }
+  }
+}

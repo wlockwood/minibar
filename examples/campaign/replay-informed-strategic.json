@@ -1,0 +1,130 @@
+{
+  "format": "minibar-campaign",
+  "version": 1,
+  "name": "replay informed curriculum, strategic track",
+  "generations": 200,
+  "seed": 20261017,
+  "validation_every": 5,
+  "promotion_seeds": 8,
+  "min_gain": 0.005,
+  "max_stage_regression": 0.15,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "archive_size": 8,
+  "tracks": [
+    {
+      "name": "strategic",
+      "brain": "../../data/brains/from_replays/strategic/champion-gen10.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-objectives.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "validation": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-validation-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-validation-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-validation-objectives.json"
+            }
+          }
+        ],
+        "seeds": 4
+      },
+      "holdout": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "unselected-strategic-holdout",
+            "difficulty": 3,
+            "weight": 1,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-holdout.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "islands": [
+        {
+          "name": "local",
+          "es": {
+            "population": 16,
+            "sigma": 0.08,
+            "learning_rate": 0.02,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261019
+          },
+          "restart": false
+        },
+        {
+          "name": "wide",
+          "es": {
+            "population": 16,
+            "sigma": 0.12,
+            "learning_rate": 0.02,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261020
+          },
+          "restart": true
+        }
+      ]
+    }
+  ],
+  "promotion_min_t": 2.0,
+  "recentre_on_promotion": true
+}

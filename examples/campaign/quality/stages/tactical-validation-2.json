@@ -1,0 +1,219 @@
+{
+  "arena": {
+    "cell_size": 64,
+    "center": [
+      6400.0,
+      2048.0
+    ],
+    "map": "../../../../data/brains/from_replays/maps/center-command.vsgmap",
+    "movement_class": "bot2"
+  },
+  "brain_kind": "tactical_v4",
+  "generations": 1,
+  "hidden": 8,
+  "layout_jitter": 20,
+  "max_time": 60,
+  "name": "validation-only unequal asset missions",
+  "opponents": [
+    "charge",
+    "kite",
+    "strike"
+  ],
+  "scenarios": [
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 1,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 4,
+          "unit": "armpw"
+        },
+        {
+          "count": 1,
+          "unit": "armrock"
+        }
+      ],
+      "name": "validation armada attack",
+      "objective": {
+        "kind": "attack",
+        "target": "corlab"
+      },
+      "separation": 400
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 3,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 1,
+          "unit": "armrock"
+        }
+      ],
+      "name": "validation armada defend",
+      "objective": {
+        "kind": "defend",
+        "target": "armlab"
+      },
+      "separation": 400
+    },
+    {
+      "enemy": [
+        {
+          "count": 2,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 1,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "validation cortex attack",
+      "objective": {
+        "kind": "attack",
+        "target": "leglab"
+      },
+      "separation": 400
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 2,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 4,
+          "unit": "corak"
+        },
+        {
+          "count": 1,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "validation cortex defend",
+      "objective": {
+        "kind": "defend",
+        "target": "corlab"
+      },
+      "separation": 400
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 2,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "name": "validation legion attack",
+      "objective": {
+        "kind": "attack",
+        "target": "armlab"
+      },
+      "separation": 400
+    },
+    {
+      "enemy": [
+        {
+          "count": 4,
+          "unit": "armpw"
+        },
+        {
+          "count": 1,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 2,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "name": "validation legion defend",
+      "objective": {
+        "kind": "defend",
+        "target": "leglab"
+      },
+      "separation": 400
+    }
+  ],
+  "seeds_per_battle": 1,
+  "start": "template",
+  "train_modules": [],
+  "validation_every": 1,
+  "validation_seeds": 1
+}

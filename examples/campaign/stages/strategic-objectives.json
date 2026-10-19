@@ -1,0 +1,85 @@
+{
+  "name": "growth and asset combat",
+  "hidden": 8,
+  "train_modules": [],
+  "generations": 1,
+  "maps": [
+    {
+      "map": "../../../data/brains/from_replays/maps/synthetic-2048.vsgmap",
+      "movement_class": "bot2",
+      "cell_size": 64,
+      "starts": [
+        {
+          "x": 96.0,
+          "z": 96.0
+        },
+        {
+          "x": 1952.0,
+          "z": 1952.0
+        }
+      ]
+    },
+    {
+      "map": "../../../data/brains/from_replays/maps/center-command.vsgmap",
+      "movement_class": "bot2",
+      "cell_size": 64,
+      "starts": [
+        {
+          "x": 384.0,
+          "z": 192.0
+        },
+        {
+          "x": 7808.0,
+          "z": 3904.0
+        }
+      ]
+    }
+  ],
+  "factions": [
+    {
+      "builder": "armck",
+      "combat": [
+        "armpw",
+        "armrock"
+      ],
+      "factory": "armlab",
+      "mex": "armmex",
+      "name": "armada",
+      "power": "armsolar"
+    },
+    {
+      "builder": "corck",
+      "combat": [
+        "corak",
+        "corstorm"
+      ],
+      "factory": "corlab",
+      "mex": "cormex",
+      "name": "cortex",
+      "power": "corsolar"
+    },
+    {
+      "builder": "legck",
+      "combat": [
+        "leggob",
+        "legcen",
+        "leglob",
+        "legbal"
+      ],
+      "factory": "leglab",
+      "mex": "legmex",
+      "name": "legion",
+      "power": "legsolar"
+    }
+  ],
+  "max_ticks": 9000,
+  "cadence_ticks": 30,
+  "validation_seeds": 1,
+  "train_seeds": 1,
+  "starting_metal": 1000,
+  "starting_energy": 1000,
+  "base_metal_income": 2,
+  "base_energy_income": 25,
+  "combat": true,
+  "layout_jitter": 8
+}

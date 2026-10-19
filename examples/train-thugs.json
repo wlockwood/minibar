@@ -1,0 +1,106 @@
+{
+  "name": "pawn-vs-thug",
+  "hidden": 6,
+  "start": "template",
+  "train_modules": [],
+  "generations": 40,
+  "es": {
+    "population": 64,
+    "sigma": 0.1,
+    "learning_rate": 0.03,
+    "weight_decay": 0.0,
+    "l1": 0.0,
+    "seed": 1
+  },
+  "objective": {
+    "win": 1.0,
+    "exchange": 0.5,
+    "underdog_exponent": 1.0,
+    "underdog_cap": 4.0,
+    "underdog_threshold": 1.2,
+    "timeout_underdog": 0.3,
+    "timeout_penalty": 0.6,
+    "key_unit_bonus": 0.5,
+    "key_unit_penalty": 0.5,
+    "win_stake_floor": 1.0,
+    "worst_case_weight": 0.3
+  },
+  "key_units": [],
+  "seeds_per_battle": 4,
+  "validation_seeds": 24,
+  "validation_every": 10,
+  "opponents": [
+    "charge",
+    "hold",
+    "kite",
+    "orbit"
+  ],
+  "max_time": 90.0,
+  "layout_jitter": 30.0,
+  "scenarios": [
+    {
+      "name": "3 Pawns vs 1 Thug",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 3
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corthud",
+          "count": 1
+        }
+      ],
+      "separation": 600
+    },
+    {
+      "name": "5 Pawns vs 2 Thugs",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 5
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corthud",
+          "count": 2
+        }
+      ],
+      "separation": 600
+    },
+    {
+      "name": "8 Pawns vs 3 Thugs",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 8
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corthud",
+          "count": 3
+        }
+      ],
+      "separation": 600
+    },
+    {
+      "name": "13 Pawns vs 5 Thugs",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 13
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corthud",
+          "count": 5
+        }
+      ],
+      "separation": 600
+    }
+  ]
+}

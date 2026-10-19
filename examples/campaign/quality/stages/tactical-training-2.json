@@ -1,0 +1,219 @@
+{
+  "arena": {
+    "cell_size": 64,
+    "center": [
+      6400.0,
+      2048.0
+    ],
+    "map": "../../../../data/brains/from_replays/maps/center-command.vsgmap",
+    "movement_class": "bot2"
+  },
+  "brain_kind": "tactical_v4",
+  "generations": 1,
+  "hidden": 8,
+  "layout_jitter": 8,
+  "max_time": 60,
+  "name": "asset assault and protection",
+  "opponents": [
+    "charge",
+    "kite",
+    "strike"
+  ],
+  "scenarios": [
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "name": "armada attack",
+      "objective": {
+        "kind": "attack",
+        "target": "corlab"
+      },
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "name": "armada defend",
+      "objective": {
+        "kind": "defend",
+        "target": "armlab"
+      },
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "cortex attack",
+      "objective": {
+        "kind": "attack",
+        "target": "leglab"
+      },
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "cortex defend",
+      "objective": {
+        "kind": "defend",
+        "target": "corlab"
+      },
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "name": "legion attack",
+      "objective": {
+        "kind": "attack",
+        "target": "armlab"
+      },
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "name": "legion defend",
+      "objective": {
+        "kind": "defend",
+        "target": "leglab"
+      },
+      "separation": 350
+    }
+  ],
+  "seeds_per_battle": 1,
+  "start": "template",
+  "train_modules": [],
+  "validation_every": 1,
+  "validation_seeds": 1
+}

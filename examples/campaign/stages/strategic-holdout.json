@@ -1,0 +1,70 @@
+{
+  "name": "unselected Zed economy and assets",
+  "hidden": 8,
+  "train_modules": [],
+  "generations": 1,
+  "maps": [
+    {
+      "map": "../../../data/brains/from_replays/maps/zed-remake.vsgmap",
+      "movement_class": "bot2",
+      "cell_size": 64,
+      "starts": [
+        {
+          "x": 1440.0,
+          "z": 1056.0
+        },
+        {
+          "x": 4704.0,
+          "z": 5088.0
+        }
+      ]
+    }
+  ],
+  "factions": [
+    {
+      "builder": "armck",
+      "combat": [
+        "armpw",
+        "armrock"
+      ],
+      "factory": "armlab",
+      "mex": "armmex",
+      "name": "armada",
+      "power": "armsolar"
+    },
+    {
+      "builder": "corck",
+      "combat": [
+        "corak",
+        "corstorm"
+      ],
+      "factory": "corlab",
+      "mex": "cormex",
+      "name": "cortex",
+      "power": "corsolar"
+    },
+    {
+      "builder": "legck",
+      "combat": [
+        "leggob",
+        "legcen",
+        "leglob",
+        "legbal"
+      ],
+      "factory": "leglab",
+      "mex": "legmex",
+      "name": "legion",
+      "power": "legsolar"
+    }
+  ],
+  "max_ticks": 9000,
+  "cadence_ticks": 30,
+  "validation_seeds": 1,
+  "train_seeds": 1,
+  "starting_metal": 1000,
+  "starting_energy": 1000,
+  "base_metal_income": 2,
+  "base_energy_income": 25,
+  "combat": true,
+  "layout_jitter": 8
+}

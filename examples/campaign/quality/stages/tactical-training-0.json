@@ -1,0 +1,113 @@
+{
+  "arena": {
+    "cell_size": 64,
+    "center": [
+      512.0,
+      512.0
+    ],
+    "map": "../../../../data/brains/from_replays/maps/synthetic-1024.vsgmap",
+    "movement_class": "bot2"
+  },
+  "brain_kind": "tactical_v4",
+  "generations": 1,
+  "hidden": 8,
+  "layout_jitter": 8,
+  "max_time": 25,
+  "name": "easy duels and pairs",
+  "opponents": [
+    "charge",
+    "hold"
+  ],
+  "scenarios": [
+    {
+      "enemy": [
+        {
+          "count": 1,
+          "unit": "corak"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 1,
+          "unit": "armpw"
+        }
+      ],
+      "name": "armada one versus one",
+      "separation": 220
+    },
+    {
+      "enemy": [
+        {
+          "count": 2,
+          "unit": "leggob"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 2,
+          "unit": "corak"
+        }
+      ],
+      "name": "cortex two versus two",
+      "separation": 220
+    },
+    {
+      "enemy": [
+        {
+          "count": 1,
+          "unit": "armpw"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 1,
+          "unit": "leggob"
+        }
+      ],
+      "name": "legion one versus one",
+      "separation": 220
+    },
+    {
+      "enemy": [
+        {
+          "count": 5,
+          "unit": "armpw"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        }
+      ],
+      "name": "controlled underdog three versus five",
+      "separation": 240
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 5,
+          "unit": "armpw"
+        }
+      ],
+      "name": "controlled favourite five versus three",
+      "separation": 240
+    }
+  ],
+  "seeds_per_battle": 1,
+  "start": "template",
+  "train_modules": [],
+  "validation_every": 1,
+  "validation_seeds": 1
+}

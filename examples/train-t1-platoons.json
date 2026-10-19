@@ -1,0 +1,212 @@
+{
+  "name": "t1-platoons",
+  "hidden": 6,
+  "start": "template",
+  "train_modules": [],
+  "generations": 40,
+  "es": {
+    "population": 48,
+    "sigma": 0.1,
+    "learning_rate": 0.03,
+    "weight_decay": 0.0,
+    "l1": 0.0,
+    "seed": 1
+  },
+  "objective": {
+    "win": 1.0,
+    "exchange": 0.5,
+    "underdog_exponent": 1.0,
+    "underdog_cap": 4.0,
+    "underdog_threshold": 1.2,
+    "timeout_underdog": 0.3,
+    "timeout_penalty": 0.6,
+    "key_unit_bonus": 0.5,
+    "key_unit_penalty": 0.5,
+    "win_stake_floor": 1.0,
+    "worst_case_weight": 0.3
+  },
+  "key_units": [],
+  "seeds_per_battle": 2,
+  "validation_seeds": 6,
+  "validation_every": 10,
+  "opponents": [
+    "charge",
+    "hold",
+    "kite",
+    "orbit"
+  ],
+  "max_time": 90.0,
+  "layout_jitter": 30.0,
+  "scenarios": [],
+  "matchups": {
+    "count": 12,
+    "metal": [
+      500,
+      1400
+    ],
+    "underdog_ratio": [
+      1.25,
+      2.0
+    ],
+    "even_ratio": [
+      0.9,
+      1.1
+    ],
+    "overdog_ratio": [
+      0.5,
+      0.8
+    ],
+    "mixed_share": 0.5,
+    "second_platoon_chance": 0.4,
+    "max_units": 24,
+    "separation": [
+      450,
+      800
+    ],
+    "types": [
+      {
+        "name": "scout",
+        "bots": [
+          {
+            "unit": "armflea",
+            "weight": 1.0
+          }
+        ],
+        "vehicles": [
+          {
+            "unit": "armfav",
+            "weight": 1.0
+          },
+          {
+            "unit": "corfav",
+            "weight": 1.0
+          }
+        ]
+      },
+      {
+        "name": "raid",
+        "bots": [
+          {
+            "unit": "armpw",
+            "weight": 1.0
+          },
+          {
+            "unit": "corak",
+            "weight": 1.0
+          },
+          {
+            "unit": "armflea",
+            "weight": 1.0
+          }
+        ],
+        "vehicles": [
+          {
+            "unit": "armflash",
+            "weight": 1.0
+          },
+          {
+            "unit": "corgator",
+            "weight": 1.0
+          }
+        ]
+      },
+      {
+        "name": "brawl",
+        "bots": [
+          {
+            "unit": "corthud",
+            "weight": 1.0
+          },
+          {
+            "unit": "armwar",
+            "weight": 1.0
+          }
+        ],
+        "vehicles": [
+          {
+            "unit": "armstump",
+            "weight": 1.0
+          },
+          {
+            "unit": "corraid",
+            "weight": 1.0
+          },
+          {
+            "unit": "armpincer",
+            "weight": 1.0
+          },
+          {
+            "unit": "corgarp",
+            "weight": 1.0
+          }
+        ]
+      },
+      {
+        "name": "line",
+        "bots": [
+          {
+            "unit": "armrock",
+            "weight": 1.0
+          },
+          {
+            "unit": "corstorm",
+            "weight": 1.0
+          },
+          {
+            "unit": "armham",
+            "weight": 1.0
+          },
+          {
+            "unit": "corak",
+            "weight": 1.0
+          }
+        ],
+        "vehicles": [
+          {
+            "unit": "corlevlr",
+            "weight": 1.0
+          },
+          {
+            "unit": "armstump",
+            "weight": 1.0
+          },
+          {
+            "unit": "armpincer",
+            "weight": 1.0
+          },
+          {
+            "unit": "corgator",
+            "weight": 1.0
+          }
+        ]
+      },
+      {
+        "name": "artillery",
+        "bots": [
+          {
+            "unit": "armrock",
+            "weight": 1.0
+          },
+          {
+            "unit": "corstorm",
+            "weight": 1.0
+          },
+          {
+            "unit": "armham",
+            "weight": 1.0
+          }
+        ],
+        "vehicles": [
+          {
+            "unit": "armart",
+            "weight": 1.0
+          },
+          {
+            "unit": "corwolv",
+            "weight": 1.0
+          }
+        ]
+      }
+    ]
+  }
+}

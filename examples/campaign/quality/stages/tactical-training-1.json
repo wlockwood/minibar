@@ -1,0 +1,162 @@
+{
+  "arena": {
+    "cell_size": 64,
+    "center": [
+      1024.0,
+      1024.0
+    ],
+    "map": "../../../../data/brains/from_replays/maps/synthetic-2048.vsgmap",
+    "movement_class": "bot2"
+  },
+  "brain_kind": "tactical_v4",
+  "generations": 1,
+  "hidden": 8,
+  "layout_jitter": 8,
+  "max_time": 45,
+  "name": "mixed roles and ranges",
+  "opponents": [
+    "charge",
+    "kite",
+    "orbit"
+  ],
+  "scenarios": [
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "name": "armada mixed roles",
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "cortex mixed roles",
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "name": "legion mixed roles",
+      "separation": 350
+    },
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 2,
+          "unit": "armpw"
+        },
+        {
+          "count": 1,
+          "unit": "armrock"
+        }
+      ],
+      "name": "controlled mixed underdog three versus five",
+      "separation": 360
+    },
+    {
+      "enemy": [
+        {
+          "count": 2,
+          "unit": "corak"
+        },
+        {
+          "count": 1,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "controlled mixed favourite five versus three",
+      "separation": 360
+    }
+  ],
+  "seeds_per_battle": 1,
+  "start": "template",
+  "train_modules": [],
+  "validation_every": 1,
+  "validation_seeds": 1
+}

@@ -1,0 +1,8 @@
+{
+  "format": "minibar.brain_upgrade",
+  "output_kind": "strategic_v2",
+  "output_sha256": "a98956632fe3b38e6e495841c95805c78ed5430d1e79e8299a42ecd42fefec08",
+  "source_kind": "strategic_v1",
+  "source_sha256": "3bd18b497933b5020cb349b21b91266162b14e45e06a7064f6e092839cdb4db5",
+  "version": 1
+}

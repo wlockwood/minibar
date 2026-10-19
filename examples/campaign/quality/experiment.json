@@ -1,0 +1,61 @@
+{
+  "arms": [
+    {
+      "brain_kind": "strategic_v1",
+      "name": "legacy-v1",
+      "production_mode": "count",
+      "sigma_scale": 1.0
+    },
+    {
+      "brain_kind": "strategic_v1",
+      "name": "no-count-v1",
+      "production_mode": "none",
+      "sigma_scale": 1.0
+    },
+    {
+      "brain_kind": "strategic_v2",
+      "name": "no-count-v2",
+      "production_mode": "none",
+      "sigma_scale": 1.0
+    },
+    {
+      "brain_kind": "strategic_v2",
+      "name": "smaller-mutations",
+      "production_mode": "none",
+      "sigma_scale": 0.5
+    },
+    {
+      "brain_kind": "strategic_v2",
+      "modules": {
+        "strategic": [
+          "production"
+        ],
+        "tactical": [
+          "engagement",
+          "mission"
+        ]
+      },
+      "name": "selected-modules",
+      "production_mode": "none",
+      "sigma_scale": 1.0
+    }
+  ],
+  "campaign": "examples/campaign/quality/campaign.json",
+  "comparison_seed_base": 12000000000000,
+  "final_layouts": 24,
+  "format": "minibar.training_experiment",
+  "pilot_generations": 1,
+  "population": 2,
+  "simulator": "target/training-quality-final/release/visigoth-simulator.exe",
+  "source_run": "data/brains/campaign",
+  "threads": 2,
+  "training_seeds": [
+    2026101701,
+    2026101702,
+    2026101703
+  ],
+  "validation_layouts": 4,
+  "validation_seeds": 2,
+  "version": 1,
+  "workers": 2
+}

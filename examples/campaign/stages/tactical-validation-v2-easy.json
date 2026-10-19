@@ -1,0 +1,76 @@
+{
+  "name": "validation-v2 duels and uneven pairs",
+  "brain_kind": "tactical_v4",
+  "hidden": 8,
+  "start": "template",
+  "train_modules": [],
+  "generations": 1,
+  "seeds_per_battle": 1,
+  "validation_seeds": 1,
+  "validation_every": 1,
+  "max_time": 25,
+  "layout_jitter": 20,
+  "opponents": [
+    "charge",
+    "hold"
+  ],
+  "arena": {
+    "map": "../../../data/brains/from_replays/maps/synthetic-1024.vsgmap",
+    "movement_class": "bot2",
+    "cell_size": 64,
+    "center": [
+      512.0,
+      512.0
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "validation armada three versus three",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 3
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 3
+        }
+      ],
+      "separation": 275
+    },
+    {
+      "name": "validation cortex three versus three",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 3
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 3
+        }
+      ],
+      "separation": 285
+    },
+    {
+      "name": "validation legion two versus three",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 2
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 3
+        }
+      ],
+      "separation": 265
+    }
+  ]
+}

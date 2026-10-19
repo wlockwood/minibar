@@ -1,0 +1,213 @@
+{
+  "name": "asset assault and protection",
+  "brain_kind": "tactical_v4",
+  "hidden": 8,
+  "start": "template",
+  "train_modules": [],
+  "generations": 1,
+  "seeds_per_battle": 1,
+  "validation_seeds": 1,
+  "validation_every": 1,
+  "max_time": 60,
+  "layout_jitter": 8,
+  "opponents": [
+    "charge",
+    "kite",
+    "strike"
+  ],
+  "arena": {
+    "map": "../../../data/brains/from_replays/maps/center-command.vsgmap",
+    "movement_class": "bot2",
+    "cell_size": 64,
+    "center": [
+      6400.0,
+      2048.0
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "armada attack",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 3
+        },
+        {
+          "unit": "armrock",
+          "count": 2
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 3
+        },
+        {
+          "unit": "corstorm",
+          "count": 2
+        }
+      ],
+      "separation": 350,
+      "objective": {
+        "kind": "attack",
+        "target": "corlab"
+      }
+    },
+    {
+      "name": "armada defend",
+      "learner": [
+        {
+          "unit": "armpw",
+          "count": 3
+        },
+        {
+          "unit": "armrock",
+          "count": 2
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "corak",
+          "count": 3
+        },
+        {
+          "unit": "corstorm",
+          "count": 2
+        }
+      ],
+      "separation": 350,
+      "objective": {
+        "kind": "defend",
+        "target": "armlab"
+      }
+    },
+    {
+      "name": "cortex attack",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 3
+        },
+        {
+          "unit": "corstorm",
+          "count": 2
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 3
+        },
+        {
+          "unit": "legcen",
+          "count": 1
+        },
+        {
+          "unit": "legbal",
+          "count": 1
+        }
+      ],
+      "separation": 350,
+      "objective": {
+        "kind": "attack",
+        "target": "leglab"
+      }
+    },
+    {
+      "name": "cortex defend",
+      "learner": [
+        {
+          "unit": "corak",
+          "count": 3
+        },
+        {
+          "unit": "corstorm",
+          "count": 2
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "leggob",
+          "count": 3
+        },
+        {
+          "unit": "legcen",
+          "count": 1
+        },
+        {
+          "unit": "legbal",
+          "count": 1
+        }
+      ],
+      "separation": 350,
+      "objective": {
+        "kind": "defend",
+        "target": "corlab"
+      }
+    },
+    {
+      "name": "legion attack",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 3
+        },
+        {
+          "unit": "legcen",
+          "count": 1
+        },
+        {
+          "unit": "legbal",
+          "count": 1
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 3
+        },
+        {
+          "unit": "armrock",
+          "count": 2
+        }
+      ],
+      "separation": 350,
+      "objective": {
+        "kind": "attack",
+        "target": "armlab"
+      }
+    },
+    {
+      "name": "legion defend",
+      "learner": [
+        {
+          "unit": "leggob",
+          "count": 3
+        },
+        {
+          "unit": "legcen",
+          "count": 1
+        },
+        {
+          "unit": "legbal",
+          "count": 1
+        }
+      ],
+      "enemy": [
+        {
+          "unit": "armpw",
+          "count": 3
+        },
+        {
+          "unit": "armrock",
+          "count": 2
+        }
+      ],
+      "separation": 350,
+      "objective": {
+        "kind": "defend",
+        "target": "leglab"
+      }
+    }
+  ]
+}

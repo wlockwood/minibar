@@ -1,0 +1,112 @@
+{
+  "arena": {
+    "cell_size": 64,
+    "center": [
+      1024.0,
+      1024.0
+    ],
+    "map": "../../../../data/brains/from_replays/maps/synthetic-2048.vsgmap",
+    "movement_class": "bot2"
+  },
+  "brain_kind": "tactical_v4",
+  "generations": 1,
+  "hidden": 8,
+  "layout_jitter": 20,
+  "max_time": 45,
+  "name": "validation-only asymmetric mixed roles",
+  "opponents": [
+    "charge",
+    "kite",
+    "orbit"
+  ],
+  "scenarios": [
+    {
+      "enemy": [
+        {
+          "count": 3,
+          "unit": "corak"
+        },
+        {
+          "count": 1,
+          "unit": "corstorm"
+        }
+      ],
+      "faction": "armada",
+      "learner": [
+        {
+          "count": 4,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "name": "validation armada six versus four",
+      "separation": 410
+    },
+    {
+      "enemy": [
+        {
+          "count": 4,
+          "unit": "leggob"
+        },
+        {
+          "count": 1,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "faction": "cortex",
+      "learner": [
+        {
+          "count": 2,
+          "unit": "corak"
+        },
+        {
+          "count": 2,
+          "unit": "corstorm"
+        }
+      ],
+      "name": "validation cortex four versus six",
+      "separation": 430
+    },
+    {
+      "enemy": [
+        {
+          "count": 4,
+          "unit": "armpw"
+        },
+        {
+          "count": 2,
+          "unit": "armrock"
+        }
+      ],
+      "faction": "legion",
+      "learner": [
+        {
+          "count": 3,
+          "unit": "leggob"
+        },
+        {
+          "count": 2,
+          "unit": "legcen"
+        },
+        {
+          "count": 1,
+          "unit": "legbal"
+        }
+      ],
+      "name": "validation legion six versus six",
+      "separation": 390
+    }
+  ],
+  "seeds_per_battle": 1,
+  "start": "template",
+  "train_modules": [],
+  "validation_every": 1,
+  "validation_seeds": 1
+}

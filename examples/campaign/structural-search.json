@@ -1,0 +1,263 @@
+{
+  "format": "minibar-campaign",
+  "version": 1,
+  "name": "champion structural evolution",
+  "generations": 200,
+  "seed": 20261017,
+  "validation_every": 5,
+  "promotion_seeds": 4,
+  "min_gain": 0.005,
+  "max_stage_regression": 0.15,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "archive_size": 8,
+  "tracks": [
+    {
+      "name": "tactical",
+      "brain": "../../data/brains/from_replays/tactical/baseline.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-objectives.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "validation": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-validation-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-validation-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-validation-objectives.json"
+            }
+          }
+        ],
+        "seeds": 4
+      },
+      "holdout": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "unselected-tactical-holdout",
+            "difficulty": 3,
+            "weight": 1,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-holdout.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "islands": [
+        {
+          "name": "local",
+          "es": {
+            "population": 32,
+            "sigma": 0.04,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261017
+          },
+          "restart": false
+        },
+        {
+          "name": "wide",
+          "es": {
+            "population": 8,
+            "sigma": 0.16,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261018
+          },
+          "restart": false,
+          "structural_search": {
+            "every": 10,
+            "activations": [
+              "tanh",
+              "softsign",
+              "leaky_relu"
+            ],
+            "activation_weight": 1.0,
+            "input_weight": 1.0,
+            "connection_weight": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "strategic",
+      "brain": "../../data/brains/from_replays/strategic/baseline.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-objectives.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "validation": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-validation-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-validation-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-validation-objectives.json"
+            }
+          }
+        ],
+        "seeds": 4
+      },
+      "holdout": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "unselected-strategic-holdout",
+            "difficulty": 3,
+            "weight": 1,
+            "task": {
+              "kind": "strategic",
+              "config": "stages/strategic-holdout.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "islands": [
+        {
+          "name": "local",
+          "es": {
+            "population": 32,
+            "sigma": 0.04,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261117
+          },
+          "restart": false
+        },
+        {
+          "name": "wide",
+          "es": {
+            "population": 8,
+            "sigma": 0.16,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261118
+          },
+          "restart": false,
+          "structural_search": {
+            "every": 10,
+            "activations": [
+              "tanh",
+              "softsign",
+              "leaky_relu"
+            ],
+            "activation_weight": 1.0,
+            "input_weight": 1.0,
+            "connection_weight": 1.0
+          }
+        }
+      ]
+    }
+  ],
+  "recentre_on_promotion": true
+}

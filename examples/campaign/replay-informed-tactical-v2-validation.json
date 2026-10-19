@@ -1,0 +1,130 @@
+{
+  "format": "minibar-campaign",
+  "version": 1,
+  "name": "replay informed curriculum, tactical track (rebalanced validation)",
+  "generations": 200,
+  "seed": 20261017,
+  "validation_every": 5,
+  "promotion_seeds": 32,
+  "min_gain": 0.005,
+  "max_stage_regression": 0.15,
+  "restart_after": 30,
+  "restart_scale": 0.25,
+  "archive_size": 8,
+  "tracks": [
+    {
+      "name": "tactical",
+      "brain": "../../data/brains/from_replays/tactical/baseline.json",
+      "train_modules": [],
+      "training": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-objectives.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "validation": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "easy",
+            "difficulty": 1,
+            "weight": 0.25,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-validation-v2-easy.json"
+            }
+          },
+          {
+            "name": "mixed",
+            "difficulty": 2,
+            "weight": 0.35,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-validation-v2-mixed.json"
+            }
+          },
+          {
+            "name": "objectives",
+            "difficulty": 3,
+            "weight": 0.4,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-validation-v2-objectives.json"
+            }
+          }
+        ],
+        "seeds": 16
+      },
+      "holdout": {
+        "catalog": "../../data/brains/from_replays/catalog.json",
+        "stages": [
+          {
+            "name": "unselected-tactical-holdout",
+            "difficulty": 3,
+            "weight": 1,
+            "task": {
+              "kind": "tactical",
+              "config": "stages/tactical-holdout.json"
+            }
+          }
+        ],
+        "seeds": 2
+      },
+      "islands": [
+        {
+          "name": "local",
+          "es": {
+            "population": 32,
+            "sigma": 0.04,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261017
+          },
+          "restart": false
+        },
+        {
+          "name": "mid",
+          "es": {
+            "population": 32,
+            "sigma": 0.08,
+            "learning_rate": 0.01,
+            "weight_decay": 0,
+            "l1": 0,
+            "seed": 20261018
+          },
+          "restart": false
+        }
+      ]
+    }
+  ],
+  "promotion_min_t": 2.0,
+  "recentre_on_promotion": true
+}
