@@ -228,6 +228,11 @@ fn annotate_dimensions(
     config: &train::TrainConfig,
     r: &train::Evaluation,
 ) {
+    if config.matchups.as_ref().is_some_and(|m| {
+        m.starting_distance_mode == super::matchups::StartingDistanceMode::UnitRanges
+    }) {
+        v["combat_budget"] = serde_json::json!(config.max_time);
+    }
     let generated = r
         .matchup_records
         .iter()

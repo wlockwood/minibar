@@ -596,6 +596,15 @@ function drawField(i, sel, dec) {
     const colr = { win: "#6fd39a", loss: "#ff5d5d", timeout: "#ffd95a", "wipe-out": "#aab3c2" }[b.outcome];
     ov.style.display = "flex";
     ov.innerHTML = `<span style="color:${colr}">${b.outcome.toUpperCase()}</span><small>fitness ${fmt(b.fitness)} · exchange ${fmt(b.exchange)}${S.live && $("auto").checked ? " · next battle…" : ""}</small>`;
+    if (b.firing) {
+      const rate = (n,d) => d ? `${Math.round(100*n/d)}%` : 'unavailable';
+      b.firing.forEach((s,i) => {
+        const line = document.createElement('small');
+        line.textContent = `${i === 0 ? 'Learner' : 'Opponent'}: ${s.units_fired}/${s.armed_units} armed units fired · ally blocked ${rate(s.blocked_friendly,s.ready_checks)} · terrain blocked ${rate(s.blocked_terrain,s.ready_checks)}`;
+        line.title = 'Full-battle totals, including unsampled ticks. Blocked rate is blocked / aimed, ready weapon checks; repeated checks count while obstructed.';
+        ov.append(line);
+      });
+    }
   } else if (!S.loading) ov.style.display = "none";
 }
 cv.onclick = (e) => {

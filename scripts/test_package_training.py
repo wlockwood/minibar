@@ -17,6 +17,19 @@ def write(path, value):
 
 
 class PackageTests(unittest.TestCase):
+    def test_elite_brains_are_portable_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)/'source';root.mkdir()
+            config,sim=self.fixture(root)
+            source=root/'data/elite.json';write(source,{'kind':'tactical_v4','modules':[]})
+            document=json.loads(config.read_text());document['tracks'][0]['elite_brains']=['../data/elite.json']
+            # Resolve paths relative to the campaign file, just like brain paths.
+            document['tracks'][0]['elite_brains']=[os.path.relpath(source,config.parent)]
+            write(config,document)
+            out=Path(temp)/'bundle';manifest=package.build_package(config,sim,out)
+            dependency=next(d for d in manifest['dependencies'] if 'elite_brains' in d['field'])
+            self.assertEqual(json.loads((out/dependency['target']).read_text()),json.loads(source.read_text()))
+
     def test_companion_brain_is_a_portable_dependency(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "source"; root.mkdir()

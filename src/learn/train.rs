@@ -577,6 +577,65 @@ fn build_simulator_prepared(
         target_for(1),
         &mut rng,
     )?);
+    let distance = config
+        .matchup_records
+        .iter()
+        .find(|record| record.scenario.name == spec.name)
+        .map(|record| &record.starting_distance)
+        .filter(|distance| distance.mode == matchups::StartingDistanceMode::UnitRanges);
+    if distance.is_some() {
+        // Preserve each formation's jitter, then rigidly align its nearest
+        // actual front. A random front-rank offset cannot violate the sampled
+        // distance bounds, including a degenerate LOS-dominated interval.
+        for (side, desired, positive) in [
+            (0, centre - spec.separation * 0.5, true),
+            (1, centre + spec.separation * 0.5, false),
+        ] {
+            let front = units
+                .iter()
+                .filter(|spawn| spawn.side == side)
+                .map(|spawn| spawn.position.x)
+                .reduce(|a, b| if positive { a.max(b) } else { a.min(b) })
+                .unwrap();
+            for spawn in units.iter_mut().filter(|spawn| spawn.side == side) {
+                spawn.position.x += desired - front;
+            }
+        }
+    }
+    let mut auxiliary_ids = Vec::new();
+    let support = config
+        .matchup_records
+        .iter()
+        .find(|r| r.scenario.name == spec.name)
+        .and_then(|r| r.sensor_support.as_ref());
+    if let Some(support) = support {
+        for (relative_side, assets) in support.iter().enumerate() {
+            let side = if relative_side == 0 {
+                learner_side
+            } else {
+                1 - learner_side
+            };
+            let sign = if side == 0 { 1.0 } else { -1.0 };
+            let front = if side == 0 {
+                centre - spec.separation * 0.5
+            } else {
+                centre + spec.separation * 0.5
+            };
+            for (asset_index, name) in assets.names().enumerate() {
+                let definition = lookup(catalog, name)?.clone();
+                auxiliary_ids.push(units.len() as u32 + 1);
+                // Sites behind the combat front avoid changing the sampled
+                // combat gap; z offsets avoid stacked sensor collision volumes.
+                let z = 500.0 + (asset_index as f32 - 1.0) * 160.0;
+                units.push(Spawn {
+                    side: side as u8,
+                    definition,
+                    position: Vec2::new(front - sign * 180.0, z),
+                    heading: if side == 0 { 0.0 } else { PI },
+                });
+            }
+        }
+    }
     let terrain = if let Some(arena) = prepared {
         let translation = arena.center - Vec2::new(centre, 500.0);
         for spawn in &mut units {
@@ -595,6 +654,20 @@ fn build_simulator_prepared(
                     spec.name, spawn.definition.name, arena.movement_class
                 )));
             }
+            let radius = spawn.definition.movement.radius;
+            if distance.is_some()
+                && (spawn.position.x < radius
+                    || spawn.position.z < radius
+                    || spawn.position.x + radius
+                        > arena.terrain.cols as f32 * arena.terrain.cell_size
+                    || spawn.position.z + radius
+                        > arena.terrain.rows as f32 * arena.terrain.cell_size)
+            {
+                return Err(TrainError(format!(
+                    "scenario {:?}: out-of-bounds spawn {} at ({}, {})",
+                    spec.name, spawn.definition.name, spawn.position.x, spawn.position.z
+                )));
+            }
             if spawn.definition.flight.is_none()
                 && !arena
                     .terrain
@@ -607,17 +680,55 @@ fn build_simulator_prepared(
             }
         }
         arena.terrain.clone()
-    } else {
+    } else if distance.is_none() && support.is_none() {
+        // Fixed and explicit scenarios preserve historical terrain and spawn
+        // coordinates, including formations extending beyond those bounds.
         Terrain::flat(width, 1_000.0, 32.0)
+    } else {
+        // Fit the full roster, objective assets, collision radii and jitter.
+        // Long-range/air fights also need maneuvering room behind and beside
+        // formations; growing separation alone would leave aircraft clamped
+        // against the narrow historical 1000-unit north/south boundaries.
+        let margin = distance.map_or(32.0, |d| {
+            500.0_f32
+                .max(d.max_weapon_range)
+                .max(d.air_runway_floor * 0.5)
+        });
+        let min_x = units
+            .iter()
+            .map(|s| s.position.x - s.definition.movement.radius)
+            .fold(f32::INFINITY, f32::min);
+        let max_x = units
+            .iter()
+            .map(|s| s.position.x + s.definition.movement.radius)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_z = units
+            .iter()
+            .map(|s| s.position.z - s.definition.movement.radius)
+            .fold(f32::INFINITY, f32::min);
+        let max_z = units
+            .iter()
+            .map(|s| s.position.z + s.definition.movement.radius)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let shift = Vec2::new((margin - min_x).max(0.0), (margin - min_z).max(0.0));
+        for spawn in &mut units {
+            spawn.position = spawn.position + shift;
+        }
+        Terrain::flat(
+            width.max(max_x + shift.x + margin),
+            1_000.0_f32.max(max_z + shift.z + margin),
+            32.0,
+        )
     };
     let scenario = Scenario {
         terrain,
         units,
-        max_time: config.max_time,
+        max_time: config.max_time + distance.map_or(0.0, |d| d.approach_time),
         trace_resources: Vec::new(),
     };
     Simulator::try_new(scenario)
         .map(|sim| {
+            let sim = sim.with_auxiliary_units(auxiliary_ids);
             if let Some(supply) = config.resource_supply {
                 sim.with_starting_resources([supply; 2])
             } else {
@@ -1201,6 +1312,255 @@ mod tests {
             opponents: vec!["hold".into(), "charge".into()],
             max_time: 20.0,
             ..TrainConfig::default_for_unit("skirm")
+        }
+    }
+
+    fn sensor_catalog() -> UnitCatalog {
+        let mut catalog = catalog();
+        let combat = catalog.units.get_mut("skirm").unwrap();
+        combat.strategic.sight_distance = Some(100.0);
+        combat.weapons[0].range = 1000.0;
+        combat.weapons[0].damage = 1.0;
+        combat.movement.max_speed = 0.0;
+        let combat = combat.clone();
+        for (name, radar, jammer) in [("radar", 2000.0, 0.0), ("jammer", 0.0, 1000.0)] {
+            let mut unit = combat.clone();
+            unit.name = name.into();
+            unit.weapons.clear();
+            unit.metal_cost = 25.0;
+            unit.strategic.sight_distance = Some(20.0);
+            unit.strategic.radar_radius = Some(radar);
+            unit.strategic.jammer_radius = Some(jammer);
+            catalog.units.insert(name.into(), unit);
+        }
+        let mut scout = catalog.get("radar").unwrap().clone();
+        scout.name = "scout".into();
+        scout.strategic.sight_distance = Some(350.0);
+        scout.strategic.radar_radius = Some(2000.0);
+        scout.strategic.use_air_los = true;
+        scout.movement.max_speed = 180.0;
+        scout.movement.acceleration = 180.0;
+        scout.movement.turn_rate = 180.0;
+        scout.flight = Some(crate::model::FlightDef {
+            cruise_altitude: 100.0,
+            minimum_speed: 100.0,
+            attack_run: false,
+        });
+        catalog.units.insert("scout".into(), scout);
+        catalog
+    }
+
+    fn sensor_config(catalog: &UnitCatalog) -> TrainConfig {
+        let mut config = tiny_config();
+        config.scenarios.clear();
+        config.max_time = 1.0;
+        config.layout_jitter = 0.0;
+        config.matchups=Some(serde_json::from_value(serde_json::json!({
+            "count":6,"separation":[700,700],"sensor_support":{"radars":["radar"],"air_scouts":["scout"],"jammers":["jammer"],"jammer_share":0.5},
+            "anchors":[{"name":"sensor duel","family":"sensors","max_gap":0.05,"learner":[{"unit":"skirm","count":1}],"enemy":[{"unit":"skirm","count":1}]}]
+        })).unwrap());
+        config.resolved(catalog, 17).unwrap()
+    }
+
+    #[test]
+    fn sensor_support_is_spawned_on_correct_sides_and_all_resources_are_scored() {
+        let catalog = sensor_catalog();
+        let config = sensor_config(&catalog);
+        for (index, record) in config.matchup_records.iter().enumerate() {
+            for learner_side in 0..2 {
+                let sim = build_simulator(&config, &catalog, index, learner_side, 1, 0.0).unwrap();
+                let (result, trace) = sim.run_traced(
+                    [
+                        &crate::policy::BuiltinPolicy::Hold,
+                        &crate::policy::BuiltinPolicy::Hold,
+                    ],
+                    1,
+                    crate::trace::TraceConfig {
+                        max_frames: 1,
+                        ..Default::default()
+                    },
+                );
+                for relative in 0..2 {
+                    let side = if relative == 0 {
+                        learner_side
+                    } else {
+                        1 - learner_side
+                    };
+                    assert!(
+                        (result.sides[side].starting_value - record.starting_value[relative]).abs()
+                            < 0.001
+                    );
+                    for name in record.sensor_support.as_ref().unwrap()[relative].names() {
+                        assert_eq!(
+                            trace.frames[0]
+                                .units
+                                .iter()
+                                .filter(|u| u.side as usize == side && &u.definition == name)
+                                .count(),
+                            1
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn radar_support_enables_fire_jamming_suppresses_it_and_visual_scouts_restore_it() {
+        use super::super::sensor_support::SensorSupport;
+        let catalog = sensor_catalog();
+        let mut config = sensor_config(&catalog);
+        let hold = crate::policy::BuiltinPolicy::Hold;
+        let mut run = |assets: [SensorSupport; 2], time: f32| {
+            config.max_time = time;
+            config.matchup_records[0].sensor_support = Some(assets);
+            build_simulator(&config, &catalog, 0, 0, 1, 0.0)
+                .unwrap()
+                .run([&hold, &hold], 1)
+        };
+        assert_eq!(run(Default::default(), 1.0).sides[0].projectiles_fired, 0);
+        let radar = SensorSupport {
+            radar: Some("radar".into()),
+            ..Default::default()
+        };
+        let jammer = SensorSupport {
+            jammer: Some("jammer".into()),
+            ..Default::default()
+        };
+        assert!(run([radar.clone(), Default::default()], 1.0).sides[0].projectiles_fired > 0);
+        assert_eq!(
+            run([radar.clone(), jammer.clone()], 1.0).sides[0].projectiles_fired,
+            0
+        );
+        let scout = SensorSupport {
+            air_scout: Some("scout".into()),
+            ..radar
+        };
+        assert!(run([scout, jammer], 10.0).sides[0].projectiles_fired > 0);
+    }
+
+    #[test]
+    fn fixed_and_explicit_deep_formations_keep_legacy_terrain_and_positions() {
+        let mut catalog = catalog();
+        let unit = catalog.units.get_mut("skirm").unwrap();
+        unit.movement.radius = 35.0;
+        unit.movement.max_speed = 0.0;
+        let army = vec![RosterEntry {
+            unit: "skirm".into(),
+            count: 96,
+            platoon: 0,
+        }];
+        let mut explicit = tiny_config();
+        explicit.max_time = 0.1;
+        explicit.scenarios.truncate(1);
+        explicit.scenarios[0].learner = army.clone();
+        explicit.scenarios[0].enemy = army.clone();
+        explicit.scenarios[0].separation = 4000.0;
+        let mut generated = explicit.clone();
+        generated.scenarios.clear();
+        generated.matchups = Some(MatchupConfig {
+            count: 1,
+            separation: [4000.0, 4000.0],
+            anchors: vec![matchups::AnchoredMatchup {
+                name: "legacy deep".into(),
+                family: "legacy".into(),
+                learner: army.clone(),
+                enemy: army,
+                max_gap: 0.05,
+            }],
+            ..Default::default()
+        });
+        let generated = generated.resolved(&catalog, 1).unwrap();
+        for config in [&explicit, &generated] {
+            let simulator = build_simulator(config, &catalog, 0, 0, 1, 0.0).unwrap();
+            let (_, trace) = simulator.run_traced(
+                [
+                    &crate::policy::BuiltinPolicy::Hold,
+                    &crate::policy::BuiltinPolicy::Hold,
+                ],
+                1,
+                crate::trace::TraceConfig {
+                    max_frames: 1,
+                    ..Default::default()
+                },
+            );
+            assert_eq!((trace.map.width, trace.map.depth), (5024.0, 1024.0));
+            let units = &trace.frames[0].units;
+            assert_eq!(units[0].position, [500.0, 305.0]);
+            assert_eq!(units[95].position, [-670.0, 695.0]);
+            assert_eq!(units[96].position, [4500.0, 305.0]);
+            assert_eq!(units[191].position, [5670.0, 695.0]);
+        }
+    }
+
+    #[test]
+    fn long_range_fronts_preserve_sampled_gap_with_jitter_and_fit_full_rosters() {
+        let mut catalog = catalog();
+        let unit = catalog.units.get_mut("skirm").unwrap();
+        unit.weapons[0].range = 8000.0;
+        unit.strategic.sight_distance = Some(500.0);
+        unit.movement.radius = 35.0;
+        unit.movement.max_speed = 0.0;
+        let army = vec![RosterEntry {
+            unit: "skirm".into(),
+            count: 96,
+            platoon: 0,
+        }];
+        let mut config = tiny_config();
+        config.scenarios.clear();
+        config.max_time = 0.1;
+        config.matchups = Some(MatchupConfig {
+            count: 1,
+            starting_distance_mode: matchups::StartingDistanceMode::UnitRanges,
+            anchors: vec![matchups::AnchoredMatchup {
+                name: "long turrets".into(),
+                family: "turrets".into(),
+                learner: army.clone(),
+                enemy: army,
+                max_gap: 0.05,
+            }],
+            ..Default::default()
+        });
+        for seed in [1, 7, 91] {
+            let config = config.resolved(&catalog, seed).unwrap();
+            let distance = &config.matchup_records[0].starting_distance;
+            assert_eq!(distance.bounds, [500.0, 12000.0]);
+            for side in [0, 1] {
+                let simulator = build_simulator(&config, &catalog, 0, side, seed, 60.0).unwrap();
+                let (_, trace) = simulator.run_traced(
+                    [
+                        &crate::policy::BuiltinPolicy::Hold,
+                        &crate::policy::BuiltinPolicy::Hold,
+                    ],
+                    seed,
+                    crate::trace::TraceConfig {
+                        max_frames: 1,
+                        ..Default::default()
+                    },
+                );
+                let units = &trace.frames[0].units;
+                let left = units
+                    .iter()
+                    .filter(|u| u.side == 0)
+                    .map(|u| u.position[0])
+                    .fold(f32::NEG_INFINITY, f32::max);
+                let right = units
+                    .iter()
+                    .filter(|u| u.side == 1)
+                    .map(|u| u.position[0])
+                    .fold(f32::INFINITY, f32::min);
+                assert!((right - left - distance.sampled).abs() < 0.01);
+                for unit in units {
+                    assert!(
+                        unit.position[0] >= unit.radius
+                            && unit.position[0] + unit.radius <= trace.map.width
+                    );
+                    assert!(
+                        unit.position[1] >= unit.radius
+                            && unit.position[1] + unit.radius <= trace.map.depth
+                    );
+                }
+            }
         }
     }
 

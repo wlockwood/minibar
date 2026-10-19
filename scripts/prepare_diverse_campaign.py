@@ -35,11 +35,12 @@ def digest(path):
     return result.hexdigest()
 
 
-def campaign_documents(matchups, seed):
+def campaign_documents(matchups, seed, elite_brains=None):
     """Build profiles with identical train/validation distributions and isolated holdout."""
     if type(seed) is not int or not 0 <= seed < (1 << 64) - 2048:
         raise ValueError("seed must reserve room for all pilot optimizer streams")
     documents = {}
+    elite_brains = elite_brains or {}
     families = {name: [] for name in ("ground", "air")}
     anchors = {a["name"]: a for a in matchups["anchors"]}
     for family, anchor_name in [("heavy_swarm", "Mammoth vs 40 Pawns"),
@@ -47,6 +48,10 @@ def campaign_documents(matchups, seed):
                                 ("rare_turret", "Ragnarok vs 30 Mammoths")]:
         anchor = copy.deepcopy(anchors[anchor_name]); anchor["family"] = family
         families["ground"].append((family, [anchor], []))
+    reverse = copy.deepcopy(anchors["Mammoth vs 40 Pawns"])
+    reverse.update(name="40 Pawns vs Mammoth", family="swarm_heavy")
+    reverse["learner"], reverse["enemy"] = reverse["enemy"], reverse["learner"]
+    families["ground"].append(("swarm_heavy", [reverse], []))
     for family, a, b, domain in [("mixed_ground", "ground", "ground", "ground"),
                                   ("mobile_turret", "ground", "turrets", "ground"),
                                   ("ground_aa", "aa", "bombers", "ground"),
@@ -64,6 +69,11 @@ def campaign_documents(matchups, seed):
         for family, anchor, quota in families[domain]:
             matchup = copy.deepcopy(matchups)
             matchup.update({"anchors": anchor, "families": quota, "count": 3 if profile == "pilot" else 6})
+            matchup["starting_distance_mode"] = "unit_ranges"
+            matchup["sensor_support"] = {"radars":["armrad","corrad"],
+                "air_scouts":["armpeep","corfink"],"jammers":["armjamt","corjamt"],"jammer_share":1/3}
+            for key in ("underdog_ratio", "even_ratio", "overdog_ratio"):
+                matchup[key] = [0.98, 1.02]
             path = f"stages/{profile}/{domain}-{family}.json"
             other = "air" if domain == "ground" else "ground"
             config = {"name": f"{domain} {family} {profile}",
@@ -71,7 +81,8 @@ def campaign_documents(matchups, seed):
                       "companion_brain": f"../../brains/{other}.initial.json",
                       "resource_supply": {"metal": 1000000, "energy": 1000000},
                       "objective": {"win_stake_floor": 0.0},
-                      "opponents": ["charge", "kite", "hold"], "max_time": 6 if profile == "pilot" else 24,
+                      "opponents": ["charge", "kite", "hold", "surround", f"brain:../../brains/{domain}.frozen.json"],
+                      "max_time": 30 if profile == "pilot" else 120,
                       "layout_jitter": 30, "seeds_per_battle": 1, "scenarios": [], "matchups": matchup}
             # Non-combat objective investment stays separate from combat turret packing.
             if family in ("mixed_ground", "mobile_turret", "bomber_aa"):
@@ -79,17 +90,32 @@ def campaign_documents(matchups, seed):
             documents[path] = config
             stages.append({"name": family,"difficulty": 2,"weight": 1.0,
                            "task": {"kind": "tactical", "config": path}})
+        # Keep the requested composition comparisons near equal investment.
+        # Unequal-force exercises remain explicit, lightly weighted controls.
+        if profile != "pilot":
+            base_family = "mixed_ground" if domain == "ground" else "air_air"
+            for band, ratios in [("disadvantage",[1.25,1.6]), ("advantage",[0.6,0.8])]:
+                path = f"stages/{profile}/{domain}-resource_{band}.json"
+                config = copy.deepcopy(documents[f"stages/{profile}/{domain}-{base_family}.json"])
+                config["name"] = f"{domain} resource {band} {profile}"
+                config["matchups"]["count"] = 3
+                for key in ("underdog_ratio", "even_ratio", "overdog_ratio"):
+                    config["matchups"][key] = ratios
+                documents[path] = config
+                stages.append({"name":f"resource_{band}","difficulty":2,"weight":0.25,
+                               "task":{"kind":"tactical","config":path}})
         return stages
 
     for name, profile in [("campaign.json", "production"), ("pilot.json", "pilot")]:
         pilot = profile == "pilot"
         campaign = {"format": "minibar-campaign", "version": 1,
-                    "name": f"diverse resource training {profile}", "seed": seed + int(pilot),
+                    "name": f"reconnaissance training {profile}", "seed": seed + int(pilot),
                     "generations": 3 if pilot else 200, "validation_every": 1 if pilot else 5,
                     "promotion_seeds": 4 if pilot else 12,"min_gain": 0.001,
                     "fresh_screening": True,"screen_min_gain": 0.0,"promotion_min_t": 2.0,
                     "max_stage_regression": 0.15,"recentre_on_promotion": True,
                     "module_recombination_every": 1 if pilot else 5,
+                    "elite_retest_every": 1 if pilot else 5,"elite_size": 8,
                     "reanchor_after": 1 if pilot else 30,"archive_size": 0,"restart_after": 30,
                     "restart_scale": 0.25,"tracks": []}
         for index, domain in enumerate(("ground", "air")):
@@ -106,6 +132,7 @@ def campaign_documents(matchups, seed):
                 structural["structural_search"] = {"every": 30}
                 islands.append(structural)
             track = {"name": domain,"brain": f"brains/{domain}.initial.json",
+                     "elite_brains": list(elite_brains.get(domain, [])),
                      "reference_brain": f"brains/{domain}.reference.json","train_modules": [],
                      "training": plan(stage_list), "validation": plan(stage_list, 2),"islands": islands}
             if not pilot:
@@ -158,7 +185,7 @@ if ($LASTEXITCODE -ne 0) { throw "Native training exited with code $LASTEXITCODE
 
 
 def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENCE, air_brain=None,
-            checkpoint=STATE, seed=2026101829):
+            checkpoint=STATE, seed=2026101829, elite_brains=()):
     out = Path(out).absolute()
     refuse_reparse(out)
     if out.exists():
@@ -174,7 +201,7 @@ def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENC
     if type(seed) is not int or not 0 <= seed < (1 << 64) - 2048:
         raise ValueError("seed must leave room for independent bounded u64 streams")
     source_inputs = [{"role": role,"source": str(path),"sha256": digest(path)}
-                     for role,path in [("ground_diagnostic_anchor",candidate),("ground_gen70_reference",reference),("executable",simulator)]]
+                     for role,path in [("ground_anchor",candidate),("ground_gen70_reference",reference),("executable",simulator)]]
     for script in (Path(__file__), Path(exporter.__file__), ROOT / "scripts/prepare_from_replays.py", ROOT / "scripts/make_catalog.py", ROOT / "scripts/bar_lua.py"):
         source_inputs.append({"role":"preparation_source","source":str(script.resolve()),"sha256":digest(script)})
     if checkpoint is not None:
@@ -208,6 +235,29 @@ def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENC
             source_inputs.append({"role":"air_anchor","source":str(air_brain),"sha256":digest(air_brain)})
             air_origin = "preserved explicit air checkpoint weights; optimizer initialized independently"
         shutil.copyfile(brains / "air.initial.json", brains / "air.reference.json")
+        for domain in ("ground", "air"):
+            shutil.copyfile(brains / f"{domain}.initial.json", brains / f"{domain}.frozen.json")
+        elite_paths = {"ground": [], "air": []}
+        elite_hashes = set()
+        for source in elite_brains:
+            source = Path(source).resolve()
+            refuse_reparse(source)
+            elite = json.loads(source.read_text(encoding="utf-8"))
+            kind = elite.get("kind")
+            if kind not in ("tactical_v4", "tactical-air-v1"):
+                raise ValueError(f"elite brain has unsupported contract: {source}")
+            domain = "air" if kind == "tactical-air-v1" else "ground"
+            identity = digest(source)
+            if identity in elite_hashes:
+                continue
+            if len(elite_paths[domain]) >= 8:
+                raise ValueError(f"at most eight imported elites per domain: {domain}")
+            elite_hashes.add(identity)
+            target = f"brains/elites/{domain}-{len(elite_paths[domain])+1}.json"
+            (staged / target).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, staged / target)
+            elite_paths[domain].append(target)
+            source_inputs.append({"role":f"{domain}_elite", "source":str(source), "sha256":identity})
         source_receipt = candidate.with_name("candidate-receipt.json")
         if source_receipt.exists():
             if json.loads(source_receipt.read_text(encoding="utf-8"))["candidate_sha256"] != digest(candidate):
@@ -215,7 +265,7 @@ def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENC
             shutil.copyfile(source_receipt, brains / "ground-diagnostic-receipt.json")
             source_inputs.append({"role":"diagnostic_evaluation_receipt","source":str(source_receipt),"sha256":digest(source_receipt)})
         matchup = json.loads((staged / "catalog/matchups.json").read_text(encoding="utf-8"))
-        for path, document in campaign_documents(matchup, seed).items():
+        for path, document in campaign_documents(matchup, seed, elite_paths).items():
             write(staged / path, document)
         (staged / "Train.ps1").write_text(TRAIN_PS1, encoding="utf-8")
         (staged / "README.md").write_text(PACKAGE_README, encoding="utf-8")
@@ -223,10 +273,13 @@ def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENC
                  for p in sorted(staged.rglob("*")) if p.is_file()]
         receipt = {"format":"minibar.diverse_successor","version":1,"binary":binary.as_posix(),
                    "seed":seed,"sources":source_inputs,"files":files,"air_initialization":air_origin,
-                   "ground_initialization":"confirmed cohesion diagnostic candidate; not a historical campaign promotion",
+                   "ground_initialization":("confirmed cohesion diagnostic candidate; not a historical campaign promotion"
+                       if candidate == CANDIDATE.resolve() else "copied explicit ground checkpoint weights; see ground_anchor source hash"),
                    "optimizer_initialization":"fresh independent streams and moments; no optimizer merge or exact continuation",
-                   "opponent_policy":"same scripted charge/kite/hold roster throughout; archive disabled",
+                   "opponent_policy":"fixed charge/kite/hold/surround scripts plus copied domain-specific learned brain; archive disabled",
                    "companion_policy":"opposite-domain initial brain frozen across comparisons; no live companion updates",
+                   "elite_policy":"bounded eight-brain pool; one fresh challenge per track every five production generations; imported scores never reused",
+                   "starting_distance_policy":"unit-derived LOS/weapon bounds with air acceleration and turn runway; explicit approach-time allowance",
                    "holdout_status":"production-only plan prepared, not evaluated",
                    "qualification_status":"prepared inputs; no training launched or improvement claimed"}
         write(staged / "receipt.json",receipt)
@@ -236,8 +289,9 @@ def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENC
 
 PACKAGE_README = """# Diverse tactical successor
 
-This is a new independent experiment. The ground anchor is the confirmed cohesion
-replacement candidate; its unchanged generation-70 champion is the reference.
+This is a new independent experiment. Ground starts from the supplied checkpoint
+(the confirmed cohesion replacement candidate by default); the preserved
+generation-70 champion is the reference. Exact sources are listed in receipt.json.
 The air brain has its own explicit initialization and weights. Opposite-domain
 companions remain frozen at package initialization. No optimizer state is inherited.
 
@@ -248,10 +302,32 @@ Run a short plumbing pilot in a visible PowerShell console:
 ./Train.ps1 -Profile cohesion -Threads 32
 ```
 
-These 3-generation, 6-second pilots test the workflow. They cannot establish
+These 3-generation pilots use 30 seconds of combat plus approach allowance to test the workflow. They cannot establish
 learning improvement. They contain no holdout plan. After reviewing pilot evidence,
 the production profile is available with `./Train.ps1 -Profile production -Threads 32`.
-Production is 200 generations and includes a separate untouched holdout plan;
+Production is 200 generations with a 120-second combat budget plus approach
+allowance (resolved fights end early), a protected 40-Pawns-versus-Mammoth family alongside the reverse, and
+charge/kite/hold/surround scripts plus a frozen learned opponent per domain.
+The frozen opponents are copies of the initial brains and never follow promotions.
+Both training and validation use this roster.
+
+Starting front gaps vary from the largest participating LOS to 1.5 times the
+longest offensive weapon range. If LOS exceeds that far end, the interval
+collapses at LOS. Aircraft receive a conservative runway floor of
+4 * (cruise acceleration distance + turn diameter); their far end is also at
+least 1.5 times this floor. Travel allowance budgets for an opponent holding
+position. The configured 30/120 seconds remains available as combat time after
+that estimated approach. Preview records include all bounds and capped or
+unreachable-contact flags. Fixed historical configurations remain unchanged.
+
+Up to eight promising elites are retained per track. Every five production
+generations (every pilot generation), one gets a fresh challenge through the
+same screening, paired tests and promotion checks. Standalone imported elite
+brains are frozen in this package and their old scores are not reused. Full
+candidate receipts remain under runs/PROFILE/candidates. The dashboard shows
+pool identities, provenance, recent retest gains and rejection reasons.
+
+Production includes a separate untouched holdout plan;
 running production evaluates its holdout according to the native campaign lifecycle.
 
 Stop cooperatively with `./Train.ps1 -Profile pilot -Stop`; active work finishes
@@ -277,17 +353,18 @@ plumbing pilots do not establish native BAR equivalence or champion improvement.
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out",type=Path,default=ROOT / "data/branches/diverse-training-20261018")
+    parser.add_argument("--out",type=Path,default=ROOT / "data/branches/elite-range-training-20261019")
     parser.add_argument("--sim",type=Path,required=True)
     parser.add_argument("--bar-root",type=Path,default=Path(exporter.make_catalog.BAR))
     parser.add_argument("--candidate",type=Path,default=CANDIDATE)
     parser.add_argument("--reference",type=Path,default=REFERENCE)
     parser.add_argument("--checkpoint",type=Path,default=STATE)
     parser.add_argument("--air-brain",type=Path)
+    parser.add_argument("--elite-brain",type=Path,action="append",default=[],help="standalone saved elite brain; repeatable, up to eight per domain")
     parser.add_argument("--seed",type=int,default=2026101829)
     args=parser.parse_args()
     receipt=prepare(args.out,args.sim,args.bar_root,candidate=args.candidate,reference=args.reference,
-                    checkpoint=args.checkpoint,air_brain=args.air_brain,seed=args.seed)
+                    checkpoint=args.checkpoint,air_brain=args.air_brain,seed=args.seed,elite_brains=args.elite_brain)
     print(json.dumps({"out":str(args.out),"files":len(receipt["files"]),"status":receipt["qualification_status"]}))
 
 

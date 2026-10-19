@@ -424,7 +424,7 @@ function renderTiles(t) {
     h('div', { class: 'value', text: f3(ho) }),
     h('div', { class: 'delta' }, hi == null ? 'no starting score recorded' : ['vs start ', h('span', { class: ho > hi ? 'up' : ho < hi ? 'down' : '', text: sgn(ho - hi) })]),
     h('div', { class: 'delta', text: 'never used to pick champions' })));
-  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Diagnostic alternatives (not promoted)' }), h('div', { class: 'value', text: String(t.diagnostic_challengers || 0) }), h('div',{class:'delta',text:'Other candidates kept for strengths on particular tests; not the champion.'})));
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Diagnostic frontier' }), h('div', { class: 'value', text: String(t.diagnostic_challengers || 0) }), h('div',{class:'delta',text:'Separate optional frontier; this does not count saved candidate files or the elite retest pool.'})));
   const since = gens.length ? last.generation - (t.best_generation || 0) : 0;
   tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Last new champion' }),
     h('div', { class: 'value', text: t.best_generation ? 'gen ' + t.best_generation : 'none yet' }),
@@ -488,6 +488,11 @@ function chartCoverage(t) {
             h('span',{text:`Combat gap: ${r.absolute_gap == null ? '–' : (r.absolute_gap*100).toFixed(2)+'%'} · ${r.balance_class || 'unclassified'}`}),
             h('span',{text:`Signed combat ratio: ${r.signed_ratio == null ? '–' : (r.signed_ratio*100).toFixed(2)+'%'}`}),
             h('span',{text:`Opponent: ${r.opponent_identity || 'Unavailable'}`}),
+            h('span',{text:r.starting_distance
+              ? `Starting front gap: ${investment(r.starting_distance.sampled)} world units · interval ${r.starting_distance.bounds.map(investment).join('–')} · ${r.starting_distance.mode}`
+              : `Starting front gap: ${investment(s.separation)} world units · derivation unavailable`}),
+            r.starting_distance?.mode === 'unit_ranges' ? h('span',{text:`Largest LOS: ${investment(r.starting_distance.max_los)} · longest weapon: ${investment(r.starting_distance.max_weapon_range)} · air runway floor: ${investment(r.starting_distance.air_runway_floor)}`}) : null,
+            r.starting_distance?.mode === 'unit_ranges' ? h('span',{text:`Approach allowance: ${investment(r.starting_distance.approach_time)} seconds${r.starting_distance.approach_time_capped ? ' (capped)' : ''} · combat budget: ${investment(stage.combat_budget)} seconds${r.starting_distance.contact_unreachable ? ' · no mobile unit can close the unseen gap' : ''}`}) : null,
             h('span',{text:`Modeled mechanics support: ${r.support_status || 'Unavailable'}`}),
             h('span',{text:`Firing resource supply: ${supply}`}),
             h('span',{text:`Unit cap: ${r.unit_cap ?? '–'}${r.cap_limited ? ' (cap limited)' : ''}`}),
@@ -505,6 +510,40 @@ function chartCoverage(t) {
     choices.map(([value, text]) => h('option', {value, text})))));
   el.append(body);
   return {el, draw};
+}
+
+function chartElites(t) {
+  const pretty = value => String(value).replaceAll('_', ' ');
+  const cadence = D.meta.elite_retest_every || 0;
+  const el = card('Saved elites · automatic retests', cadence
+    ? `Keeps up to ${D.meta.elite_size || 8} promising brains per track. One saved elite challenges the current champion every ${cadence} generations, using fresh paired fights and the normal promotion checks. A big gain can be retained even when a protected matchup vetoes promotion. The holdout is excluded.`
+    : 'Automatic elite retests are disabled in this run. Evaluated candidate files are still saved separately.');
+  const pool = t.elite_pool || [], last = t.last_elite_retest;
+  if (last) el.append(h('p',{text:`Last elite retest: generation ${last.generation} · ${last.brain_sha256?.slice(0,12) || 'unknown'} · ${pretty(last.reason || 'unknown')}${last.paired_gain == null ? '' : ' · paired gain '+sgn(last.paired_gain)}`}));
+  if (!pool.length) el.append(h('p',{class:'empty',text:cadence ? 'No elite candidates retained yet.' : 'Start a newly prepared campaign with elite retests enabled to use this pool.'}));
+  else el.append(tableView(['Brain','Origin','Fresh observations','Mean fresh gain vs then-champion','Last retest','Latest decision'],pool.map(e=>[
+    e.brain_sha256.slice(0,12),e.origin?.import_index != null ? `Imported ${e.origin.import_index+1}` : `Gen ${e.origin?.generation ?? '?'} · ${e.origin?.island || '?'} · ${e.origin?.candidate || '?'}`,
+    e.observations || 0,e.observations ? sgn(e.mean_gain) : 'Awaiting fresh test', e.last_retested ?? 'Not yet',pretty(e.last_reason || 'unknown'),
+  ]),true));
+  return {el,draw(){}};
+}
+
+function chartFiring(t) {
+  const el = card('Are units able to fire?', 'Champion validation, by fight family. Participation counts armed units that fired at least once in each battle; repeated battles count the same unit again. Blocked percentages count aimed, ready weapon checks each simulation tick, so sustained obstruction weighs more. These are diagnostics and do not add a training reward.');
+  const rows = [];
+  for (const stage of t.best?.stages || []) {
+    if (!stage.firing) continue;
+    stage.firing.forEach((side, index) => rows.push([
+      stage.name, index === 0 ? 'Learner' : 'Opponent',
+      `${num(side.units_fired)} / ${num(side.armed_units)}`, pct(side.participation_rate),
+      pct(side.friendly_blocked_rate), pct(side.terrain_blocked_rate),
+      pct(side.resources_blocked_rate), num(side.shots_fired),
+    ]));
+  }
+  if (rows.length) el.append(h('div', {class:'scroll'}, tableView(
+    ['Fight family', 'Army', 'Fired / armed (summed)', 'Participation', 'Ally blocked', 'Terrain blocked', 'Supply blocked', 'Weapon emissions'], rows, true)));
+  else el.append(h('p', {class:'empty',text:'Firing diagnostics were not recorded for this report. New runs with the updated simulator record both armies.'}));
+  return {el, draw() {}};
 }
 
 function chartRetest(t) {
@@ -794,19 +833,54 @@ function chartStructure(t) {
 }
 
 let drawers = [];
+const viewStorageKey = 'minibar-dashboard-view:' + location.pathname + ':' + (D?.meta?.directory || '');
+let savedView = null;
+try { savedView = JSON.parse(sessionStorage.getItem(viewStorageKey)); } catch (_) {}
+const disclosureMemory = savedView?.details && typeof savedView.details === 'object' ? savedView.details : {};
+let viewScope = '';
+
+function disclosureKey(node) {
+  const section = node.closest('section.card') || document.getElementById('view');
+  return JSON.stringify([viewScope, section.querySelector('h2')?.textContent || '',
+    [...section.querySelectorAll('details')].indexOf(node)]);
+}
+function rememberDetails() {
+  if (!viewScope) return;
+  document.querySelectorAll('#view details').forEach(node => {
+    disclosureMemory[disclosureKey(node)] = node.open;
+  });
+}
+function restoreDetails() {
+  document.querySelectorAll('#view details').forEach(node => {
+    const key = disclosureKey(node);
+    if (Object.prototype.hasOwnProperty.call(disclosureMemory, key)) node.open = disclosureMemory[key];
+  });
+}
+function saveDashboardView() {
+  rememberDetails();
+  try {
+    sessionStorage.setItem(viewStorageKey, JSON.stringify({details:disclosureMemory,
+      scope:viewScope, scroll:[scrollX,scrollY]}));
+  } catch (_) {} // File viewers can disable storage; in-page state still works.
+}
+
 function render() {
   hideTip();
   const t = D.tracks[state.track];
   const view = document.getElementById('view');
+  rememberDetails();
   view.replaceChildren();
   if (!t) { view.append(h('p', { class: 'empty', text: 'No tracks recorded yet.' })); return; }
   const names = islandNames(t);
   if (!state.island || !names.includes(state.island)) state.island = names[0] || null;
+  viewScope = JSON.stringify([t.name, state.island, state.kind]);
   view.append(h('div', { class: 'verdict ' + t.verdict.level }, h('b', { text: ({ progress: 'Making progress', early: 'Too early to tell', flat: 'No change yet', mixed: 'Mixed evidence', regress: 'Getting worse', stalled: D.meta.status === 'completed' ? 'Completed · no recent improvement' : 'No recent improvement', waiting: 'Waiting' })[t.verdict.level] || '' }), t.verdict.text));
   view.append(h('h2',{style:'font-size:15px',text:'Campaign summary — current champion'}));
   view.append(renderTiles(t));
   const coverage = chartCoverage(t);
   view.append(coverage.el);
+  if (t.kind === 'tactical') view.append(chartFiring(t).el);
+  view.append(chartElites(t).el);
   const search = (t.search_islands || []).map(i => i.structural_search
     ? `${i.name}: tries one change to an activation function, input or connection, then trains its weights for ${i.structural_search.every || 10} generations`
     : i.follow_champion ? `${i.name}: refines the latest champion's weights and adopts any new champion structure next generation`
@@ -829,9 +903,26 @@ function render() {
   const grid = h('div', { class: 'grid' }, parts.map(p => p.el));
   view.append(grid);
   drawers = [coverage.draw, structure.draw, ...parts.map(p => p.draw)];
-  redraw();
+  drawers.forEach(d => d());
+  restoreDetails();
 }
-function redraw() { drawers.forEach(d => d()); }
+function redraw() {
+  rememberDetails();
+  drawers.forEach(d => d());
+  restoreDetails();
+}
+
+function observeDashboardWidth(main, draw) {
+  let width, timer;
+  new ResizeObserver(entries => {
+    const nextWidth = entries[0].contentRect.width;
+    if (width === undefined) { width = nextWidth; return; }
+    if (Math.abs(nextWidth - width) < 0.5) return;
+    width = nextWidth;
+    clearTimeout(timer);
+    timer = setTimeout(draw, 120);
+  }).observe(main);
+}
 
 function boot() {
   const m = D.meta;
@@ -856,8 +947,13 @@ function boot() {
   const idx = D.tracks.findIndex(t => t.name === tn); if (idx >= 0) { state.track = idx; state.island = isl || null; [...tabs.children].forEach((b, j) => b.setAttribute('aria-selected', String(idx === j))); }
   document.getElementById('foot').textContent = 'Fitness is a weighted raw objective (higher is better). Champion and candidate validation charts use fixed tests; population and signal charts use training scores. ' + (m.fresh_screening ? `Candidates also face a rotating screen against the champion (minimum gain ${m.screen_min_gain}), then ${m.promotion_seeds} independent fresh paired batches (minimum gain ${m.min_gain}). ` : '') + 'The holdout checks performance on separate scenarios and never selects champions. Win-rate ranges are 95% Wilson intervals. Validation runs every ' + (m.validation_every || '?') + ' generation(s), so some charts have fewer points than the generation count.' + ((m.parked_tracks || []).length ? ` Paused training: ${m.parked_tracks.join(', ')}; those champion files are preserved.` : '');
   render();
-  let timer; new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(redraw, 120); }).observe(document.querySelector('main'));
-  if (m.live_seconds) setTimeout(() => location.reload(), m.live_seconds * 1000);
+  observeDashboardWidth(document.querySelector('main'), redraw);
+  if (savedView?.scope === viewScope && Array.isArray(savedView.scroll)) {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    requestAnimationFrame(() => scrollTo(Number(savedView.scroll[0]) || 0, Number(savedView.scroll[1]) || 0));
+  }
+  window.addEventListener('pagehide', saveDashboardView);
+  if (m.live_seconds) setTimeout(() => { saveDashboardView(); location.reload(); }, m.live_seconds * 1000);
 }
 if (D) boot(); else document.getElementById('view').textContent = 'No data embedded. Generate this page with scripts/campaign_dashboard.py.';
 </script>

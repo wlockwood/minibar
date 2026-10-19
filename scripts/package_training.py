@@ -116,6 +116,10 @@ def build_package(config, sim, out, *, source_root=None, zip_output=None):
                         result[key] = ["brain:" + dependency(opponent[6:], f"{label}[{index}]")
                                        if isinstance(opponent, str) and opponent.startswith("brain:") else rewrite(opponent, label)
                                        for index, opponent in enumerate(item)]
+                    elif key == "elite_brains" and isinstance(item, list):
+                        if any(not isinstance(brain, str) or not brain.strip() for brain in item):
+                            raise ValueError(f"invalid elite brain path: {path}:{label}")
+                        result[key] = [dependency(brain, f"{label}[{index}]") for index, brain in enumerate(item)]
                     else:
                         result[key] = rewrite(item, label)
                 return result

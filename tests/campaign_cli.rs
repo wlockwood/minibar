@@ -1198,3 +1198,103 @@ fn quality_state_matches_resumed_and_external_work_with_complete_facets() {
         assert_ne!(entry["brain"], state["tracks"][0]["reference"]);
     }
 }
+
+#[test]
+fn elite_import_retests_off_validation_cadence_and_resumes_exactly() {
+    let f = Fixture::new("elite-retest");
+    let mut cfg = read_json(&f.config);
+    let base_path = PathBuf::from(cfg["tracks"][0]["brain"].as_str().unwrap());
+    let base = visigoth_simulator::learn::Brain::load(&base_path).unwrap();
+    let mask = vec![true; base.modules.len()];
+    let params = base
+        .flatten(&mask)
+        .into_iter()
+        .map(|x| x + 0.125)
+        .collect::<Vec<_>>();
+    let imported = base.with_flat(&mask, &params).unwrap();
+    let import_path = f.root.join("breakthrough.json");
+    fs::write(&import_path, imported.to_json()).unwrap();
+    cfg["tracks"][0]["elite_brains"] = json!([import_path]);
+    cfg["fresh_screening"] = json!(true);
+    cfg["elite_retest_every"] = json!(2);
+    cfg["elite_size"] = json!(4);
+    cfg["validation_every"] = json!(3);
+    cfg["tracks"][0]["validation"]["layouts"] = json!(2);
+    cfg["tracks"][0]["islands"][0]["follow_champion"] = json!(true);
+    write_json(&f.config, &cfg);
+    let full = f.root.join("full");
+    let split = f.root.join("split");
+    success(f.campaign(&full, 2, false, false));
+    success(f.campaign(&split, 1, false, false));
+    success(f.campaign(&split, 2, true, false));
+    let state = read_json(&full.join("state.json"));
+    assert_same_json(
+        &state,
+        &read_json(&split.join("state.json")),
+        "elite split resume",
+    );
+    assert_eq!(state["history"][0]["tracks"][0]["elite_retests"], 0);
+    assert_eq!(state["history"][1]["tracks"][0]["elite_retests"], 1);
+    let islands = state["history"][1]["tracks"][0]["islands"]
+        .as_array()
+        .unwrap();
+    assert_eq!(islands[0]["decisions"].as_array().unwrap().len(), 1);
+    assert!(
+        islands[0]["decisions"][0]["candidate"]
+            .as_str()
+            .unwrap()
+            .starts_with("elite_")
+    );
+    assert!(islands[0]["decisions"][0]["screen_candidate"].is_object());
+    assert!(islands[0]["decisions"][0]["screen_incumbent"].is_object());
+    assert!(islands[1]["decisions"].is_null());
+    assert_eq!(
+        state["tracks"][0]["elite_imports"][0],
+        serde_json::from_str::<Value>(&imported.to_json()).unwrap()
+    );
+    assert_eq!(
+        state["tracks"][0]["last_elite_retest"]["origin"]["import_index"],
+        0
+    );
+    let external = f.root.join("external");
+    let mut complete = false;
+    for round in 0..100 {
+        let result = success(f.campaign(&external, 2, round > 0, true));
+        if result["status"] == "completed" {
+            complete = true;
+            break;
+        }
+        assert_eq!(result["status"], "waiting_for_workers");
+        for entry in fs::read_dir(external.join("work/jobs")).unwrap() {
+            let path = entry.unwrap().path();
+            let result_path = external
+                .join("work/results")
+                .join(path.file_name().unwrap());
+            if result_path.exists() {
+                continue;
+            }
+            success(
+                native()
+                    .arg("--campaign-worker")
+                    .arg(path)
+                    .arg("--job-out")
+                    .arg(result_path)
+                    .output()
+                    .unwrap(),
+            );
+        }
+    }
+    assert!(complete);
+    assert_same_json(
+        &state,
+        &read_json(&external.join("state.json")),
+        "elite external resume",
+    );
+    let mut forged = read_json(&split.join("state.json"));
+    forged["tracks"][0]["elite_pool"][0]["brain_sha256"] = json!("forged");
+    write_json(&split.join("state.json"), &forged);
+    assert!(!f.campaign(&split, 2, true, false).status.success());
+    // Imported contents are dependencies even when all evaluation work is cached.
+    fs::write(&import_path, base.to_json()).unwrap();
+    assert!(!f.campaign(&full, 2, true, false).status.success());
+}

@@ -1,0 +1,371 @@
+{
+  "air_initialization": "preserved explicit air checkpoint weights; optimizer initialized independently",
+  "binary": "bin/visigoth-simulator.exe",
+  "companion_policy": "opposite-domain initial brain frozen across comparisons; no live companion updates",
+  "elite_policy": "bounded eight-brain pool; one fresh challenge per track every five production generations; imported scores never reused",
+  "files": [
+    {
+      "bytes": 7327232,
+      "path": "bin/visigoth-simulator.exe",
+      "sha256": "8c875d9eb64b23b857c3d94766b1941eb607eba6da3c86cea217fc69cc881733"
+    },
+    {
+      "bytes": 14412,
+      "path": "brains/air.frozen.json",
+      "sha256": "48307ea7f2ed7a821218636493b446d35500229ac6a8ff94518cc709e64d5ca4"
+    },
+    {
+      "bytes": 14412,
+      "path": "brains/air.initial.json",
+      "sha256": "48307ea7f2ed7a821218636493b446d35500229ac6a8ff94518cc709e64d5ca4"
+    },
+    {
+      "bytes": 14412,
+      "path": "brains/air.reference.json",
+      "sha256": "48307ea7f2ed7a821218636493b446d35500229ac6a8ff94518cc709e64d5ca4"
+    },
+    {
+      "bytes": 14584,
+      "path": "brains/elites/air-1.json",
+      "sha256": "2287ac9f7fa6ebe6fee99fa894251c961e098534df1bcd938a4080f326a80c6a"
+    },
+    {
+      "bytes": 14824,
+      "path": "brains/elites/air-2.json",
+      "sha256": "51c015d62525895eeefbf73516daa51bbf30f20312851282827da89e14f78c56"
+    },
+    {
+      "bytes": 14542,
+      "path": "brains/elites/air-3.json",
+      "sha256": "79fda81892f06697c37f7d3b232c6934662c17a88ff02c36b4d7c1cdb437beb6"
+    },
+    {
+      "bytes": 14540,
+      "path": "brains/elites/air-4.json",
+      "sha256": "10d3a6714c08c27d45097156cab81670dc9b5951a2e76f9ada4b066104f71b3f"
+    },
+    {
+      "bytes": 14812,
+      "path": "brains/elites/air-5.json",
+      "sha256": "8448e160139f33beb6c0d4cefdbabb54adf1c6381a71e7e38cba904418eb2d63"
+    },
+    {
+      "bytes": 46681,
+      "path": "brains/ground.frozen.json",
+      "sha256": "19be752d36a5f364bb35ddb31ec2dededbf39dc74919cdbb46d68ffc658060e4"
+    },
+    {
+      "bytes": 46681,
+      "path": "brains/ground.initial.json",
+      "sha256": "19be752d36a5f364bb35ddb31ec2dededbf39dc74919cdbb46d68ffc658060e4"
+    },
+    {
+      "bytes": 46698,
+      "path": "brains/ground.reference.json",
+      "sha256": "c0607b8baadf3801db28e68415d2e903e0fbbb83f1dc4d6f80a818a68ce075cf"
+    },
+    {
+      "bytes": 13460,
+      "path": "campaign.json",
+      "sha256": "dd8f9adf826725b4f81869a6c5f814892abde0031c229e2ce2e357ee75bb7d0c"
+    },
+    {
+      "bytes": 109377,
+      "path": "catalog/catalog.json",
+      "sha256": "ed975d1b75d7262e3fd4102b3853a4e8b00f59d419b68de4d0dcd4a0e75beb4d"
+    },
+    {
+      "bytes": 14117,
+      "path": "catalog/manifest.json",
+      "sha256": "5c427169d10d689e978f995e4a3c46ab7fd2310b10b17efd8c42192c1b6172bd"
+    },
+    {
+      "bytes": 4949,
+      "path": "catalog/matchups.json",
+      "sha256": "e1ffabf8ec7cbab78c197f38935e94cf9954026b543968dca3d5c3dc5762403b"
+    },
+    {
+      "bytes": 4880,
+      "path": "pilot-cohesion.json",
+      "sha256": "bd9f1ee127a066c4eea89f105fe210a56c048e8c5ffb2117b2082cc822ff6ab4"
+    },
+    {
+      "bytes": 6810,
+      "path": "pilot.json",
+      "sha256": "1b404840e695eb5c709d4e9bc67b97d4fe2784256dbb1fb504ad651338661af0"
+    },
+    {
+      "bytes": 3616,
+      "path": "README.md",
+      "sha256": "8ce4a6dcbcb11fd206178487a56cec64aa554561542a500ab3de9d9add7d263a"
+    },
+    {
+      "bytes": 4252,
+      "path": "stages/holdout/air-air_air.json",
+      "sha256": "cd3281877e8ef29ee5f999a2018282cc071a9070d13efd07d68ace2837c60738"
+    },
+    {
+      "bytes": 4342,
+      "path": "stages/holdout/air-bomber_aa.json",
+      "sha256": "1ba0eb44f964f3c15af44521f84e1bdde3473c673d4a64528af60558b7734a6e"
+    },
+    {
+      "bytes": 4257,
+      "path": "stages/holdout/air-resource_advantage.json",
+      "sha256": "b315d1c17fad9585b0f2939dd085e2096fbd5295fc07748afe76766c90a66ff7"
+    },
+    {
+      "bytes": 4263,
+      "path": "stages/holdout/air-resource_disadvantage.json",
+      "sha256": "b22209148889d8879a2b8ce14b08b2b1be9767c12140174b8cd3ee202d69f4ac"
+    },
+    {
+      "bytes": 4468,
+      "path": "stages/holdout/ground-artillery.json",
+      "sha256": "d34cf30762e79422b464f5ef9cea46917d89c4f8c62a0ae360e5bb1944856ce1"
+    },
+    {
+      "bytes": 4248,
+      "path": "stages/holdout/ground-ground_aa.json",
+      "sha256": "db9ad943de0db1d748354700de021ad83e58dc94426df35008961b024d613203"
+    },
+    {
+      "bytes": 4470,
+      "path": "stages/holdout/ground-heavy_swarm.json",
+      "sha256": "a4855a38cd1ec7d158923f43da2e0c9087bded2d31918fffbda8921798583ca9"
+    },
+    {
+      "bytes": 4350,
+      "path": "stages/holdout/ground-mixed_ground.json",
+      "sha256": "c50951d0627d28a32d05f21cdcf0bc6aec3863a9ac34f32b616bc02c9ed188fd"
+    },
+    {
+      "bytes": 4471,
+      "path": "stages/holdout/ground-mobile_turret.json",
+      "sha256": "43feb5157c1b5997ab3153f1212ddb984c5d46750d3bb9ba920aad013f4a1b8e"
+    },
+    {
+      "bytes": 4476,
+      "path": "stages/holdout/ground-rare_turret.json",
+      "sha256": "d061c55e2ed8c124512edba0b7927d293c7632ab6d293792977d6083c7aef10c"
+    },
+    {
+      "bytes": 4350,
+      "path": "stages/holdout/ground-resource_advantage.json",
+      "sha256": "cf0edd1cda258ba49c3609b32dea6db2c607799c6c609d606011227d94a223ca"
+    },
+    {
+      "bytes": 4356,
+      "path": "stages/holdout/ground-resource_disadvantage.json",
+      "sha256": "be07ce6d0f390678d5a10d7d7e1204172ff99568ae1c440f8c4f19be68322185"
+    },
+    {
+      "bytes": 4470,
+      "path": "stages/holdout/ground-swarm_heavy.json",
+      "sha256": "ec14d2bb252b7fa0c221e967edc48a547fcc67469733db13a51e9833c287946b"
+    },
+    {
+      "bytes": 4249,
+      "path": "stages/pilot/air-air_air.json",
+      "sha256": "21226f4b5b7942de22599b1d5734ad4955f8634753bd5b5287408e23538b861b"
+    },
+    {
+      "bytes": 4339,
+      "path": "stages/pilot/air-bomber_aa.json",
+      "sha256": "51df550d1d9525eefe8711f6cabf32348196489ad72850d78ceddd071374b580"
+    },
+    {
+      "bytes": 4465,
+      "path": "stages/pilot/ground-artillery.json",
+      "sha256": "3bfc0c1912128a13fb1537140de88183de4edf41e609fc603c463148244c2731"
+    },
+    {
+      "bytes": 4245,
+      "path": "stages/pilot/ground-ground_aa.json",
+      "sha256": "300a9386eef3febe920af1181e976fba16ec4c9da94415fc6e481a11de91bc9e"
+    },
+    {
+      "bytes": 4467,
+      "path": "stages/pilot/ground-heavy_swarm.json",
+      "sha256": "64eee3a2c123f16cda91cb207065d4a3b181dd0e249af95ddcf7c0dc57a65e03"
+    },
+    {
+      "bytes": 4347,
+      "path": "stages/pilot/ground-mixed_ground.json",
+      "sha256": "5031763fd338e7498e97094724d53576073c9827dd339dc4d468c5a3b82df05d"
+    },
+    {
+      "bytes": 4468,
+      "path": "stages/pilot/ground-mobile_turret.json",
+      "sha256": "2a5bb2b54accbdeac26cda6705f88765914b385d69a4e7ef09e9cd14e30022a5"
+    },
+    {
+      "bytes": 4473,
+      "path": "stages/pilot/ground-rare_turret.json",
+      "sha256": "ea81e6b31f05f1451a08386b033f0324c0de9ac2e0bcf804e96c910c1841100f"
+    },
+    {
+      "bytes": 4467,
+      "path": "stages/pilot/ground-swarm_heavy.json",
+      "sha256": "f1171b2deae54eebc855cf479a9e5e607be427c84d1bb16994157afcc72062f9"
+    },
+    {
+      "bytes": 4255,
+      "path": "stages/production/air-air_air.json",
+      "sha256": "5759e06ae606a14e748165873cb583790510e151528f85ec1e74e30ae79eacce"
+    },
+    {
+      "bytes": 4345,
+      "path": "stages/production/air-bomber_aa.json",
+      "sha256": "a706e6697657af04a5afeef50f201ce2eae8c08ca3b911114f71cbb9f0d0d01a"
+    },
+    {
+      "bytes": 4260,
+      "path": "stages/production/air-resource_advantage.json",
+      "sha256": "1409a65516550fd96722abb60192aa1438b5fae9fcfd37f5419cd83185c9b2f3"
+    },
+    {
+      "bytes": 4266,
+      "path": "stages/production/air-resource_disadvantage.json",
+      "sha256": "b6cf44f483cd844cfbd01b78a221a0a5aa93f1d951e3150a071f2effecad53e1"
+    },
+    {
+      "bytes": 4471,
+      "path": "stages/production/ground-artillery.json",
+      "sha256": "21d256ed79e5bd53f1b8737f5e42d9aae96bddd200f59e5c83898c1ccd8b5cf4"
+    },
+    {
+      "bytes": 4251,
+      "path": "stages/production/ground-ground_aa.json",
+      "sha256": "8f5143bb80b349730e2c8b614787caf549bb817a1b63379ba9a5e9809e847d1f"
+    },
+    {
+      "bytes": 4473,
+      "path": "stages/production/ground-heavy_swarm.json",
+      "sha256": "eac1582eb36372cef452306028764703f47979e6d426252a59ba244da64afad9"
+    },
+    {
+      "bytes": 4353,
+      "path": "stages/production/ground-mixed_ground.json",
+      "sha256": "72d442b5f372199d7043ebfd357be9553c42908dc506481db89c394f59e894b6"
+    },
+    {
+      "bytes": 4474,
+      "path": "stages/production/ground-mobile_turret.json",
+      "sha256": "98fe00681933a5c242c494b52f5c0de27e51575a4c36accc0d907bb80d87e3a9"
+    },
+    {
+      "bytes": 4479,
+      "path": "stages/production/ground-rare_turret.json",
+      "sha256": "228a4b23116608ae8c1ebb427a600fb558f6549e062b218c56d1df9ca288ed4b"
+    },
+    {
+      "bytes": 4353,
+      "path": "stages/production/ground-resource_advantage.json",
+      "sha256": "05585f126548eb97c266c648b2532ff7f806e1c4681ad3b2cabfca7e05d9139d"
+    },
+    {
+      "bytes": 4359,
+      "path": "stages/production/ground-resource_disadvantage.json",
+      "sha256": "b4988db8e45e78334236708f5abfcf698ce8c9338c57f220c0bfe76e54eb80e4"
+    },
+    {
+      "bytes": 4473,
+      "path": "stages/production/ground-swarm_heavy.json",
+      "sha256": "ebf7bf167864b63710453a59580d3e81b7da596007d3e50c53885e72b00c34e8"
+    },
+    {
+      "bytes": 1913,
+      "path": "Train.ps1",
+      "sha256": "07702144f53b4bb394220a5b51d38c20c0c0b425c59e0044902041382567f282"
+    }
+  ],
+  "format": "minibar.diverse_successor",
+  "ground_initialization": "copied explicit ground checkpoint weights; see ground_anchor source hash",
+  "holdout_status": "production-only plan prepared, not evaluated",
+  "opponent_policy": "fixed charge/kite/hold/surround scripts plus copied domain-specific learned brain; archive disabled",
+  "optimizer_initialization": "fresh independent streams and moments; no optimizer merge or exact continuation",
+  "qualification_status": "prepared inputs; no training launched or improvement claimed",
+  "seed": 2026101937,
+  "sources": [
+    {
+      "role": "ground_anchor",
+      "sha256": "19be752d36a5f364bb35ddb31ec2dededbf39dc74919cdbb46d68ffc658060e4",
+      "source": "D:\\code\\BAR\\minibar\\.quality-work\\elite-range-sources\\ground.json"
+    },
+    {
+      "role": "ground_gen70_reference",
+      "sha256": "c0607b8baadf3801db28e68415d2e903e0fbbb83f1dc4d6f80a818a68ce075cf",
+      "source": "D:\\code\\BAR\\minibar\\data\\branches\\tactical-recovery-20261018\\run\\tracks\\tactical\\brain.best.json"
+    },
+    {
+      "role": "executable",
+      "sha256": "8c875d9eb64b23b857c3d94766b1941eb607eba6da3c86cea217fc69cc881733",
+      "source": "D:\\code\\BAR\\minibar\\target\\surround-verification\\release\\visigoth-simulator.exe"
+    },
+    {
+      "role": "preparation_source",
+      "sha256": "927900119ae23d0d425a6bc586cabf5fca10670f252fc03755d4db7e3497373e",
+      "source": "D:\\code\\BAR\\minibar\\scripts\\prepare_diverse_campaign.py"
+    },
+    {
+      "role": "preparation_source",
+      "sha256": "e8353df647a325736780db867fec5b0a480883cef8ac37876f100d57e7f1ab4e",
+      "source": "D:\\code\\BAR\\minibar\\scripts\\export_training_catalog.py"
+    },
+    {
+      "role": "preparation_source",
+      "sha256": "99f6366d012f1d1bc57e5a51e7f8601d9a6bd53e681d246d63c0a6a25248ad03",
+      "source": "D:\\code\\BAR\\minibar\\scripts\\prepare_from_replays.py"
+    },
+    {
+      "role": "preparation_source",
+      "sha256": "801b7bd9c74028e38ce9e86053b0143e93d95cd33780e42b8b1017cc91313dcb",
+      "source": "D:\\code\\BAR\\minibar\\scripts\\make_catalog.py"
+    },
+    {
+      "role": "preparation_source",
+      "sha256": "3216f7c125064e590cdc36e45736be9996af0399de6c8eacc0638ce3a352d07a",
+      "source": "D:\\code\\BAR\\minibar\\scripts\\bar_lua.py"
+    },
+    {
+      "best_generation": 70,
+      "completed_generations": 200,
+      "role": "completed_checkpoint",
+      "sha256": "c987805dc15567f693c386028e2971c2bfe2668c9962a0bc728a2f9a0fb1e2a8",
+      "source": "D:\\code\\BAR\\minibar\\data\\branches\\tactical-recovery-20261018\\run\\state.json"
+    },
+    {
+      "role": "air_anchor",
+      "sha256": "48307ea7f2ed7a821218636493b446d35500229ac6a8ff94518cc709e64d5ca4",
+      "source": "D:\\code\\BAR\\minibar\\.quality-work\\elite-range-sources\\air.json"
+    },
+    {
+      "role": "air_elite",
+      "sha256": "2287ac9f7fa6ebe6fee99fa894251c961e098534df1bcd938a4080f326a80c6a",
+      "source": "D:\\code\\BAR\\minibar\\data\\experiments\\air-breakthroughs-20261019\\generation-1-local-center.brain.json"
+    },
+    {
+      "role": "air_elite",
+      "sha256": "51c015d62525895eeefbf73516daa51bbf30f20312851282827da89e14f78c56",
+      "source": "D:\\code\\BAR\\minibar\\data\\experiments\\air-breakthroughs-20261019\\generation-1-structural-sample.brain.json"
+    },
+    {
+      "role": "air_elite",
+      "sha256": "79fda81892f06697c37f7d3b232c6934662c17a88ff02c36b4d7c1cdb437beb6",
+      "source": "D:\\code\\BAR\\minibar\\data\\experiments\\air-breakthroughs-20261019\\generation-5-local-module_air_target.brain.json"
+    },
+    {
+      "role": "air_elite",
+      "sha256": "10d3a6714c08c27d45097156cab81670dc9b5951a2e76f9ada4b066104f71b3f",
+      "source": "D:\\code\\BAR\\minibar\\data\\experiments\\air-breakthroughs-20261019\\generation-5-structural-module_air_target.brain.json"
+    },
+    {
+      "role": "air_elite",
+      "sha256": "8448e160139f33beb6c0d4cefdbabb54adf1c6381a71e7e38cba904418eb2d63",
+      "source": "D:\\code\\BAR\\minibar\\data\\experiments\\air-breakthroughs-20261019\\generation-5-structural-sample.brain.json"
+    }
+  ],
+  "starting_distance_policy": "unit-derived LOS/weapon bounds with air acceleration and turn runway; explicit approach-time allowance",
+  "version": 1
+}

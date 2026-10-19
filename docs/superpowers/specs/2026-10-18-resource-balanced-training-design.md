@@ -1,8 +1,9 @@
 # Diverse, resource-balanced tactical training
 
-Status: proposed design, informed by the completed 200-generation campaign and
-fresh comparisons. No new campaign or simulator changes were started by this
-investigation. The existing campaign, champions and optimizer state are intact.
+Status: implemented and verified. See [the runnable workflow](../../DIVERSE_TRAINING.md).
+The investigation below preceded implementation. The completed campaign, its
+champions and optimizer state remain intact. The successor has separate inputs
+and three-generation ground/air and cohesion-only validation pilots.
 
 ## Intent
 

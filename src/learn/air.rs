@@ -191,11 +191,7 @@ impl Policy for AirPolicy {
             }
         }
         let Some((_, enemy, input)) = best else {
-            return Command {
-                destination: Some(unit.position + Vec2::from_heading(unit.heading) * 500.0),
-                throttle: 1.0,
-                ..Default::default()
-            };
+            return crate::policy::reconnaissance(world, unit);
         };
         let mut output = [0.0; 3];
         self.brain.modules[self.flight]

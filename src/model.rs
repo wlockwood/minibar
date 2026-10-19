@@ -826,6 +826,17 @@ pub struct UnitDef {
 }
 
 impl UnitDef {
+    /// Automatically fired offensive weapons, excluding shields, interceptors
+    /// and manual-only weapons. Used as the firing-participation denominator.
+    pub fn has_automatic_weapon(&self) -> bool {
+        self.weapons.iter().any(|w| {
+            !w.manual_fire
+                && !w.is_shield
+                && w.interceptor == 0
+                && w.range > 0.0
+                && (w.damage > 0.0 || w.damage_by_armor.values().any(|damage| *damage > 0.0))
+        })
+    }
     /// Comparable resource value used by the default scorer. Raw costs remain
     /// available to experiments that want a different exchange rate.
     pub fn resource_value(&self) -> f32 {

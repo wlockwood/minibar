@@ -86,6 +86,38 @@ class WilsonTest(unittest.TestCase):
 
 
 class ExtractionTest(unittest.TestCase):
+    def test_elite_pool_metadata_and_retest_cadence_are_exposed_without_weights(self):
+        directory,_=demo_model(generations=2)
+        state_path=os.path.join(directory,'run','state.json')
+        with open(state_path,encoding='utf-8') as handle: saved=json.load(handle)
+        saved['tracks'][0]['elite_pool']=[{'brain_sha256':'abc','brain':{'secret_weights':[1,2]},
+            'origin':{'generation':1,'island':'local','candidate':'sample'},'observations':0,
+            'mean_gain':0.0,'last_retested':None,'last_reason':'awaiting_fresh_evaluation'}]
+        saved['tracks'][0]['last_elite_retest']={'generation':2,'brain_sha256':'abc','reason':'screen_below_champion'}
+        with open(state_path,'w',encoding='utf-8') as handle:json.dump(saved,handle)
+        config_path=os.path.join(directory,'campaign.json')
+        with open(config_path,encoding='utf-8') as handle:config=json.load(handle)
+        config['elite_retest_every']=5;config['elite_size']=8
+        with open(config_path,'w',encoding='utf-8') as handle:json.dump(config,handle)
+        model=cd.load_model(directory)
+        self.assertEqual(model['meta']['elite_retest_every'],5)
+        self.assertEqual(len(model['tracks'][0]['elite_pool']),1)
+        self.assertNotIn('brain',model['tracks'][0]['elite_pool'][0])
+        self.assertEqual(model['tracks'][0]['last_elite_retest']['generation'],2)
+
+    def test_firing_rates_use_pooled_counts_and_legacy_data_is_unavailable(self):
+        def stage(name, fired, armed, blocked, ready):
+            stats = dict(units_fired=fired, armed_units=armed, blocked_friendly=blocked,
+                         blocked_terrain=0, blocked_resources=0, ready_checks=ready, shots_fired=ready-blocked)
+            return dict(name=name, details=dict(total=dict(battles=1, firing=[stats,stats])))
+        report = cd.summarize_report({'stages':[stage('a',1,2,1,2),stage('b',9,10,0,8)]}, with_rows=True)
+        self.assertEqual(report['firing'][0]['units_fired'],10)
+        self.assertAlmostEqual(report['firing'][0]['participation_rate'],10/12)
+        self.assertAlmostEqual(report['firing'][0]['friendly_blocked_rate'],0.1)
+        self.assertEqual(report['stages'][0]['firing'][0]['friendly_blocked_rate'],0.5)
+        old = cd.summarize_report({'stages':[{'details':{'total':{'battles':1}}}]})
+        self.assertIsNone(old['firing'])
+
     @classmethod
     def setUpClass(cls):
         cls.directory, cls.model = demo_model()
@@ -369,6 +401,38 @@ class FreshRetestTest(unittest.TestCase):
 
 
 class TemplateTest(unittest.TestCase):
+    def test_resize_redraw_ignores_height_changes_from_expanding_tables(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node is needed for the resize regression test')
+        with open(cd.TEMPLATE, encoding='utf-8') as handle:
+            template = handle.read()
+        function = 'function observeDashboardWidth' + template.split('function observeDashboardWidth', 1)[1].split('\nfunction boot()', 1)[0]
+        source = r'''
+const assert = require('node:assert/strict');
+let observer, redraws=0, width=1000;
+const main={getBoundingClientRect:()=>({width})};
+class ResizeObserver {constructor(cb){observer=cb;}observe(node){assert.equal(node,main);}}
+const setTimeout=fn=>{fn();return 1;},clearTimeout=()=>{};
+''' + function + r'''
+observeDashboardWidth(main,()=>redraws++);
+observer([{contentRect:{width:1000,height:500}}]);
+observer([{contentRect:{width:1000,height:1500}}]);
+assert.equal(redraws,0,'Opening a table must not rebuild it');
+observer([{contentRect:{width:800,height:1500}}]);
+assert.equal(redraws,1,'A width change must still resize charts');
+observer([{contentRect:{width:800,height:500}}]);
+assert.equal(redraws,1);
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'resize-test.js')
+            with open(path, 'w', encoding='utf-8') as handle:
+                handle.write(source)
+            result = subprocess.run([node, path], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_coverage_explains_validation_and_unlimited_supply_in_readable_cards(self):
         import shutil
         import subprocess

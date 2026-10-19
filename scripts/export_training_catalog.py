@@ -14,7 +14,7 @@ import make_catalog
 from bar_lua import parse_unit_file
 from prepare_from_replays import unit_entry, armor_classes, sha256, write_json
 
-DEFAULT_UNITS = "armpw armrock armham corak corstorm corthud corsumo armmanni corban armstump corraid armjeth corcrash armllt armbeamer armhlt armguard armbrtha armvulc armrl armflak armfig corveng armpnix corhurc".split()
+DEFAULT_UNITS = "armpw armrock armham corak corstorm corthud corsumo armmanni corban armstump corraid armjeth corcrash armllt armbeamer armhlt armguard armbrtha armvulc armrl armflak armfig corveng armpnix corhurc armrad corrad armpeep corfink armjamt corjamt".split()
 UNSUPPORTED_GADGETS = ("carried_unit", "cluster_def", "area_onhit_damage", "spark_forkdamage")
 
 

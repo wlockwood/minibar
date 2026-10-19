@@ -260,6 +260,7 @@ pub struct Simulator {
     /// can opt into finite per-side ammunition resources without coupling this
     /// hot loop to the strategic economy scheduler.
     combat_resources: Option<[StartingResources; 2]>,
+    auxiliary_units: BTreeSet<u32>,
 }
 
 /// Opaque identity supplied by a strategic world. Tactical IDs remain an
@@ -846,6 +847,8 @@ impl TrialWorkspace {
 }
 
 struct BattleState {
+    armed_units: [BTreeSet<u32>; 2],
+    fired_units: [BTreeSet<u32>; 2],
     scores: [SideScore; 2],
     alive_counts: [usize; 2],
     combat_resources: Option<[StartingResources; 2]>,
@@ -890,6 +893,7 @@ impl Simulator {
             paralysis_enabled,
             sensing_enabled,
             combat_resources: None,
+            auxiliary_units: BTreeSet::new(),
         }
     }
 
@@ -899,6 +903,31 @@ impl Simulator {
     pub fn with_starting_resources(mut self, resources: [StartingResources; 2]) -> Self {
         self.combat_resources = Some(resources);
         self
+    }
+
+    /// Reconnaissance assets remain destructible and fully resource-scored,
+    /// but cannot prolong a platoon fight after its main force is eliminated.
+    /// Unarmed aircraft use a fixed, sensor-limited area sweep; static support
+    /// stays at its site. The empty default preserves ordinary battle semantics.
+    pub fn with_auxiliary_units(mut self, ids: impl IntoIterator<Item = u32>) -> Self {
+        self.auxiliary_units = ids.into_iter().collect();
+        assert!(
+            self.auxiliary_units
+                .iter()
+                .all(|id| *id > 0 && (*id as usize) <= self.scenario.units.len())
+        );
+        self
+    }
+
+    fn victory_alive(&self, units: &[UnitState], battle: &BattleState) -> [bool; 2] {
+        if self.auxiliary_units.is_empty() {
+            return [battle.alive_counts[0] > 0, battle.alive_counts[1] > 0];
+        }
+        std::array::from_fn(|side| {
+            units.iter().any(|u| {
+                u.alive && u.side as usize == side && !self.auxiliary_units.contains(&u.id)
+            })
+        })
     }
 
     pub fn run(&self, policies: [&dyn Policy; 2], seed: u64) -> BattleResult {
@@ -996,19 +1025,20 @@ impl Simulator {
             sensors,
         } = workspace;
         let mut battle = BattleState {
+            fired_units: Default::default(),
+            armed_units: armed_unit_ids(units),
             scores: initial_scores(units),
             alive_counts: count_live_sides(units),
             combat_resources: self.combat_resources,
         };
         let mut time = 0.0;
         let mut tick = 0_u64;
+        let mut alive = self.victory_alive(units, &battle);
 
         // Let already-fired projectiles and damage-over-time pulses land after
         // one army dies; otherwise long flight time would create false wins.
         while time < self.scenario.max_time
-            && ((battle.alive_counts[0] > 0 && battle.alive_counts[1] > 0)
-                || !impacts.is_empty()
-                || !guided_projectiles.is_empty())
+            && ((alive[0] && alive[1]) || !impacts.is_empty() || !guided_projectiles.is_empty())
         {
             advance_flanking(units, tick);
             if self.paralysis_enabled {
@@ -1035,7 +1065,15 @@ impl Simulator {
                         terrain: &self.scenario.terrain,
                         units: disclosed,
                     };
-                    let result = policies[unit.side as usize].command(&view, unit);
+                    let result = if self.auxiliary_units.contains(&unit.id) {
+                        if unit.definition.flight.is_some() {
+                            crate::policy::reconnaissance(&view, unit)
+                        } else {
+                            Command::default()
+                        }
+                    } else {
+                        policies[unit.side as usize].command(&view, unit)
+                    };
                     if self.sensing_enabled {
                         sensors.sanitize_command(unit.side, unit.id, result)
                     } else {
@@ -1124,12 +1162,15 @@ impl Simulator {
                     .expect("traced specialization has recorder")
                     .record_world(tick, &view, aim_attempts);
             }
+            alive = self.victory_alive(units, &battle);
             time += DT;
             tick += 1;
         }
 
         finish_scores(units, &mut battle.scores, time);
-        let alive = [battle.alive_counts[0] > 0, battle.alive_counts[1] > 0];
+        for (side, score) in battle.scores.iter_mut().enumerate() {
+            score.won = alive[side] && !alive[1 - side];
+        }
         let result = BattleResult {
             winner: match alive {
                 [true, false] => Some(0),
@@ -1289,6 +1330,8 @@ impl CombatStepper {
             deaths: Vec::new(),
             was_alive: Vec::new(),
             battle: BattleState {
+                fired_units: Default::default(),
+                armed_units: Default::default(),
                 scores: [
                     SideScore {
                         side: 0,
@@ -1423,6 +1466,10 @@ impl CombatStepper {
         self.commands.push(Command::default());
         self.indices.insert(spawn.key, index);
         if alive && spawn.side < 2 {
+            if definition.has_automatic_weapon() {
+                self.battle.armed_units[spawn.side as usize].insert(self.units[index].id);
+                self.battle.scores[spawn.side as usize].firing.armed_units += 1;
+            }
             self.battle.alive_counts[spawn.side as usize] += 1;
             self.battle.scores[spawn.side as usize].starting_value += definition.resource_value();
         }
@@ -1474,6 +1521,15 @@ impl CombatStepper {
         self.keys.truncate(write);
         self.commands.truncate(write);
         self.targeting.remap(&remap);
+        for tracked in [&mut self.battle.fired_units, &mut self.battle.armed_units] {
+            for ids in tracked.iter_mut() {
+                *ids = ids
+                    .iter()
+                    .filter_map(|id| remap.get(id.saturating_sub(1) as usize).copied())
+                    .filter(|id| *id != 0)
+                    .collect();
+            }
+        }
         for command in &mut self.commands {
             command.target = command
                 .target
@@ -1561,6 +1617,11 @@ impl CombatStepper {
         }
         if new_alive && new_side < 2 {
             self.battle.alive_counts[new_side as usize] += 1;
+            if self.units[index].definition.has_automatic_weapon()
+                && self.battle.armed_units[new_side as usize].insert(self.units[index].id)
+            {
+                self.battle.scores[new_side as usize].firing.armed_units += 1;
+            }
         }
         Ok(())
     }
@@ -2084,6 +2145,16 @@ fn reset_units(units: &mut [UnitState], spawns: &[Spawn]) {
     }
 }
 
+fn armed_unit_ids(units: &[UnitState]) -> [BTreeSet<u32>; 2] {
+    std::array::from_fn(|side| {
+        units
+            .iter()
+            .filter(|unit| unit.side as usize == side && unit.definition.has_automatic_weapon())
+            .map(|unit| unit.id)
+            .collect()
+    })
+}
+
 fn initial_scores(units: &[UnitState]) -> [SideScore; 2] {
     let mut scores = [
         SideScore {
@@ -2096,6 +2167,8 @@ fn initial_scores(units: &[UnitState]) -> [SideScore; 2] {
         },
     ];
     for unit in units.iter().filter(|unit| unit.side < 2) {
+        scores[unit.side as usize].firing.armed_units +=
+            u64::from(unit.definition.has_automatic_weapon());
         scores[unit.side as usize].starting_value += unit.definition.resource_value();
         scores[unit.side as usize].key_units_started +=
             u32::from(unit.definition.strategic.key_unit);
@@ -2136,6 +2209,174 @@ fn finish_scores(units: &[UnitState], scores: &mut [SideScore; 2], duration: f32
 
 fn side_alive(units: &[UnitState], side: u8) -> bool {
     units.iter().any(|unit| unit.alive && unit.side == side)
+}
+
+#[cfg(test)]
+mod firing_diagnostics_tests {
+    use super::*;
+    use crate::learn::tactical::tests::skirmisher;
+    use crate::policy::{BuiltinPolicy, parse_policy};
+
+    fn scene() -> Scenario {
+        let mut unit = skirmisher("shooter");
+        unit.health = 100_000.0;
+        unit.weapons[0].avoid_friendly = true;
+        unit.weapons[0].turret_yaw_speed = None;
+        Scenario {
+            terrain: Terrain::flat(1000.0, 1000.0, 16.0),
+            units: [(0, 100.0, 400.0), (0, 140.0, 400.0), (1, 240.0, 400.0)]
+                .into_iter()
+                .map(|(side, x, z)| Spawn {
+                    side,
+                    definition: unit.clone(),
+                    position: Vec2::new(x, z),
+                    heading: 0.0,
+                })
+                .collect(),
+            max_time: 3.0,
+            trace_resources: vec![],
+        }
+    }
+
+    #[test]
+    fn firing_participation_remaps_ids_when_combat_slots_are_compacted() {
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(1000.0, 1000.0, 16.0),
+            vec![Arc::new(skirmisher("gun"))],
+            1,
+        );
+        for key in 1..=3 {
+            stepper
+                .insert(CombatSpawn {
+                    key,
+                    side: 0,
+                    definition: CombatDefinitionId(0),
+                    position: Vec2::new(100.0 + key as f32 * 30.0, 400.0),
+                    heading: 0.0,
+                    hp: None,
+                })
+                .unwrap();
+        }
+        stepper.battle.fired_units[0].extend([1, 3]);
+        stepper.battle.scores[0].firing.units_fired = 2;
+        stepper.remove(1).unwrap();
+        assert!(stepper.compact_removed());
+        assert_eq!(stepper.battle.fired_units[0], BTreeSet::from([2]));
+        assert_eq!(stepper.battle.scores[0].firing.units_fired, 2);
+        stepper
+            .update(
+                2,
+                CombatantUpdate {
+                    side: Some(1),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(stepper.battle.scores[1].firing.armed_units, 1);
+        stepper
+            .update(
+                2,
+                CombatantUpdate {
+                    side: Some(0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(stepper.battle.scores[0].firing.armed_units, 3);
+        let mut unarmed = skirmisher("unarmed");
+        unarmed.weapons.clear();
+        let unarmed_id = stepper.register_definition(Arc::new(unarmed));
+        stepper
+            .insert(CombatSpawn {
+                key: 4,
+                side: 1,
+                definition: unarmed_id,
+                position: Vec2::new(500.0, 400.0),
+                heading: 0.0,
+                hp: None,
+            })
+            .unwrap();
+        assert_eq!(stepper.battle.scores[1].firing.armed_units, 1);
+        stepper
+            .update(
+                4,
+                CombatantUpdate {
+                    definition: Some(CombatDefinitionId(0)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        stepper
+            .update(
+                4,
+                CombatantUpdate {
+                    definition: Some(CombatDefinitionId(0)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(stepper.battle.scores[1].firing.armed_units, 2);
+    }
+
+    #[test]
+    fn firing_diagnostics_match_traced_and_headless_and_count_unique_shooters() {
+        let sim = Simulator::new(scene());
+        let hold = BuiltinPolicy::Hold;
+        let headless = sim.run([&hold, &hold], 5);
+        let (traced, _) = sim.run_traced([&hold, &hold], 5, TraceConfig::default());
+        let a = headless.sides[0].firing;
+        assert_eq!(a, traced.sides[0].firing);
+        assert_eq!(a.armed_units, 2);
+        assert_eq!(a.units_fired, 1);
+        assert!(a.blocked_friendly > 0);
+        assert!(a.shots_fired > 1);
+        assert_eq!(
+            a.ready_checks,
+            a.blocked_friendly + a.blocked_terrain + a.shots_fired + a.blocked_resources
+        );
+    }
+
+    #[test]
+    fn surround_assigns_distinct_angular_routes_and_ignores_dead_and_unarmed_allies() {
+        let scenario = scene();
+        let sim = Simulator::new(scenario);
+        let mut workspace = TrialWorkspace::new(&sim);
+        let policy = parse_policy("surround").expect("surround baseline");
+        let commands = |units: &[UnitState]| {
+            let world = WorldView {
+                time: 0.0,
+                terrain: &sim.scenario.terrain,
+                units,
+            };
+            [
+                policy.command(&world, &units[0]),
+                policy.command(&world, &units[1]),
+            ]
+        };
+        let before = commands(&workspace.units);
+        assert_ne!(before[0].destination, before[1].destination);
+        assert!(
+            before
+                .iter()
+                .all(|c| c.target == Some(workspace.units[2].id))
+        );
+        let mut extra = workspace.units[0].clone();
+        extra.id = 99;
+        extra.alive = false;
+        workspace.units.push(extra.clone());
+        assert_eq!(
+            before[0].destination,
+            commands(&workspace.units)[0].destination
+        );
+        extra.id = 100;
+        extra.alive = true;
+        Arc::make_mut(&mut extra.definition).weapons.clear();
+        workspace.units.push(extra);
+        assert_eq!(
+            before[1].destination,
+            commands(&workspace.units)[1].destination
+        );
+    }
 }
 
 fn count_live_sides(units: &[UnitState]) -> [usize; 2] {
@@ -2696,6 +2937,9 @@ fn update_weapons<const TRACE: bool>(
             if !TRACE && !shot_ready {
                 continue;
             }
+            if shot_ready {
+                battle.scores[side as usize].firing.ready_checks += 1;
+            }
             if !terrain_clear_for_flight_path(
                 terrain,
                 origin,
@@ -2703,6 +2947,9 @@ fn update_weapons<const TRACE: bool>(
                 flight_path,
                 PROJECTILE_CLEARANCE,
             ) {
+                if shot_ready {
+                    battle.scores[side as usize].firing.blocked_terrain += 1;
+                }
                 record_aim::<TRACE>(
                     trace_tick,
                     aim_attempts,
@@ -2733,6 +2980,9 @@ fn update_weapons<const TRACE: bool>(
             if blocker.is_some_and(|blocker_index| {
                 units[blocker_index].side == side && weapon.avoid_friendly
             }) {
+                if shot_ready {
+                    battle.scores[side as usize].firing.blocked_friendly += 1;
+                }
                 record_aim::<TRACE>(
                     trace_tick,
                     aim_attempts,
@@ -2792,6 +3042,7 @@ fn update_weapons<const TRACE: bool>(
                     weapon.metal_cost,
                 )
             {
+                battle.scores[side as usize].firing.blocked_resources += 1;
                 record_aim::<TRACE>(
                     trace_tick,
                     aim_attempts,
@@ -2805,6 +3056,10 @@ fn update_weapons<const TRACE: bool>(
                 continue;
             }
 
+            battle.scores[side as usize].firing.shots_fired += 1;
+            if battle.fired_units[side as usize].insert(shooter_id) {
+                battle.scores[side as usize].firing.units_fired += 1;
+            }
             let shot_sequence = {
                 let state = &mut units[index].weapons[weapon_index];
                 state.shots_left -= 1;
@@ -3517,7 +3772,7 @@ fn predicted_target_position_3d(
 }
 
 #[inline]
-fn weapon_can_target(weapon: &WeaponDef, target: &crate::model::UnitDef) -> bool {
+pub(crate) fn weapon_can_target(weapon: &WeaponDef, target: &crate::model::UnitDef) -> bool {
     weapon.only_target_categories.is_empty()
         || weapon.only_target_categories.iter().any(|allowed| {
             target
@@ -4340,6 +4595,8 @@ mod lead_tests {
             );
         }
         let mut battle = BattleState {
+            fired_units: Default::default(),
+            armed_units: armed_unit_ids(units),
             scores: initial_scores(units),
             alive_counts: count_live_sides(units),
             combat_resources: None,
@@ -5134,6 +5391,8 @@ mod lead_tests {
         let mut damage_events = Vec::new();
         let mut candidates = Vec::new();
         let mut battle = BattleState {
+            fired_units: Default::default(),
+            armed_units: armed_unit_ids(&units),
             scores: initial_scores(&units),
             alive_counts: count_live_sides(&units),
             combat_resources: None,
@@ -5203,6 +5462,8 @@ mod lead_tests {
         let mut spatial = SpatialGrid::new(&terrain, 64.0);
         spatial.rebuild(&units);
         let mut battle = BattleState {
+            fired_units: Default::default(),
+            armed_units: armed_unit_ids(&units),
             scores: initial_scores(&units),
             alive_counts: count_live_sides(&units),
             combat_resources: None,
@@ -7147,5 +7408,64 @@ mod lead_tests {
             "blast at elevation 300 misses aircraft at elevation 100"
         );
         assert_eq!(result.winner, None);
+    }
+}
+
+#[cfg(test)]
+mod auxiliary_tests {
+    use super::*;
+    use crate::learn::tactical::tests::skirmisher;
+    use crate::policy::BuiltinPolicy;
+    #[test]
+    fn auxiliary_units_have_real_costs_but_cannot_hold_elimination_hostage() {
+        let mut attacker = skirmisher("attacker");
+        attacker.weapons[0].damage = 10000.0;
+        let mut victim = skirmisher("victim");
+        victim.weapons.clear();
+        let mut support = victim.clone();
+        support.name = "radar".into();
+        support.metal_cost = 25.0;
+        support.energy_cost = 0.0;
+        support.movement.max_speed = 0.0;
+        let scenario = Scenario {
+            terrain: Terrain::flat(3000.0, 1000.0, 32.0),
+            max_time: 1.0,
+            trace_resources: vec![],
+            units: vec![
+                Spawn {
+                    definition: attacker,
+                    side: 0,
+                    position: Vec2::new(100.0, 500.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    definition: victim,
+                    side: 1,
+                    position: Vec2::new(180.0, 500.0),
+                    heading: PI,
+                },
+                Spawn {
+                    definition: support,
+                    side: 1,
+                    position: Vec2::new(2000.0, 500.0),
+                    heading: PI,
+                },
+            ],
+        };
+        let simulator = Simulator::new(scenario).with_auxiliary_units([3]);
+        let result = simulator.run([&BuiltinPolicy::Hold, &BuiltinPolicy::Hold], 1);
+        assert_eq!(result.winner, Some(0), "{result:?}");
+        assert!(!result.timed_out);
+        assert!(result.duration < 1.0);
+        assert_eq!(result.sides[1].surviving_value, 25.0);
+        assert!(result.sides[0].won);
+        assert!(!result.sides[1].won);
+        let repeated =
+            simulator.run_parallel_results([&BuiltinPolicy::Hold, &BuiltinPolicy::Hold], 2, 1);
+        assert!(
+            repeated
+                .iter()
+                .all(|r| r.winner == Some(0) && r.sides[1].surviving_value == 25.0)
+        );
     }
 }

@@ -4,9 +4,9 @@
   "companion_policy": "opposite-domain initial brain frozen across comparisons; no live companion updates",
   "files": [
     {
-      "bytes": 7078400,
+      "bytes": 7076352,
       "path": "bin/visigoth-simulator.exe",
-      "sha256": "f5b6a3fb98c086b7d11314953dcfda426db79e52154ba7f1ad7eb7cbbdf080e2"
+      "sha256": "5371e11ccd47273d8d7605b3c3bc23148783047e6bedd82acebe3b6da564fb4b"
     },
     {
       "bytes": 14412,
@@ -254,7 +254,7 @@
     },
     {
       "role": "executable",
-      "sha256": "f5b6a3fb98c086b7d11314953dcfda426db79e52154ba7f1ad7eb7cbbdf080e2",
+      "sha256": "5371e11ccd47273d8d7605b3c3bc23148783047e6bedd82acebe3b6da564fb4b",
       "source": "D:\\code\\BAR\\minibar\\target\\diverse-verification\\release\\visigoth-simulator.exe"
     },
     {

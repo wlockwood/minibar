@@ -21,6 +21,9 @@ pub struct CampaignConfig {
     pub generations: u64,
     pub seed: u64,
     pub validation_every: u64,
+    /// Retest one saved elite per track at this cadence; zero disables it.
+    pub elite_retest_every: u64,
+    pub elite_size: usize,
     /// Validate one full-module graft from each island centre onto the
     /// generation's starting champion at this cadence; zero disables it.
     pub module_recombination_every: u64,
@@ -57,6 +60,8 @@ impl Default for CampaignConfig {
             generations: 200,
             seed: 20261017,
             validation_every: 5,
+            elite_retest_every: 0,
+            elite_size: 8,
             module_recombination_every: 0,
             promotion_seeds: 4,
             min_gain: 0.005,
@@ -80,6 +85,8 @@ impl Default for CampaignConfig {
 pub struct TrackConfig {
     pub name: String,
     pub brain: PathBuf,
+    #[serde(default)]
+    pub elite_brains: Vec<PathBuf>,
     #[serde(default)]
     pub reference_brain: Option<PathBuf>,
     #[serde(default)]
@@ -126,6 +133,11 @@ impl CampaignConfig {
                     *p = root.join(&*p);
                 }
             }
+            for path in &mut track.elite_brains {
+                if path.is_relative() {
+                    *path = root.join(&*path);
+                }
+            }
             track.training.resolve_paths(root)?;
             track.validation.resolve_paths(root)?;
             if let Some(plan) = &mut track.holdout {
@@ -164,6 +176,16 @@ impl CampaignConfig {
             || self.promotion_seeds > 64
         {
             return Err("invalid promotion, restart or archive settings".into());
+        }
+        if self.elite_size == 0
+            || self.elite_size > 64
+            || (self.elite_retest_every > 0 && (!self.fresh_screening || self.promotion_seeds == 0))
+            || self.tracks.iter().any(|t| {
+                t.elite_brains.len() > self.elite_size
+                    || (!t.elite_brains.is_empty() && self.elite_retest_every == 0)
+            })
+        {
+            return Err("elite retesting requires fresh screening, paired promotion and a pool of 1..64; imports require enabled retesting and must fit the pool".into());
         }
         if self.frontier_limit.is_some_and(|n| n == 0 || n > 64)
             || self
@@ -351,6 +373,15 @@ fn rewrite_identities(
                         continue;
                     }
                 }
+                if key == "elite_brains" {
+                    if let Some(items) = item.as_array_mut() {
+                        for entry in items {
+                            if let Some(path) = entry.as_str() {
+                                *entry = Value::String(signature(&root.join(path), active, false)?);
+                            }
+                        }
+                    }
+                }
                 if key == "opponents" {
                     if let Some(items) = item.as_array_mut() {
                         for opponent in items {
@@ -405,6 +436,24 @@ mod tests {
         assert_eq!(input_identity(&a).unwrap(), input_identity(&b).unwrap());
         fs::write(root.join("b/asset.bin"), b"changed terrain").unwrap();
         assert_ne!(input_identity(&a).unwrap(), input_identity(&b).unwrap());
+    }
+    #[test]
+    fn elite_defaults_and_dependency_identities_are_bounded_and_portable() {
+        let defaults = CampaignConfig::default();
+        assert_eq!(defaults.elite_retest_every, 0);
+        assert_eq!(defaults.elite_size, 8);
+        let root =
+            std::env::temp_dir().join(format!("campaign-elite-identity-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.json"), "{\"name\":\"same\"}").unwrap();
+        fs::write(root.join("b.json"), "{\"name\":\"same\"}").unwrap();
+        let config = root.join("campaign.json");
+        fs::write(&config, r#"{"elite_brains":["a.json"]}"#).unwrap();
+        let identity = input_identity(&config).unwrap();
+        fs::write(&config, r#"{"elite_brains":["b.json"]}"#).unwrap();
+        assert_eq!(identity, input_identity(&config).unwrap());
+        fs::write(root.join("b.json"), "{}").unwrap();
+        assert_ne!(identity, input_identity(&config).unwrap());
     }
     #[test]
     fn dependency_cycles_and_unsafe_names_are_rejected() {

@@ -272,6 +272,7 @@ mod tests {
         };
         let config = CampaignConfig {
             tracks: vec![TrackConfig {
+                elite_brains: vec![],
                 reference_brain: None,
                 name: "tactical".into(),
                 brain: "brain.json".into(),

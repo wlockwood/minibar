@@ -172,19 +172,45 @@ def brain_domain(saved):
     return "ground" if kind.startswith("tactical") or "ground" in kind else "unknown"
 
 
+FIRING_KEYS = ('armed_units', 'units_fired', 'ready_checks', 'blocked_friendly',
+               'blocked_terrain', 'blocked_resources', 'shots_fired')
+
+
+def firing_summary(stats):
+    if not isinstance(stats, list) or len(stats) != 2:
+        return None
+    result = []
+    for side in stats:
+        item = {key: side.get(key, 0) for key in FIRING_KEYS}
+        item['participation_rate'] = item['units_fired'] / item['armed_units'] if item['armed_units'] else None
+        for name, key in [('friendly', 'blocked_friendly'), ('terrain', 'blocked_terrain'), ('resources', 'blocked_resources')]:
+            item[f'{name}_blocked_rate'] = item[key] / item['ready_checks'] if item['ready_checks'] else None
+        result.append(item)
+    return result
+
+
 def summarize_report(report, with_rows=False):
     """Compress one validation PlanReport to what the dashboard plots."""
     if not report:
         return None
-    out = {"fitness": report.get("fitness"), "stages": [], "outcome": None, "trials": None}
+    out = {"fitness": report.get("fitness"), "stages": [], "outcome": None, "trials": None, "firing": None}
+    firing = [{key: 0 for key in FIRING_KEYS} for _ in range(2)]
+    have_firing = False
     total = {key: 0.0 for key in OUTCOME_KEYS}
     have_outcome, trials = False, []
     for stage in report.get("stages", []):
         details = stage.get("details") or {}
         entry = {"name": stage.get("name"), "weight": stage.get("weight"), "fitness": stage.get("fitness")}
+        entry['combat_budget'] = details.get('combat_budget')
         entry.update(resource_coverage(details, with_rows))
         tally = details.get("total")
         if tally:
+            entry['firing'] = firing_summary(tally.get('firing'))
+            if entry['firing'] is not None:
+                have_firing = True
+                for summed, side in zip(firing, entry['firing']):
+                    for key in FIRING_KEYS:
+                        summed[key] += side[key]
             have_outcome = True
             entry["outcome"] = {key: tally.get(key, 0) for key in OUTCOME_KEYS}
             for key in OUTCOME_KEYS:
@@ -202,6 +228,8 @@ def summarize_report(report, with_rows=False):
         out["stages"].append(entry)
     if have_outcome:
         out["outcome"] = total
+    if have_firing:
+        out['firing'] = firing_summary(firing)
     if trials:
         out["trials"] = trials
         out["trial_means"] = {key: sum((t.get(key) or 0) for t in trials) / len(trials) for key in TRIAL_KEYS}
@@ -414,7 +442,13 @@ def summarize_generation(record, latest):
             ],
         })
     return {"generation": record.get("generation"), "champion_fitness": record.get("champion_fitness"),
-            "best_generation": record.get("best_generation"), "islands": islands}
+            "best_generation": record.get("best_generation"), "elite_retests": record.get("elite_retests",0), "islands": islands}
+
+
+def elite_metadata(entries):
+    keys = ('brain_sha256','origin','observations','mean_gain','stage_gains','last_retested',
+            'last_screen_gain','last_paired_gain','last_reason')
+    return [{key:entry.get(key) for key in keys} for entry in entries or [] if isinstance(entry,dict)]
 
 
 def load_model(path):
@@ -477,6 +511,8 @@ def load_model(path):
                             for i in islands_state],
             "archive_size": len(saved.get("archive", [])),
             "diagnostic_challengers": len((saved.get("frontier") or {}).get("entries", [])),
+            "elite_pool": elite_metadata(saved.get('elite_pool',summary_track.get('elite_pool',[]))),
+            "last_elite_retest": saved.get('last_elite_retest',summary_track.get('last_elite_retest')),
             "drift": brain_drift(saved.get("base"), saved.get("best")),
             **structure_history(saved, (state or {}).get("completed_generations", 0)),
         })
@@ -495,6 +531,8 @@ def load_model(path):
         "screen_min_gain": config.get("screen_min_gain", 0.0),
         "promotion_seeds": config.get("promotion_seeds", 4),
         "promotion_min_t": config.get("promotion_min_t", 0.0),
+        "elite_retest_every": config.get('elite_retest_every',0),
+        "elite_size": config.get('elite_size',8),
         "parked_tracks": (read_json(os.path.join(root, "branch.json")) or {}).get("parked_tracks", []),
         "restart_after": config.get("restart_after"),
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),

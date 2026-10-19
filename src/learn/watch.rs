@@ -89,6 +89,8 @@ pub struct WatchSample {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct WatchBattle {
+    /// Full-battle totals, learner then opponent, including unsampled ticks.
+    pub firing: [crate::score::FiringStats; 2],
     pub scenario: usize,
     pub opponent: usize,
     pub seed: u64,
@@ -345,6 +347,7 @@ pub fn battle(
         .map_or(0.0, |w| w.range);
 
     Ok(WatchBattle {
+        firing: assessment.firing,
         scenario,
         opponent,
         seed,

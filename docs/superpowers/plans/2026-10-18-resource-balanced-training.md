@@ -33,58 +33,70 @@
 Files: `src/learn/matchups.rs`, source-backed catalog/preview scripts and tests.
 Interfaces: `generate_records(config, catalog, seed)` returns scenarios and realized investment metadata; `generate` remains the scenario-only wrapper. Aircraft use `UnitDef.flight`.
 
-- [ ] Write and run failing arithmetic, nearest-count, cap, anchor and family coverage tests.
-- [ ] Implement resource packing, anchored and budgeted families, static/air pools and deterministic metadata.
-- [ ] Export expanded local BAR definitions with source identities and explicit capability checks.
-- [ ] Run generator and exporter tests, including Mammoth/40 Pawns and Starlight/Banisher.
+- [x] Write and run failing arithmetic, nearest-count, cap, anchor and family coverage tests.
+- [x] Implement resource packing, anchored and budgeted families, static/air pools and deterministic metadata.
+- [x] Export expanded local BAR definitions with source identities and explicit capability checks.
+- [x] Run generator and exporter tests, including Mammoth/40 Pawns and Starlight/Banisher.
 
 ### Task 2: Flight mechanics and separate air policy
 
 Files: `src/model.rs`, `src/engine.rs`, `src/policy.rs`, `src/learn/air.rs`, tactical dispatch and combat tests.
 Interfaces: `UnitDef.flight: Option<FlightDef>`; air kind `tactical-air-v1`; `AirPolicy` and `DomainPolicy` route independently learned policies.
 
-- [ ] Write and run failing terrain-bypass, turning, altitude targeting, bomb/AA and policy separation tests.
-- [ ] Implement bounded flight, targeting/projectile geometry and the independent air policy.
-- [ ] Verify inherited ground behavior and both air/air and mixed air/ground fixtures.
+- [x] Write and run failing terrain-bypass, turning, altitude targeting, bomb/AA and policy separation tests.
+- [x] Implement bounded flight, targeting/projectile geometry and the independent air policy.
+- [x] Verify inherited ground behavior and both air/air and mixed air/ground fixtures.
 
 ### Task 3: Optimizer reset correction
 
 Files: `src/learn/es.rs`, `src/learn/campaign.rs::recentred`.
 Interfaces: additive optional checkpoint `adam_updates`, absent means legacy generation; recenter sets zero without resetting noise generation.
 
-- [ ] Write and run failing reset-clock and resume tests.
-- [ ] Implement separate correction clock and validate serialized state.
-- [ ] Run ES and campaign recenter tests.
+- [x] Write and run failing reset-clock and resume tests.
+- [x] Implement separate correction clock and validate serialized state.
+- [x] Run ES and campaign recenter tests.
 
 ### Task 4: Evaluation, curriculum preview and mixed control integration
 
 Files: `src/learn/train.rs`, `src/learn/campaign_eval.rs`, `src/main.rs`, `src/learn/mod.rs`, CLI tests.
 Interfaces: training config optionally names a frozen companion brain; native preview uses the same seed/generator as evaluation. Evaluation rows expose families and actual investments.
 
-- [ ] Test generated layouts with differing row identities, mixed policy routing and explicit preview metadata.
-- [ ] Add companion loading/identity, air seed initialization and preview command.
-- [ ] Pool generated rows without positional identity assumptions and carry family results through reports.
-- [ ] Align configured opponents across train, screen and promotion; reject accidental changing archive use for the successor.
+- [x] Test generated layouts with differing row identities, mixed policy routing and explicit preview metadata.
+- [x] Add companion loading/identity, air seed initialization and preview command.
+- [x] Pool generated rows without positional identity assumptions and carry family results through reports.
+- [x] Align configured opponents across train, screen and promotion; reject accidental changing archive use for the successor.
 
 ### Task 5: Campaign recovery, retention and dashboard
 
 Files: `src/learn/campaign.rs`, campaign configuration, `scripts/campaign_dashboard.py`, HTML template and tests.
 
-- [ ] Test stagnation recovery, evaluated candidate retention and family reporting.
-- [ ] Add bounded champion reanchoring and preserve rejected candidate weights/lineage.
-- [ ] Surface each brain's family coverage, outcomes and investment gaps; lay-review the changed display.
-- [ ] Produce successor configs with family stages, ratio-discounted scoring, gentle structural refinement and unchanged reference anchors.
+- [x] Test stagnation recovery, evaluated candidate retention and family reporting.
+- [x] Add bounded champion reanchoring and preserve rejected candidate weights/lineage.
+- [x] Surface each brain's family coverage, outcomes and investment gaps; lay-review the changed display.
+- [x] Produce successor configs with family stages, ratio-discounted scoring, gentle structural refinement and unchanged reference anchors.
 
 ### Task 6: Integrated verification and pilot packaging
 
 Files: successor artifacts and user documentation.
 
-- [ ] Run focused Rust/Python tests, formatting and source capability checks.
-- [ ] Independently review integrated changes and address material findings.
-- [ ] Generate preview records and watchable combat samples.
-- [ ] Run bounded fresh-seed pilots without touching the completed campaign; report evidence and limitations.
-- [ ] Package the validated successor with executable/config identities and a visible 32-thread launcher.
+- [x] Run focused Rust/Python tests, formatting and source capability checks.
+- [x] Independently review integrated changes and address material findings.
+- [x] Generate preview records and watchable combat samples.
+- [x] Run bounded fresh-seed pilots without touching the completed campaign; report evidence and limitations.
+- [x] Package the validated successor with executable/config identities and a visible 32-thread launcher.
 
 ## Execution record
 
 The user explicitly requested implementation of the approved design. Proceed in this session without another approval checkpoint. Independent generator, flight and optimizer tasks are delegated under the parallel-agent skill; integration stays with the primary agent.
+
+
+Implementation verification:
+
+- 480 Rust tests and 156 Python tests pass; formatting and diff checks pass.
+- Both final pilots completed three generations; Windows PowerShell completed-run resume preserves their full checkpoint bytes.
+- Ground promoted a candidate at generation 2 in both pilots. These short, differently scoped pilots verify the pipeline and do not establish sustained or native BAR improvement.
+- Final main checkpoint is 10,621,854 bytes. Full receipt/cache evidence remains available; compaction preserves exactly the prior pilot champions and optimizer states.
+- Contact starts were tightened to 200–320 after replay inspection found stationary fights beyond both armies' sight. Actual ground and air samples contain decisions and shots.
+- Fixed-wing turn rates use the source speed/turn-radius approximation. Air has independent inputs, weights, structure and promotion; companions remain frozen for reproducible comparisons.
+- Production family stages target near equal investment; lightly weighted advantage/disadvantage stages retain unequal-force coverage.
+- Verification receipt: `data/branches/diverse-training-20261018/verification.json`. Production has not been started; holdout remains unused.

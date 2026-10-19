@@ -11,6 +11,8 @@ use super::{
 use rayon::prelude::*;
 #[path = "campaign_console.rs"]
 mod console;
+#[path = "campaign_elite.rs"]
+mod elite;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -54,6 +56,12 @@ struct ChampionFollow {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct TrackState {
+    #[serde(default)]
+    elite_pool: Vec<elite::Entry>,
+    #[serde(default)]
+    elite_imports: Vec<Value>,
+    #[serde(default)]
+    last_elite_retest: Option<Value>,
     #[serde(default)]
     structure_snapshots: std::collections::BTreeMap<String, Value>,
     #[serde(default)]
@@ -130,6 +138,8 @@ struct GenerationRecord {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct TrackRecord {
+    #[serde(default)]
+    elite_retests: usize,
     name: String,
     islands: Vec<IslandRecord>,
     champion_fitness: f64,
@@ -543,7 +553,15 @@ fn initial(
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
+            let elite_imports = elite::imports(track, &rt.base)?;
             Ok(TrackState {
+                elite_pool: elite_imports
+                    .iter()
+                    .enumerate()
+                    .map(|(index, brain)| elite::Entry::import(brain.clone(), index))
+                    .collect(),
+                elite_imports,
+                last_elite_retest: None,
                 structure_snapshots: {
                     let mut snapshots = Default::default();
                     snapshot(&mut snapshots, base.clone());
@@ -610,6 +628,8 @@ fn validate_state(
         return Err("checkpoint history sequence is invalid".into());
     }
     for ((saved, track), rt) in state.tracks.iter().zip(&config.tracks).zip(runtime) {
+        elite::validate(saved, track, config, &rt.base, state.completed_generations)?;
+        elite::validate_history(saved, state, config)?;
         if saved.reference != rt.reference.as_ref().map(campaign_work::brain_value)
             || saved.frontier.is_some() != config.frontier_limit.is_some()
         {
@@ -1108,7 +1128,7 @@ fn finish(
 fn summary(state: &CampaignState, target: u64, status: &str, waiting: usize) -> CampaignSummary {
     CampaignSummary {status:status.into(),completed_generations:state.completed_generations,target_generations:target,waiting_jobs:waiting,
         tracks:state.tracks.iter().map(|track| serde_json::json!({"name":track.name,"best_generation":track.best_generation,
-            "diagnostic_challengers":track.frontier.as_ref().map_or(0,|f|f.entries.len()),"initial_fitness":track.initial_report.as_ref().map(|r|r.fitness),"best_fitness":track.best_report.as_ref().map(|r|r.fitness),
+            "last_elite_retest":track.last_elite_retest,"elite_pool":elite::metadata(&track.elite_pool),"elite_pool_size":track.elite_pool.len(),"diagnostic_challengers":track.frontier.as_ref().map_or(0,|f|f.entries.len()),"initial_fitness":track.initial_report.as_ref().map(|r|r.fitness),"best_fitness":track.best_report.as_ref().map(|r|r.fitness),
             "holdout_fitness":track.holdout.as_ref().map(|r|r.fitness),"restarts":track.islands.iter().map(|i|serde_json::json!({"name":i.name,"count":i.restarts})).collect::<Vec<_>>() })).collect() }
 }
 
@@ -1242,7 +1262,6 @@ fn compact_history_details(details: &mut Value) {
                     | "layout_seed"
                     | "mean_layout_fitness"
                     | "total"
-                    | "rows"
                     | "trials"
                     | "baseline"
                     | "historical"
@@ -1259,15 +1278,6 @@ fn compact_history_details(details: &mut Value) {
         for key in ["baseline", "historical", "scripted", "learned", "report"] {
             if let Some(child) = object.get_mut(key) {
                 prune(child);
-            }
-        }
-        if let Some(rows) = object.get_mut("rows").and_then(Value::as_array_mut) {
-            for row in rows {
-                if let Some(row) = row.as_object_mut() {
-                    row.retain(|key, _| {
-                        matches!(key.as_str(), "scenario" | "opponent" | "family" | "tally")
-                    });
-                }
             }
         }
     }
@@ -1420,6 +1430,11 @@ fn train_track(
             });
         }
     }
+    let retest = if config.elite_retest_every > 0 && generation % config.elite_retest_every == 0 {
+        elite::next(&saved.elite_pool, &saved.best).cloned()
+    } else {
+        None
+    };
     let mut records = Vec::new();
     for island_index in 0..saved.islands.len() {
         let island_config = &track.islands[island_index];
@@ -1565,7 +1580,9 @@ fn train_track(
             promoted: vec![],
         };
         island.es = es.state();
-        if validation_due(generation, config.validation_every) {
+        if validation_due(generation, config.validation_every)
+            || (island_index == 0 && retest.is_some())
+        {
             let best_sample = scores
                 .iter()
                 .enumerate()
@@ -1583,15 +1600,33 @@ fn train_track(
                 config.module_recombination_every,
             )?;
             let donor_sha256 = super::content_hash::sha256(center.to_json().as_bytes());
-            let mut validation_candidates = vec![
-                ("center".to_string(), center),
-                ("sample".to_string(), candidates[best_sample].clone()),
-            ];
-            if let Some(graft) = graft {
-                validation_candidates.push(graft);
+            let mut validation_candidates = if validation_due(generation, config.validation_every) {
+                vec![
+                    ("center".to_string(), center),
+                    ("sample".to_string(), candidates[best_sample].clone()),
+                ]
+            } else {
+                vec![]
+            };
+            if validation_due(generation, config.validation_every) {
+                if let Some(graft) = graft {
+                    validation_candidates.push(graft);
+                }
+            }
+            if island_index == 0 {
+                if let Some(entry) = &retest {
+                    validation_candidates.insert(
+                        0,
+                        (
+                            format!("elite_{}", entry.brain_sha256),
+                            campaign_work::parse_brain(&entry.brain)?,
+                        ),
+                    );
+                }
             }
             for (kind, brain) in &validation_candidates {
                 let kind = kind.as_str();
+                let is_elite = kind.starts_with("elite_");
                 let label = format!(
                     "generation-{generation}/{}/{}/{kind}",
                     track.name, island_config.name
@@ -1648,6 +1683,7 @@ fn train_track(
                     // fixed audit above remains comparable over the whole run.
                     let seed = (1u64 << 59)
                         + generation * 1_000_000_000
+                        + if is_elite { 1u64 << 57 } else { 0 }
                         + (config.seed % 1_000_000) * 1000;
                     let Some(current) = queue.plan(
                         &rt.validation,
@@ -1665,7 +1701,11 @@ fn train_track(
                         &track.name,
                         "validation",
                         seed,
-                        &format!("generation-{generation}/{}/screen/incumbent", track.name),
+                        &format!(
+                            "generation-{generation}/{}/screen/incumbent{}",
+                            track.name,
+                            if is_elite { "/elite" } else { "" }
+                        ),
                         &incumbent,
                     )?
                     else {
@@ -1730,14 +1770,16 @@ fn train_track(
                     let mut incumbent_reports = Vec::new();
                     let mut reference_reports = Vec::new();
                     for sample in 0..config.promotion_seeds {
-                        let seed = campaign_promotion::seed_base(generation, sample)?;
+                        let seed = campaign_promotion::seed_base(generation, sample)?
+                            + if is_elite { 1u64 << 58 } else { 0 };
                         if config.max_faction_regression.is_some() {
                             let reference = campaign_work::parse_brain(
                                 saved.reference.as_ref().unwrap_or(&saved.base),
                             )?;
                             let label = format!(
-                                "generation-{generation}/{}/promotion-{sample}/reference",
-                                track.name
+                                "generation-{generation}/{}/promotion-{sample}/reference{}",
+                                track.name,
+                                if is_elite { "/elite" } else { "" }
                             );
                             let Some(r) = queue.plan(
                                 &rt.promotion,
@@ -1762,8 +1804,9 @@ fn train_track(
                             // immediately after a champion is replaced.
                             let pair_label = if side == "incumbent" {
                                 format!(
-                                    "generation-{generation}/{}/promotion-{sample}/incumbent",
-                                    track.name
+                                    "generation-{generation}/{}/promotion-{sample}/incumbent{}",
+                                    track.name,
+                                    if is_elite { "/elite" } else { "" }
                                 )
                             } else {
                                 format!("{label}/promotion-{sample}/candidate")
@@ -1825,10 +1868,10 @@ fn train_track(
                     .rev()
                     .find(|e| e.island == island_config.name)
                 {
-                    if accepted {
+                    if accepted && !is_elite {
                         event.outcome = "accepted".into();
                         event.accepted_generation = Some(generation);
-                    } else if event.outcome == "training" {
+                    } else if !is_elite && event.outcome == "training" {
                         event.outcome = "evaluated_without_promotion".into();
                     }
                 }
@@ -1877,10 +1920,25 @@ fn train_track(
                     "track":track.name, "generation":generation,
                     "island":island_config.name, "candidate":kind,
                     "brain_sha256":super::content_hash::sha256(brain.to_json().as_bytes()),
-                    "parent":campaign_work::brain_value(if kind.starts_with("module_") {&champion_start} else {&island_base}), "brain":value, "report":report,
+                    "parent":if is_elite {retest.as_ref().unwrap().parent.clone()} else {campaign_work::brain_value(if kind.starts_with("module_") {&champion_start} else {&island_base})}, "brain":value, "report":report,
                     "decision":decision, "input_identity":queue.input,
                     "backend_identity":queue.backend
                 });
+                receipt["promotion_challenge"] = serde_json::to_value(
+                    record
+                        .promotion_challenges
+                        .last()
+                        .filter(|c| c.candidate == kind),
+                )
+                .map_err(|e| e.to_string())?;
+                if is_elite {
+                    saved.last_elite_retest = Some(
+                        serde_json::json!({"generation":generation,"brain_sha256":retest.as_ref().unwrap().brain_sha256,"origin":retest.as_ref().unwrap().origin,"screen_gain":decision.screen_gain,"paired_gain":record.promotion_challenges.last().filter(|c| c.candidate == kind).map(|c| c.report.mean_gain),"reason":decision.reason}),
+                    );
+                    receipt["elite_origin"] =
+                        serde_json::to_value(retest.as_ref().unwrap().origin.clone())
+                            .map_err(|e| e.to_string())?;
+                }
                 if kind.starts_with("module_") {
                     receipt["module_donor_sha256"] = serde_json::json!(donor_sha256);
                 }
@@ -1891,6 +1949,24 @@ fn train_track(
                     )),
                     &receipt,
                 )?;
+                if config.elite_retest_every > 0 {
+                    elite::consider(
+                        &mut saved.elite_pool,
+                        brain,
+                        receipt["parent"].clone(),
+                        generation,
+                        &island_config.name,
+                        kind,
+                        &decision,
+                        record
+                            .promotion_challenges
+                            .last()
+                            .filter(|c| c.candidate == kind)
+                            .map(|c| &c.report),
+                        config.elite_size,
+                        is_elite,
+                    );
+                }
                 record.decisions.push(decision);
                 if kind == "center" {
                     record.center_validation = Some(report);
@@ -1906,6 +1982,7 @@ fn train_track(
         records.push(record);
     }
     let mut record = TrackRecord {
+        elite_retests: usize::from(retest.is_some()),
         name: track.name.clone(),
         islands: records,
         champion_fitness: saved.best_report.as_ref().unwrap().fitness,
@@ -2180,6 +2257,7 @@ mod tests {
             "facets":{"armada":0.1,"cortex":0.3},"facets_complete":true,
             "objectives":{"skirmish":0.2},"layout_seed":7,"mean_layout_fitness":0.4,
             "total":{"wins":4,"battles":8},"matchup_records":records,
+            "rows":[{"scenario":"full case detail","tally":{"wins":4,"battles":8}}],
             "layouts":[{"report":{"matchup_records":records}}]
         });
         let original = serde_json::to_value(&evidence).unwrap();
@@ -2187,6 +2265,10 @@ mod tests {
         compact_history_report(&mut history);
         let details = &history.stages[0].details;
         assert!(details.get("layouts").is_none());
+        assert!(
+            details.get("rows").is_none(),
+            "per-case rows belong in sealed evidence, not every paired history copy"
+        );
         assert_eq!(details["matchup_records"].as_array().unwrap().len(), 2);
         assert_eq!(details["coverage_counts"]["heavy_swarm"], 8);
         assert_eq!(details["matchup_records_sampled"], true);
@@ -2229,6 +2311,7 @@ mod tests {
             campaign_promotion::assess(vec![evidence.clone()], vec![evidence.clone()], 0.0, 0.1)
                 .unwrap();
         let mut generation = TrackRecord {
+            elite_retests: 0,
             name: "air".into(),
             champion_fitness: 0.5,
             diagnostic_challengers: None,

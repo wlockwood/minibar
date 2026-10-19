@@ -138,6 +138,8 @@ pub enum Outcome {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct BattleAssessment {
+    /// Learner then opponent, regardless of arena side.
+    pub firing: [crate::score::FiringStats; 2],
     pub outcome: Outcome,
     /// Opponent starting value over the learner's.
     pub value_ratio: f64,
@@ -247,6 +249,7 @@ pub fn assess_objective(
         w.key_unit_bonus * lost_fraction(enemy) - w.key_unit_penalty * lost_fraction(own);
 
     BattleAssessment {
+        firing: [own.firing, enemy.firing],
         outcome,
         value_ratio,
         stake,
@@ -279,6 +282,10 @@ pub fn robust_fitness<'a>(rows: impl Iterator<Item = &'a Tally>, w: &ObjectiveWe
 /// Running totals over assessed battles.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tally {
+    /// None for legacy evidence without firing counters; sums of unit-battle
+    /// participation and ready weapon checks otherwise. Learner then opponent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub firing: Option<[crate::score::FiringStats; 2]>,
     pub battles: usize,
     pub wins: usize,
     /// Mutual wipe-outs.
@@ -298,6 +305,10 @@ pub struct Tally {
 
 impl Tally {
     pub fn add(&mut self, a: &BattleAssessment) {
+        let firing = self.firing.get_or_insert_with(Default::default);
+        for (total, incoming) in firing.iter_mut().zip(a.firing.iter()) {
+            total.merge(incoming);
+        }
         self.battles += 1;
         self.fitness_sum += a.fitness;
         self.exchange_sum += a.exchange;
@@ -318,6 +329,12 @@ impl Tally {
     }
 
     pub fn merge(&mut self, other: &Tally) {
+        if let Some(incoming) = other.firing {
+            let firing = self.firing.get_or_insert_with(Default::default);
+            for (total, source) in firing.iter_mut().zip(incoming.iter()) {
+                total.merge(source);
+            }
+        }
         self.battles += other.battles;
         self.wins += other.wins;
         self.draws += other.draws;
@@ -357,6 +374,34 @@ impl Tally {
 mod tests {
     use super::*;
     use crate::score::SideScore;
+
+    #[test]
+    fn firing_diagnostics_follow_learner_side_and_pool_counts() {
+        let mut battle = result(None, (100.0, 50.0), (100.0, 50.0));
+        battle.sides[0].firing.armed_units = 40;
+        battle.sides[0].firing.units_fired = 12;
+        battle.sides[0].firing.ready_checks = 100;
+        battle.sides[0].firing.blocked_friendly = 80;
+        battle.sides[1].firing.armed_units = 1;
+        battle.sides[1].firing.units_fired = 1;
+        let assessment = assess_objective(&battle, 1, &ObjectiveWeights::default(), None);
+        let mut a = Tally::default();
+        a.add(&assessment);
+        let b = a;
+        a.merge(&b);
+        let stats = a.firing.unwrap();
+        assert_eq!(stats[0].armed_units, 2);
+        assert_eq!(stats[1].units_fired, 24);
+        assert_eq!(stats[1].blocked_friendly, 160);
+        let mut old = serde_json::to_value(a).unwrap();
+        old.as_object_mut().unwrap().remove("firing");
+        assert!(
+            serde_json::from_value::<Tally>(old)
+                .unwrap()
+                .firing
+                .is_none()
+        );
+    }
 
     fn result(winner: Option<u8>, own: (f32, f32), enemy: (f32, f32)) -> BattleResult {
         // (starting value, remaining hp value)

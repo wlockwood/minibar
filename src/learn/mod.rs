@@ -26,6 +26,7 @@ pub mod matchups;
 pub mod mlp;
 pub mod objective;
 pub mod rng;
+pub mod sensor_support;
 pub mod strategic;
 pub mod strategic_reward;
 pub mod strategic_sensors;

@@ -3,8 +3,37 @@ use std::array;
 use std::error::Error;
 use std::fmt;
 
+/// Per-battle firing diagnostics. A ready check is one aimed, in-range weapon
+/// emission opportunity, counted each tick until fired or no longer ready.
+/// Blocked rates are time-weighted ready checks, not percentages of lost rounds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FiringStats {
+    pub armed_units: u64,
+    pub units_fired: u64,
+    pub ready_checks: u64,
+    pub blocked_friendly: u64,
+    pub blocked_terrain: u64,
+    pub blocked_resources: u64,
+    /// Weapon emissions, independent of the number of projectiles in a salvo.
+    pub shots_fired: u64,
+}
+
+impl FiringStats {
+    pub fn merge(&mut self, other: &Self) {
+        self.armed_units += other.armed_units;
+        self.units_fired += other.units_fired;
+        self.ready_checks += other.ready_checks;
+        self.blocked_friendly += other.blocked_friendly;
+        self.blocked_terrain += other.blocked_terrain;
+        self.blocked_resources += other.blocked_resources;
+        self.shots_fired += other.shots_fired;
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct SideScore {
+    pub firing: FiringStats,
     pub side: u8,
     pub won: bool,
     pub starting_value: f32,
@@ -52,6 +81,8 @@ pub struct BattleResult {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct BatchSummary {
+    /// Pooled counters over all battles, in arena side order.
+    pub firing_totals: [FiringStats; 2],
     pub runs: usize,
     pub side_wins: [usize; 2],
     pub side_win_rate: [f64; 2],
@@ -80,6 +111,7 @@ pub struct MeanSideScore {
 impl BatchSummary {
     pub fn from_results(results: &[BattleResult], elapsed_seconds: f64) -> Self {
         let mut side_wins = [0, 0];
+        let mut firing_totals = [FiringStats::default(); 2];
         let mut draws = 0;
         let mut scores = [
             MeanSideScore {
@@ -97,6 +129,7 @@ impl BatchSummary {
                 _ => draws += 1,
             }
             for (total, source) in scores.iter_mut().zip(result.sides.iter()) {
+                firing_totals[source.side as usize].merge(&source.firing);
                 total.starting_value += source.starting_value as f64;
                 total.surviving_value += source.surviving_value as f64;
                 total.remaining_hp_value += source.remaining_hp_value as f64;
@@ -124,6 +157,7 @@ impl BatchSummary {
         }
         let side_win_rate = side_wins.map(|wins| wins as f64 / results.len().max(1) as f64);
         Self {
+            firing_totals,
             runs: results.len(),
             side_wins,
             side_win_rate,

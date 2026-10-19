@@ -104,10 +104,161 @@ pub struct AnchoredMatchup {
     pub max_gap: f32,
 }
 
+/// Fixed preserves historical configured separation and random draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartingDistanceMode {
+    #[default]
+    Fixed,
+    /// Uniform seeded front distance: max participating LOS to 1.5 weapon range.
+    /// Reversed ground intervals collapse at LOS; aircraft additionally use
+    /// the conservative runway floor and 1.5 times that floor at the far end.
+    UnitRanges,
+}
+
+/// Distances are world units between the nearest formation fronts along x,
+/// not army centroids. Objective assets participate in sensor/weapon maxima.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct StartingDistance {
+    pub mode: StartingDistanceMode,
+    pub bounds: [f32; 2],
+    pub sampled: f32,
+    pub max_los: f32,
+    pub max_weapon_range: f32,
+    /// Largest v^2 / (2a), measured from rest to cruise speed.
+    pub air_acceleration_distance: f32,
+    /// Largest 2v / omega; omega is the catalog turn rate in radians/second.
+    pub air_turn_diameter: f32,
+    /// Four times the largest per-aircraft (acceleration distance + turn diameter).
+    /// A conservative safety factor gives both sides approach and return runway.
+    pub air_runway_floor: f32,
+    /// Travel allowance added to the configured combat budget; capped at one hour.
+    pub approach_time: f32,
+    pub approach_time_capped: bool,
+    /// No mobile unit can close an initial gap beyond sight.
+    pub contact_unreachable: bool,
+}
+
+fn starting_distance(
+    config: &MatchupConfig,
+    scenario: &ScenarioSpec,
+    catalog: &UnitCatalog,
+    rng: &mut Rng,
+) -> StartingDistance {
+    let mut distance = StartingDistance {
+        mode: config.starting_distance_mode,
+        bounds: config.separation,
+        sampled: scenario.separation,
+        ..Default::default()
+    };
+    if distance.mode == StartingDistanceMode::Fixed {
+        return distance;
+    }
+    let definitions = scenario
+        .learner
+        .iter()
+        .chain(&scenario.enemy)
+        .filter(|entry| entry.count > 0)
+        .map(|entry| catalog.get(&entry.unit).unwrap())
+        .chain(
+            scenario
+                .objective
+                .iter()
+                .map(|o| catalog.get(&o.target).unwrap()),
+        )
+        .collect::<Vec<_>>();
+    let has_air_target = definitions
+        .iter()
+        .any(|d| d.flight.is_some() || d.strategic.use_air_los);
+    for definition in definitions {
+        let sight = definition.strategic.sight_distance.unwrap_or(0.0);
+        let air_sight = if has_air_target {
+            definition
+                .strategic
+                .air_sight_distance
+                .unwrap_or(sight * 1.5)
+        } else {
+            0.0
+        };
+        distance.max_los = distance.max_los.max(sight).max(air_sight);
+        for weapon in &definition.weapons {
+            if !weapon.is_shield
+                && weapon.interceptor == 0
+                && (weapon.damage > 0.0 || weapon.damage_by_armor.values().any(|d| *d > 0.0))
+            {
+                distance.max_weapon_range = distance.max_weapon_range.max(weapon.range);
+            }
+        }
+        if definition.flight.is_some() {
+            let movement = &definition.movement;
+            let speed = movement.max_speed.max(0.0);
+            // Zero acceleration/turn rate means no finite runway can make this
+            // aircraft maneuver. Do not invent infinite terrain for such units.
+            let acceleration = if movement.acceleration > 0.0 {
+                speed * speed / (2.0 * movement.acceleration)
+            } else {
+                0.0
+            };
+            let turn = if movement.turn_rate > 0.0 {
+                2.0 * speed / movement.turn_rate.to_radians()
+            } else {
+                0.0
+            };
+            distance.air_acceleration_distance =
+                distance.air_acceleration_distance.max(acceleration);
+            distance.air_turn_diameter = distance.air_turn_diameter.max(turn);
+            distance.air_runway_floor = distance.air_runway_floor.max(4.0 * (acceleration + turn));
+        }
+    }
+    let low = distance.max_los.max(distance.air_runway_floor).max(1.0);
+    // Air needs variation beyond the runway floor even when weapons are short-range.
+    distance.bounds = [
+        low,
+        low.max(1.5 * distance.max_weapon_range)
+            .max(1.5 * distance.air_runway_floor),
+    ];
+    distance.sampled = range(rng, distance.bounds).clamp(distance.bounds[0], distance.bounds[1]);
+    let gap = (distance.sampled - distance.max_los).max(0.0);
+    let side_movement = |roster: &[RosterEntry]| {
+        roster
+            .iter()
+            .filter(|entry| entry.count > 0)
+            .map(|entry| &catalog.get(&entry.unit).unwrap().movement)
+            // Units without acceleration cannot approach from rest.
+            .filter(|m| m.max_speed > 0.0 && m.acceleration > 0.0)
+            .max_by(|a, b| a.max_speed.total_cmp(&b.max_speed))
+            .map_or((0.0, 0.0), |m| (m.max_speed, m.max_speed / m.acceleration))
+    };
+    let (ours, theirs) = (
+        side_movement(&scenario.learner),
+        side_movement(&scenario.enemy),
+    );
+    // Either policy may Hold. Budget for the slower mobile side to scout
+    // alone rather than assuming both armies contribute closing speed.
+    let closing_speed = [ours.0, theirs.0]
+        .into_iter()
+        .filter(|speed| *speed > 0.0)
+        .reduce(f32::min)
+        .unwrap_or(0.0);
+    distance.contact_unreachable = gap > 0.0 && closing_speed <= 0.0;
+    if gap > 0.0 && closing_speed > 0.0 {
+        let allowance = gap / closing_speed + ours.1.max(theirs.1);
+        distance.approach_time_capped = allowance > 3600.0;
+        distance.approach_time = allowance.min(3600.0);
+    }
+    distance
+}
+
 /// Native preview and evaluation share these exact seeded scenarios.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MatchupRecord {
     pub scenario: ScenarioSpec,
+    #[serde(default)]
+    pub starting_distance: StartingDistance,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensor_support: Option<[super::sensor_support::SensorSupport; 2]>,
+    #[serde(default)]
+    pub sensor_support_value: [f32; 2],
     pub family: String,
     pub seed: u64,
     pub index: usize,
@@ -155,6 +306,8 @@ pub struct MatchupConfig {
     pub max_units: usize,
     /// Distance between the two front lines at the start.
     pub separation: [f32; 2],
+    pub starting_distance_mode: StartingDistanceMode,
+    pub sensor_support: Option<super::sensor_support::SensorSupportConfig>,
     /// Share of fights where the learner must destroy an enemy target, and
     /// where it must keep its own alive. The rest are plain fights.
     pub attack_share: f32,
@@ -180,6 +333,8 @@ impl Default for MatchupConfig {
             second_platoon_chance: 0.4,
             max_units: 96,
             separation: [450.0, 800.0],
+            starting_distance_mode: StartingDistanceMode::Fixed,
+            sensor_support: None,
             attack_share: 0.0,
             defend_share: 0.0,
             targets: Vec::new(),
@@ -191,6 +346,9 @@ impl Default for MatchupConfig {
 impl MatchupConfig {
     pub fn validate(&self, catalog: &UnitCatalog) -> Result<(), TrainError> {
         let err = |m: String| Err(TrainError(format!("matchups: {m}")));
+        if let Some(support) = &self.sensor_support {
+            support.validate(catalog)?;
+        }
         if self.count == 0 || (self.types.is_empty() && self.anchors.is_empty()) {
             return err("needs a positive count and at least one platoon type".into());
         }
@@ -345,6 +503,10 @@ impl MatchupConfig {
                 .iter()
                 .any(|a| a.learner.iter().chain(&a.enemy).any(|e| e.unit == name))
                 || self.targets.iter().any(|t| t == name)
+                || self
+                    .sensor_support
+                    .as_ref()
+                    .is_some_and(|s| s.names().any(|n| n == name))
         };
         let missing: Vec<_> = missing
             .into_iter()
@@ -722,6 +884,22 @@ pub fn generate_records(
             };
             (fight, family, [budget, enemy_budget])
         };
+        let sensor_support = config
+            .sensor_support
+            .as_ref()
+            .map(|s| s.generate(seed, index));
+        let sensor_support_value = sensor_support
+            .as_ref()
+            .map_or([0.0; 2], |s| [s[0].value(catalog), s[1].value(catalog)]);
+        // Support aircraft and sensor sight participate in the requested range
+        // bounds; keep the combat rosters and their investment quota unchanged.
+        let mut distance_scenario = scenario.clone();
+        if let Some(s) = &sensor_support {
+            distance_scenario.learner.extend(s[0].roster());
+            distance_scenario.enemy.extend(s[1].roster());
+        }
+        let starting_distance = starting_distance(config, &distance_scenario, catalog, &mut rng);
+        scenario.separation = starting_distance.sampled;
         let combat_value = [
             roster_value(&scenario.learner, catalog),
             roster_value(&scenario.enemy, catalog),
@@ -736,8 +914,8 @@ pub fn generate_records(
             objective_value[owner] = catalog.get(&objective.target).unwrap().resource_value();
         }
         let starting_value = [
-            combat_value[0] + objective_value[0],
-            combat_value[1] + objective_value[1],
+            combat_value[0] + objective_value[0] + sensor_support_value[0],
+            combat_value[1] + objective_value[1] + sensor_support_value[1],
         ];
         let absolute_gap = symmetric_gap(combat_value[0], combat_value[1]);
         let balance_class = if absolute_gap <= config.max_balanced_gap {
@@ -789,6 +967,9 @@ pub fn generate_records(
                 });
         records.push(MatchupRecord {
             scenario,
+            starting_distance,
+            sensor_support,
+            sensor_support_value,
             family,
             seed,
             index,
@@ -825,6 +1006,244 @@ pub fn generate(
 mod tests {
     use super::*;
     use crate::learn::tactical::tests::skirmisher;
+
+    #[test]
+    fn sensor_support_has_seeded_thirds_real_costs_and_legacy_opt_out() {
+        let mut catalog = catalog();
+        for (name, radar, jammer) in [("radar", 2100.0, 0.0), ("jammer", 0.0, 500.0)] {
+            let mut d = catalog.units.values().next().unwrap().clone();
+            d.name = name.into();
+            d.weapons.clear();
+            d.movement.max_speed = 0.0;
+            d.strategic.radar_radius = Some(radar);
+            d.strategic.jammer_radius = Some(jammer);
+            catalog.units.insert(name.into(), d);
+        }
+        let mut cfg = config();
+        cfg.count = 60;
+        let mut json = serde_json::to_value(&cfg).unwrap();
+        json["sensor_support"] = serde_json::json!({"radars":["radar"],"air_scouts":[],"jammers":["jammer"],"jammer_share":1.0});
+        cfg = serde_json::from_value(json).unwrap();
+        for seed in [1, 17, 96] {
+            let records = generate_records(&cfg, &catalog, seed).unwrap();
+            assert_eq!(records, generate_records(&cfg, &catalog, seed).unwrap());
+            let mut bins = [0; 3];
+            for record in records {
+                let value = serde_json::to_value(&record).unwrap();
+                let support = value["sensor_support"]
+                    .as_array()
+                    .expect("sensor support metadata");
+                let covered = support
+                    .iter()
+                    .filter(|side| !side["radar"].is_null())
+                    .count();
+                bins[covered] += 1;
+                for side in 0..2 {
+                    let cost = value["sensor_support_value"][side].as_f64().unwrap() as f32;
+                    assert!(cost > 0.0);
+                    assert!(
+                        (record.starting_value[side]
+                            - record.combat_value[side]
+                            - record.objective_value[side]
+                            - cost)
+                            .abs()
+                            < 0.1
+                    );
+                }
+            }
+            assert_eq!(bins, [20, 20, 20]);
+        }
+        let legacy = generate_records(&config(), &catalog, 17).unwrap();
+        assert!(serde_json::to_value(&legacy[0]).unwrap()["sensor_support"].is_null());
+    }
+
+    #[test]
+    fn unit_ranges_include_objective_and_collapse_when_los_exceeds_weapons() {
+        let mut catalog = catalog();
+        catalog
+            .units
+            .get_mut("b1")
+            .unwrap()
+            .strategic
+            .sight_distance = Some(1000.0);
+        catalog
+            .units
+            .get_mut("b2")
+            .unwrap()
+            .strategic
+            .sight_distance = Some(3000.0);
+        catalog.units.get_mut("b1").unwrap().weapons[0].range = 100.0;
+        catalog.units.get_mut("b2").unwrap().weapons[0].range = 120.0;
+        let scenario = ScenarioSpec {
+            faction: None,
+            name: "ranges".into(),
+            learner: vec![RosterEntry {
+                unit: "b1".into(),
+                count: 1,
+                platoon: 0,
+            }],
+            enemy: vec![RosterEntry {
+                unit: "b1".into(),
+                count: 1,
+                platoon: 0,
+            }],
+            objective: Some(ObjectiveSpec {
+                kind: ObjectiveKind::Attack,
+                target: "b2".into(),
+            }),
+            separation: 777.0,
+        };
+        let config = MatchupConfig {
+            starting_distance_mode: StartingDistanceMode::UnitRanges,
+            ..config()
+        };
+        let distance = starting_distance(&config, &scenario, &catalog, &mut Rng::new(9));
+        assert_eq!(distance.bounds, [3000.0, 3000.0]);
+        assert_eq!(distance.sampled, 3000.0);
+        assert_eq!(distance.max_weapon_range, 120.0);
+    }
+
+    #[test]
+    fn air_runway_accounts_for_acceleration_and_turning_and_varies() {
+        let mut catalog = catalog();
+        let aircraft = catalog.units.get_mut("b1").unwrap();
+        aircraft.flight = Some(crate::model::FlightDef {
+            cruise_altitude: 100.0,
+            minimum_speed: 30.0,
+            attack_run: true,
+        });
+        aircraft.movement.max_speed = 100.0;
+        aircraft.movement.acceleration = 10.0;
+        aircraft.movement.turn_rate = 90.0;
+        aircraft.strategic.sight_distance = Some(100.0);
+        let scenario = ScenarioSpec {
+            faction: None,
+            name: "air".into(),
+            learner: vec![RosterEntry {
+                unit: "b1".into(),
+                count: 1,
+                platoon: 0,
+            }],
+            enemy: vec![RosterEntry {
+                unit: "b1".into(),
+                count: 1,
+                platoon: 0,
+            }],
+            objective: None,
+            separation: 500.0,
+        };
+        let config = MatchupConfig {
+            starting_distance_mode: StartingDistanceMode::UnitRanges,
+            ..config()
+        };
+        let distance = starting_distance(&config, &scenario, &catalog, &mut Rng::new(9));
+        assert_eq!(distance.air_acceleration_distance, 500.0);
+        assert!(
+            (distance.air_runway_floor - 4.0 * (500.0 + 400.0 / std::f32::consts::PI)).abs()
+                < 0.001
+        );
+        assert!((distance.air_turn_diameter - 400.0 / std::f32::consts::PI).abs() < 0.001);
+        assert_eq!(distance.bounds[0], distance.air_runway_floor);
+        assert_eq!(distance.bounds[1], 1.5 * distance.air_runway_floor);
+        assert!(distance.sampled >= distance.bounds[0] && distance.sampled <= distance.bounds[1]);
+        assert_ne!(
+            distance.sampled,
+            starting_distance(&config, &scenario, &catalog, &mut Rng::new(10)).sampled
+        );
+    }
+
+    #[test]
+    fn approach_allowance_handles_mobile_static_and_capped_travel() {
+        let mut catalog = catalog();
+        let unit = catalog.units.get_mut("b1").unwrap();
+        unit.strategic.sight_distance = Some(100.0);
+        unit.weapons[0].range = 8000.0;
+        unit.movement.max_speed = 20.0;
+        unit.movement.acceleration = 2.0;
+        let scenario = ScenarioSpec {
+            faction: None,
+            name: "travel".into(),
+            learner: vec![RosterEntry {
+                unit: "b1".into(),
+                count: 1,
+                platoon: 0,
+            }],
+            enemy: vec![RosterEntry {
+                unit: "b1".into(),
+                count: 1,
+                platoon: 0,
+            }],
+            objective: None,
+            separation: 1000.0,
+        };
+        let config = MatchupConfig {
+            starting_distance_mode: StartingDistanceMode::UnitRanges,
+            ..config()
+        };
+        let distance = starting_distance(&config, &scenario, &catalog, &mut Rng::new(9));
+        assert!(
+            (distance.approach_time - ((distance.sampled - 100.0) / 20.0 + 10.0)).abs() < 0.001
+        );
+        // Both armies are mobile, but a Hold opponent contributes no closing
+        // speed. The advancing learner alone must have time to reach LOS.
+        let learner_only_contact_seconds = (distance.sampled - distance.max_los) / 20.0;
+        assert!(distance.approach_time >= learner_only_contact_seconds);
+        assert!(!distance.contact_unreachable && !distance.approach_time_capped);
+        catalog.units.get_mut("b1").unwrap().movement.max_speed = 0.0;
+        let distance = starting_distance(&config, &scenario, &catalog, &mut Rng::new(9));
+        assert!(distance.contact_unreachable);
+        assert_eq!(distance.approach_time, 0.0);
+        catalog.units.get_mut("b1").unwrap().movement.max_speed = 0.001;
+        let distance = starting_distance(&config, &scenario, &catalog, &mut Rng::new(9));
+        assert!(distance.approach_time_capped);
+        assert_eq!(distance.approach_time, 3600.0);
+    }
+
+    #[test]
+    fn fixed_mode_preserves_seeded_separation_draws() {
+        let config = config();
+        let mut serialized = serde_json::to_value(&config).unwrap();
+        serialized
+            .as_object_mut()
+            .unwrap()
+            .remove("starting_distance_mode");
+        let legacy: MatchupConfig = serde_json::from_value(serialized).unwrap();
+        let records = generate_records(&legacy, &catalog(), 81).unwrap();
+        assert_eq!(records, generate_records(&config, &catalog(), 81).unwrap());
+        assert!(
+            records
+                .iter()
+                .all(|record| record.scenario.separation.fract() == 0.0
+                    && record.starting_distance.mode == StartingDistanceMode::Fixed)
+        );
+        let army = vec![RosterEntry {
+            unit: "b1".into(),
+            count: 1,
+            platoon: 0,
+        }];
+        let anchored = MatchupConfig {
+            count: 1,
+            anchors: vec![AnchoredMatchup {
+                name: "legacy".into(),
+                family: "legacy".into(),
+                learner: army.clone(),
+                enemy: army,
+                max_gap: 0.05,
+            }],
+            ..Default::default()
+        };
+        let expected = range(
+            &mut Rng::for_stream(81 ^ 0x6D61_7463_6875_7073, 0),
+            anchored.separation,
+        )
+        .round();
+        assert_eq!(
+            generate_records(&anchored, &catalog(), 81).unwrap()[0]
+                .scenario
+                .separation,
+            expected
+        );
+    }
 
     #[test]
     fn quota_batches_cannot_silently_omit_later_families() {

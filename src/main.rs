@@ -503,6 +503,7 @@ fn main() {
                 "format":"minibar.curriculum_preview", "version":1, "seed":seed,
                 "brain_kind":resolved.brain_kind, "companion_brain":resolved.companion_brain,
                 "resource_formula":"metal + energy / 60",
+                "combat_budget":resolved.max_time,
                 "scenarios":resolved.scenarios, "matchup_records":resolved.matchup_records
             }))
             .unwrap()

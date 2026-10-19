@@ -1074,7 +1074,7 @@ impl TacticalPolicy {
         mut trace: Option<&mut DecisionTrace>,
     ) -> Command {
         let Some(mut situation) = Situation::observe(world, unit) else {
-            return Command::default();
+            return crate::policy::reconnaissance(world, unit);
         };
         let mut candidates = [None; TARGET_CANDIDATES + 1];
         for (slot, candidate) in candidates.iter_mut().zip(situation.candidates) {
@@ -1403,7 +1403,7 @@ impl TacticalPolicy {
             return self.think_v4(world, unit, trace);
         }
         let Some(situation) = Situation::observe(world, unit) else {
-            return Command::default();
+            return crate::policy::reconnaissance(world, unit);
         };
 
         // 1. Who? Score each candidate with the same weights; strict `>` keeps
