@@ -218,6 +218,17 @@ fn starting_distance(
             .max(1.5 * distance.air_runway_floor),
     ];
     distance.sampled = range(rng, distance.bounds).clamp(distance.bounds[0], distance.bounds[1]);
+    approach_allowance(&mut distance, scenario, catalog);
+    distance
+}
+
+fn approach_allowance(
+    distance: &mut StartingDistance,
+    scenario: &ScenarioSpec,
+    catalog: &UnitCatalog,
+) {
+    distance.approach_time = 0.0;
+    distance.approach_time_capped = false;
     let gap = (distance.sampled - distance.max_los).max(0.0);
     let side_movement = |roster: &[RosterEntry]| {
         roster
@@ -246,7 +257,6 @@ fn starting_distance(
         distance.approach_time_capped = allowance > 3600.0;
         distance.approach_time = allowance.min(3600.0);
     }
-    distance
 }
 
 /// Native preview and evaluation share these exact seeded scenarios.
@@ -898,7 +908,19 @@ pub fn generate_records(
             distance_scenario.learner.extend(s[0].roster());
             distance_scenario.enemy.extend(s[1].roster());
         }
-        let starting_distance = starting_distance(config, &distance_scenario, catalog, &mut rng);
+        let mut starting_distance =
+            starting_distance(config, &distance_scenario, catalog, &mut rng);
+        if sensor_support.is_some()
+            && starting_distance.mode == StartingDistanceMode::UnitRanges
+            && scenario.learner.iter().chain(&scenario.enemy).any(|entry| {
+                let movement = &catalog.get(&entry.unit).unwrap().movement;
+                movement.max_speed > 0.0 && movement.acceleration > 0.0
+            })
+        {
+            // Fast support aircraft must not replace slow platoons when
+            // estimating the time the main forces need to reach combat.
+            approach_allowance(&mut starting_distance, &scenario, catalog);
+        }
         scenario.separation = starting_distance.sampled;
         let combat_value = [
             roster_value(&scenario.learner, catalog),
@@ -1006,6 +1028,55 @@ pub fn generate(
 mod tests {
     use super::*;
     use crate::learn::tactical::tests::skirmisher;
+
+    #[test]
+    fn fast_support_scouts_do_not_reduce_main_force_travel_allowance() {
+        let mut catalog = catalog();
+        for unit in catalog.units.values_mut() {
+            unit.movement.max_speed = 20.0;
+            unit.movement.acceleration = 20.0;
+            unit.strategic.sight_distance = Some(100.0);
+            unit.weapons[0].range = 5000.0;
+        }
+        let mut scout = catalog.units.values().next().unwrap().clone();
+        scout.name = "scout".into();
+        scout.weapons.clear();
+        scout.strategic.radar_radius = Some(2000.0);
+        scout.strategic.sight_distance = Some(300.0);
+        scout.flight = Some(crate::model::FlightDef {
+            cruise_altitude: 100.0,
+            minimum_speed: 200.0,
+            attack_run: false,
+        });
+        scout.movement.max_speed = 300.0;
+        scout.movement.acceleration = 300.0;
+        scout.movement.turn_rate = 180.0;
+        catalog.units.insert("scout".into(), scout);
+        let mut config = config();
+        config.starting_distance_mode = StartingDistanceMode::UnitRanges;
+        config.sensor_support = Some(super::super::sensor_support::SensorSupportConfig {
+            air_scouts: vec!["scout".into()],
+            jammer_share: 0.0,
+            ..Default::default()
+        });
+        let records = generate_records(&config, &catalog, 17).unwrap();
+        let supported: Vec<_> = records
+            .iter()
+            .filter(|r| {
+                r.sensor_support
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s.air_scout.is_some())
+            })
+            .collect();
+        assert!(!supported.is_empty());
+        for record in supported {
+            let distance = &record.starting_distance;
+            let expected = (distance.sampled - distance.max_los).max(0.0) / 20.0 + 1.0;
+            assert!((distance.approach_time - expected).abs() < 0.01);
+        }
+    }
 
     #[test]
     fn sensor_support_has_seeded_thirds_real_costs_and_legacy_opt_out() {

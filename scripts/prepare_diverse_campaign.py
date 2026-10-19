@@ -279,6 +279,7 @@ def prepare(out, simulator, bar_root, *, candidate=CANDIDATE, reference=REFERENC
                    "opponent_policy":"fixed charge/kite/hold/surround scripts plus copied domain-specific learned brain; archive disabled",
                    "companion_policy":"opposite-domain initial brain frozen across comparisons; no live companion updates",
                    "elite_policy":"bounded eight-brain pool; one fresh challenge per track every five production generations; imported scores never reused",
+                   "sensor_support_policy": "seeded thirds: neither, one or both sides; radar/scout/both providers; independent one-third jammer chance per side; all support costs scored; support survival excluded from main-force elimination",
                    "starting_distance_policy":"unit-derived LOS/weapon bounds with air acceleration and turn runway; explicit approach-time allowance",
                    "holdout_status":"production-only plan prepared, not evaluated",
                    "qualification_status":"prepared inputs; no training launched or improvement claimed"}
@@ -327,6 +328,17 @@ brains are frozen in this package and their old scores are not reused. Full
 candidate receipts remain under runs/PROFILE/candidates. The dashboard shows
 pool identities, provenance, recent retest gains and rejection reasons.
 
+Reconnaissance support cycles through neither side, one side and both sides
+in equal thirds, with seed-dependent rotation. On covered sides, radar towers,
+radar-equipped scout aircraft or both are selected. Jammers vary independently
+(one-third chance per side). Assets use source-backed sensor ranges, can be
+shot down/destroyed and never grant omniscient vision. Scout aircraft fly a
+fixed area sweep; combat aircraft keep their separate learned air controller.
+Support investment is separate from the near-equal main combat armies, while
+all costs and damage count in scoring. Surviving support cannot prevent a win
+after the main force is eliminated. Actual coverage may disappear as assets die
+or leave range, and jamming does not block visual scouting.
+
 Production includes a separate untouched holdout plan;
 running production evaluates its holdout according to the native campaign lifecycle.
 
@@ -353,7 +365,7 @@ plumbing pilots do not establish native BAR equivalence or champion improvement.
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out",type=Path,default=ROOT / "data/branches/elite-range-training-20261019")
+    parser.add_argument("--out",type=Path,default=ROOT / "data/branches/recon-training-20261019")
     parser.add_argument("--sim",type=Path,required=True)
     parser.add_argument("--bar-root",type=Path,default=Path(exporter.make_catalog.BAR))
     parser.add_argument("--candidate",type=Path,default=CANDIDATE)

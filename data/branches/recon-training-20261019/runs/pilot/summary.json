@@ -1,0 +1,123 @@
+{
+  "status": "stopped",
+  "completed_generations": 0,
+  "target_generations": 3,
+  "waiting_jobs": 0,
+  "tracks": [
+    {
+      "best_fitness": null,
+      "best_generation": 0,
+      "diagnostic_challengers": 0,
+      "elite_pool": [],
+      "elite_pool_size": 0,
+      "holdout_fitness": null,
+      "initial_fitness": null,
+      "last_elite_retest": null,
+      "name": "ground",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        }
+      ]
+    },
+    {
+      "best_fitness": null,
+      "best_generation": 0,
+      "diagnostic_challengers": 0,
+      "elite_pool": [
+        {
+          "brain_sha256": "9604c2264bdbfd79ab0b9f3a835b209e87e6099667129a4a19d22db06a8b9a28",
+          "last_paired_gain": null,
+          "last_reason": "awaiting_fresh_evaluation",
+          "last_retested": null,
+          "last_screen_gain": null,
+          "mean_gain": 0.0,
+          "observations": 0,
+          "origin": {
+            "candidate": "import",
+            "generation": 0,
+            "import_index": 0,
+            "island": "import"
+          },
+          "stage_gains": []
+        },
+        {
+          "brain_sha256": "3628de0cf5a9c8e500c6ec002dfbf54bdd792635ebee866ea28f5710f7e6a408",
+          "last_paired_gain": null,
+          "last_reason": "awaiting_fresh_evaluation",
+          "last_retested": null,
+          "last_screen_gain": null,
+          "mean_gain": 0.0,
+          "observations": 0,
+          "origin": {
+            "candidate": "import",
+            "generation": 0,
+            "import_index": 1,
+            "island": "import"
+          },
+          "stage_gains": []
+        },
+        {
+          "brain_sha256": "3c16aeae424e968622cb80fb6b9296e2cd2230ea5fb703e0cecdbd7f155638cb",
+          "last_paired_gain": null,
+          "last_reason": "awaiting_fresh_evaluation",
+          "last_retested": null,
+          "last_screen_gain": null,
+          "mean_gain": 0.0,
+          "observations": 0,
+          "origin": {
+            "candidate": "import",
+            "generation": 0,
+            "import_index": 2,
+            "island": "import"
+          },
+          "stage_gains": []
+        },
+        {
+          "brain_sha256": "153d8a1888f66edfe1206d7275660fd5cc5becf775d40a99114b48aac15e2398",
+          "last_paired_gain": null,
+          "last_reason": "awaiting_fresh_evaluation",
+          "last_retested": null,
+          "last_screen_gain": null,
+          "mean_gain": 0.0,
+          "observations": 0,
+          "origin": {
+            "candidate": "import",
+            "generation": 0,
+            "import_index": 3,
+            "island": "import"
+          },
+          "stage_gains": []
+        },
+        {
+          "brain_sha256": "b4c13cf1e36be76f54b527392ef63c9ae30918af96a43cb2bf7d8feaf28861a1",
+          "last_paired_gain": null,
+          "last_reason": "awaiting_fresh_evaluation",
+          "last_retested": null,
+          "last_screen_gain": null,
+          "mean_gain": 0.0,
+          "observations": 0,
+          "origin": {
+            "candidate": "import",
+            "generation": 0,
+            "import_index": 4,
+            "island": "import"
+          },
+          "stage_gains": []
+        }
+      ],
+      "elite_pool_size": 5,
+      "holdout_fitness": null,
+      "initial_fitness": null,
+      "last_elite_retest": null,
+      "name": "air",
+      "restarts": [
+        {
+          "count": 0,
+          "name": "local"
+        }
+      ]
+    }
+  ]
+}

@@ -1,15 +1,35 @@
 # Diverse ground and air training
 
-The latest prepared successor is `data/branches/elite-range-training-20261019`.
+The latest prepared successor is `data/branches/recon-training-20261019`.
 It starts from snapshots of the saved ground and air champions in
 `surround-training-20261018` and imports the five preserved air breakthroughs.
 The older campaigns keep their original inputs.
 
 ```powershell
-.\data\branches\elite-range-training-20261019\Train.ps1 -Profile production -Threads 32
+.\data\branches\recon-training-20261019\Train.ps1 -Profile production -Threads 32
 # In a second terminal, after training creates runs/production:
-python scripts/campaign_dashboard.py data/branches/elite-range-training-20261019/runs/production --out data/branches/elite-range-training-20261019/production-dashboard.html --watch 20
+python scripts/campaign_dashboard.py data/branches/recon-training-20261019/runs/production --out data/branches/recon-training-20261019/production-dashboard.html --watch 20
 ```
+
+Reconnaissance support is assigned in equal thirds: neither side, one side,
+or both sides. That puts radar on at least one side in two thirds of generated
+fights (exact for batches divisible by three). Covered sides get a radar tower,
+a radar-equipped scout plane, or both; the one-sided case chooses its owner
+independently of the learner's physical starting side. This is a training mix,
+not a claim about measured BAR match statistics or the fraction of battle time
+with live radar contact. Both scout models here carry radar as well as vision.
+
+Jammers are drawn independently, with a one-third chance per side. The units
+are real, destructible source-backed assets: range and terrain still limit radar,
+jamming hides radar contacts without hiding visual ones, and AA can shoot down
+scouts. Scouts fly fixed area sweeps; combat aircraft keep their separate learned
+air brain. The dashboard records providers, support costs and the total resource
+imbalance. Near-equal main platoons can have unequal support; all costs count in
+scoring. A surviving scout or radar cannot prevent main-force elimination from
+deciding a fight. Fast scouts cannot shorten the main platoons' travel allowance.
+
+The earlier `elite-range-training-20261019` package keeps its original inputs.
+Use the new reconnaissance package to include these exercises.
 
 The dashboard shows automatic elite retests separately from the optional
 "diagnostic frontier". The pool keeps up to eight promising brains per track,
@@ -27,7 +47,7 @@ it does not run training or change the completed 200-generation campaign.
 
 ```powershell
 cargo build --release
-python scripts/prepare_diverse_campaign.py --sim target/release/visigoth-simulator.exe --out data/branches/elite-range-training-20261019
+python scripts/prepare_diverse_campaign.py --sim target/release/visigoth-simulator.exe --out data/branches/recon-training-20261019
 ```
 
 The destination must be new. Use another directory name for another experiment.
@@ -48,7 +68,7 @@ as its companion throughout comparisons.
 Preview the native seeded compositions and realized investment:
 
 ```powershell
-$taskPackage = 'data/branches/elite-range-training-20261019'
+$taskPackage = 'data/branches/recon-training-20261019'
 & "$taskPackage/bin/visigoth-simulator.exe" --catalog "$taskPackage/catalog/catalog.json" --preview-curriculum "$taskPackage/stages/production/ground-heavy_swarm.json" --seed 17
 ```
 

@@ -152,6 +152,16 @@ class ExtractionTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cd.locate(tempfile.mkdtemp())
 
+    def test_sensor_support_counts_assigned_sides_without_inventing_old_coverage(self):
+        cases=[]
+        for a,b in [(None,None),('radar',None),('radar','scout')]:
+            cases.append({'family':'duel','sensor_support':[
+                {'radar':a,'air_scout':None,'jammer':None},
+                {'radar':None,'air_scout':b,'jammer':'jammer'}]})
+        result=cd.resource_coverage({'matchup_records':cases},True)
+        self.assertEqual(result['sensor_support_coverage'],{'none':1,'one':1,'both':1,'recorded':3})
+        self.assertIsNone(cd.resource_coverage({'matchup_records':[{'family':'old'}]},True).get('sensor_support_coverage'))
+
     def test_resource_coverage_reads_layouts_and_preserves_opponent_identity(self):
         record = {"scenario": {"name": "heavy-swarm", "learner": [{"unit": "corsumo", "count": 1}],
                                "enemy": [{"unit": "armpw", "count": 40}]},

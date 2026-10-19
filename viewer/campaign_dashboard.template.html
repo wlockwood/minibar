@@ -461,6 +461,9 @@ function chartCoverage(t) {
     }
     for (const stage of covered) {
       body.append(h('h3', {text:stage.name || 'Evaluation'}));
+      const sensors = stage.sensor_support_coverage;
+      if (sensors) body.append(h('p',{class:'sub',text:`Assigned reconnaissance support · neither side: ${sensors.none} · one side: ${sensors.one} · both sides: ${sensors.both} (${((sensors.one+sensors.both)/sensors.recorded*100).toFixed(0)}% with radar support). Counts are recorded cases. Providers are destructible; actual detection depends on range, terrain, jamming and scout survival.`}));
+
       const families = [...new Set([...Object.keys(stage.coverage || {}), ...Object.keys(stage.family_fitness || {})])].sort();
       body.append(tableView(['Fight family', 'Recorded cases', 'Family fitness'], families.map(f =>
         [f.replaceAll('_', ' '), (stage.coverage || {})[f] ?? '–', f3((stage.family_fitness || {})[f])]), true));
@@ -470,17 +473,18 @@ function chartCoverage(t) {
         continue;
       }
       const army = roster => (roster || []).map(u => `${u.count} × ${u.name || u.unit}`).join(', ') || 'None';
-      const investment = value => value == null || !isFinite(value) ? '–' : Number(value).toLocaleString('en-US', {maximumFractionDigits:2});
+      const investment = value => value == null || !isFinite(value) ? '–' : (Number(value) || 0).toLocaleString('en-US', {maximumFractionDigits:2});
       const cards = records.map(r => {
         const s = r.scenario || {};
         const valueRows = [['Requested budget',r.requested_budget],['Combat investment',r.combat_value],
-          ['Objective assets',r.objective_value],['Starting investment',r.starting_value]];
+          ['Objective assets',r.objective_value],['Radar / scout / jammer support',r.sensor_support_value],['Starting investment',r.starting_value]];
         const values = h('table',{class:'data'},
           h('thead',{},h('tr',{},['Investment measure','Learner','Enemy'].map(text=>h('th',{text})))),
           h('tbody',{},valueRows.map(([label,v])=>h('tr',{},h('td',{text:label}),
             h('td',{text:investment(v?.[0])}),h('td',{text:investment(v?.[1])})))));
         const supply = r.resource_supply === null ? 'Unlimited firing resources' : r.resource_supply
           ? `${num(r.resource_supply.metal)} metal, ${num(r.resource_supply.energy)} energy per side` : 'Unavailable';
+        const supportText = side => side ? [['Radar',side.radar],['air scout',side.air_scout],['jammer',side.jammer]].filter(([,name])=>name).map(([role,name])=>`${role}: ${name}`).join(' · ') || 'None assigned' : 'Not recorded';
         return h('article',{class:'matchup-card'},h('h4',{text:s.name || 'Unnamed fight'}),
           h('div',{class:'matchup-armies'},h('p',{},h('b',{text:'Learner army: '}),army(s.learner)),
             h('p',{},h('b',{text:'Enemy army: '}),army(s.enemy))),values,
@@ -488,6 +492,10 @@ function chartCoverage(t) {
             h('span',{text:`Combat gap: ${r.absolute_gap == null ? '–' : (r.absolute_gap*100).toFixed(2)+'%'} · ${r.balance_class || 'unclassified'}`}),
             h('span',{text:`Signed combat ratio: ${r.signed_ratio == null ? '–' : (r.signed_ratio*100).toFixed(2)+'%'}`}),
             h('span',{text:`Opponent: ${r.opponent_identity || 'Unavailable'}`}),
+            h('span',{text:`Learner support: ${supportText(r.sensor_support?.[0])}`}),
+            h('span',{text:`Enemy support: ${supportText(r.sensor_support?.[1])}`}),
+            r.sensor_support && r.starting_value ? h('span',{text:`Total investment gap (includes support and objectives): ${(Math.abs(r.starting_value[0]-r.starting_value[1])/Math.max((r.starting_value[0]+r.starting_value[1])/2,1e-9)*100).toFixed(2)}% · all asset costs count in scoring`}) : null,
+
             h('span',{text:r.starting_distance
               ? `Starting front gap: ${investment(r.starting_distance.sampled)} world units · interval ${r.starting_distance.bounds.map(investment).join('–')} · ${r.starting_distance.mode}`
               : `Starting front gap: ${investment(s.separation)} world units · derivation unavailable`}),

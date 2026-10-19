@@ -156,6 +156,16 @@ def resource_coverage(details, with_rows):
         coverage = dict(details["coverage_counts"])
     result = {"coverage": coverage,
               "family_fitness": family_fitness(details)}
+    sensor_counts = {"none":0,"one":0,"both":0,"recorded":0}
+    for record in records:
+        support = record.get('sensor_support')
+        if not isinstance(support,list) or len(support)!=2:
+            continue
+        count = sum(bool(side.get('radar') or side.get('air_scout')) for side in support)
+        sensor_counts[("none","one","both")[count]] += 1
+        sensor_counts['recorded'] += 1
+    if sensor_counts['recorded']:
+        result['sensor_support_coverage'] = sensor_counts
     if details.get("matchup_records_sampled"):
         result["matchup_records_sampled"] = True
     if with_rows:

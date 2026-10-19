@@ -1112,23 +1112,27 @@ impl Simulator {
                     .as_ref()
                     .is_some_and(|recorder| recorder.should_sample(tick));
             let mut aim_attempts = Vec::new();
-            update_weapons::<TRACE>(
-                units,
-                commands,
-                self.sensing_enabled.then_some(&sensors.targeting),
-                time,
-                tick,
-                impacts,
-                guided_projectiles,
-                &mut battle,
-                seed,
-                &self.scenario.terrain,
-                &self.definitions,
-                spatial,
-                spatial_candidates,
-                trace_tick,
-                &mut aim_attempts,
-            );
+            // Drain already-fired rounds after main-force elimination without
+            // generating an endless stream at surviving auxiliary targets.
+            if self.auxiliary_units.is_empty() || (alive[0] && alive[1]) {
+                update_weapons::<TRACE>(
+                    units,
+                    commands,
+                    self.sensing_enabled.then_some(&sensors.targeting),
+                    time,
+                    tick,
+                    impacts,
+                    guided_projectiles,
+                    &mut battle,
+                    seed,
+                    &self.scenario.terrain,
+                    &self.definitions,
+                    spatial,
+                    spatial_candidates,
+                    trace_tick,
+                    &mut aim_attempts,
+                );
+            }
             advance_guided_projectiles_observed(
                 units,
                 tick,
@@ -7416,6 +7420,53 @@ mod auxiliary_tests {
     use super::*;
     use crate::learn::tactical::tests::skirmisher;
     use crate::policy::BuiltinPolicy;
+    #[test]
+    fn auxiliary_survivors_cannot_extend_pending_projectiles_with_new_shots() {
+        let mut attacker = skirmisher("attacker");
+        attacker.weapons[0].damage = 1000.0;
+        attacker.weapons[0].range = 1000.0;
+        attacker.weapons[0].reload = 0.1;
+        attacker.weapons[0].hitscan = false;
+        attacker.weapons[0].projectile_speed = 100.0;
+        let mut victim = skirmisher("victim");
+        victim.weapons.clear();
+        victim.movement.max_speed = 0.0;
+        let mut support = victim.clone();
+        support.name = "support".into();
+        support.health = 1000000.0;
+        let scenario = Scenario {
+            terrain: Terrain::flat(2000.0, 1000.0, 32.0),
+            max_time: 8.0,
+            trace_resources: vec![],
+            units: vec![
+                Spawn {
+                    definition: attacker,
+                    side: 0,
+                    position: Vec2::new(100.0, 500.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    definition: victim,
+                    side: 1,
+                    position: Vec2::new(200.0, 500.0),
+                    heading: PI,
+                },
+                Spawn {
+                    definition: support,
+                    side: 1,
+                    position: Vec2::new(350.0, 550.0),
+                    heading: PI,
+                },
+            ],
+        };
+        let result = Simulator::new(scenario)
+            .with_auxiliary_units([3])
+            .run([&BuiltinPolicy::Hold, &BuiltinPolicy::Hold], 1);
+        assert_eq!(result.winner, Some(0));
+        assert!(result.duration < 4.0, "{result:?}");
+        assert!(result.sides[0].projectiles_fired < 20);
+    }
+
     #[test]
     fn auxiliary_units_have_real_costs_but_cannot_hold_elimination_hostage() {
         let mut attacker = skirmisher("attacker");

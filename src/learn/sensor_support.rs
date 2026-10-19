@@ -151,3 +151,35 @@ impl SensorSupportConfig {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::learn::tactical::tests::skirmisher;
+    #[test]
+    fn support_pools_reject_invalid_roles_and_probabilities() {
+        let mut catalog = UnitCatalog::default();
+        let mut radar = skirmisher("radar");
+        radar.weapons.clear();
+        radar.movement.max_speed = 0.0;
+        radar.strategic.radar_radius = Some(2000.0);
+        catalog.units.insert("radar".into(), radar.clone());
+        let mut config = SensorSupportConfig {
+            radars: vec!["radar".into()],
+            jammer_share: 0.0,
+            ..Default::default()
+        };
+        config.validate(&catalog).unwrap();
+        config.jammer_share = f32::NAN;
+        assert!(config.validate(&catalog).is_err());
+        config.jammer_share = 0.0;
+        config.air_scouts = vec!["radar".into()];
+        assert!(config.validate(&catalog).is_err());
+        config.air_scouts.clear();
+        config.jammers = vec!["radar".into()];
+        assert!(config.validate(&catalog).is_err());
+        config.jammers.clear();
+        config.radars = vec!["missing".into()];
+        assert!(config.validate(&catalog).is_err());
+    }
+}
