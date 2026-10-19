@@ -6,6 +6,28 @@ pub trait Policy: Sync {
     fn command(&self, world: &WorldView<'_>, unit: &UnitState) -> Command;
 }
 
+/// Resolves a policy name used by the CLI and by training configs: a built-in
+/// tactic (`charge`, `kite`, `orbit`, `hold`) or `brain:PATH` for a trained
+/// council saved by `--train`.
+pub fn parse_policy(spec: &str) -> Result<Box<dyn Policy>, String> {
+    if let Some(path) = spec.strip_prefix("brain:") {
+        let brain = crate::learn::Brain::load(std::path::Path::new(path))
+            .map_err(|error| error.to_string())?;
+        let policy = crate::learn::TacticalPolicy::new(brain).map_err(|error| error.to_string())?;
+        return Ok(Box::new(policy));
+    }
+    if let Some(baseline) = crate::learn::baselines::Baseline::parse(spec) {
+        return Ok(Box::new(baseline));
+    }
+    BuiltinPolicy::parse(spec)
+        .map(|builtin| Box::new(builtin) as Box<dyn Policy>)
+        .ok_or_else(|| {
+            format!(
+                "unknown policy {spec:?}; expected charge, kite, orbit, hold, strike, guard or brain:PATH"
+            )
+        })
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinPolicy {
     Charge,

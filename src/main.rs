@@ -16,9 +16,16 @@ use visigoth_simulator::{
     Scenario, ScenarioCompileOptions, Simulator, Spawn, Terrain, UnitDef, UnitDefId, Vec2, World,
     WorldCatalog, WorldConfig, catalog, compare_calibration, compile_declarative_scenario,
     economy::Resources,
+    learn::{
+        Brain, TacticalPolicy, TrainConfig,
+        explain::{record, report},
+        train::{evaluate_at, evaluate_validation, opponents_from_config, train},
+        watch,
+    },
     live::{LiveDriver, ReplayLog, replay_and_verify},
     live_server::LiveServerConfig,
     map::{CompiledMap, HelloMapOptions, MapInputFormat, MapLoadOptions, MapSource},
+    policy::parse_policy,
     start_scenario_live_server,
     trace::{AggregateTrace, ResourceKind, ResourceMarker, TraceConfig},
     viewer::{IconCatalog, ViewerData, ViewerDocument},
@@ -169,7 +176,17 @@ impl Drop for AllocationMeasurement {
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] [--catalog-out CATALOG.json] [--unit armpw] [--map MAP_FILE] [--movement-class NAME] [--map-cell 16] [--runs 10000] [--paired] [--left kite] [--right charge] [--distance 240] [--seed 1] [--trace RUN.json] [--viewer RUN.html] [--aggregate-viewer RUNS.html] [--aggregate-runs 100] [--heat-cols 64] [--heat-rows 64] [--trace-every 3] [--human-side 0]\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] --run-scenario SCENARIO.json --map MAP_FILE [--movement-class NAME] [--map-cell 16] [--strategic-only] [--los-range 500] [--radar-range 1200] [--radar-resolution 32] [--serve 127.0.0.1:0] [--control-side 0] [--live-max-ticks N] [--live-log SESSION.json]\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] --run-scenario SCENARIO.json --map MAP_FILE [same scenario options] --replay-live SESSION.json\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] [--unit armpw] --benchmark-suite [--benchmark-runs 10000] [--seed 1]\n  visigoth-simulator --compile-map MAP_SOURCE_OR_HELLO.json --map-out MAP.vsgmap [--acquisition CAPTURE.acquisition.json] [--content-hash HASH] [--extractor-radius 500] [--extraction-scale 1] [--legacy-movement-class NAME]\n  MAP_FILE accepts a precompiled .vsgmap cache, canonical .map_source.json, or bridge hello JSON.\n  visigoth-simulator --compare-calibration FIXTURE.json --observations MEASURED.json [--report REPORT.json]"
+        "usage:\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] [--catalog-out CATALOG.json] [--unit armpw] [--map MAP_FILE] [--movement-class NAME] [--map-cell 16] [--runs 10000] [--paired] [--left kite] [--right charge] [--distance 240] [--seed 1] [--trace RUN.json] [--viewer RUN.html] [--aggregate-viewer RUNS.html] [--aggregate-runs 100] [--heat-cols 64] [--heat-rows 64] [--trace-every 3] [--human-side 0]\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] --run-scenario SCENARIO.json --map MAP_FILE [--movement-class NAME] [--map-cell 16] [--strategic-only] [--los-range 500] [--radar-range 1200] [--radar-resolution 32] [--serve 127.0.0.1:0] [--control-side 0] [--live-max-ticks N] [--live-log SESSION.json]\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] --run-scenario SCENARIO.json --map MAP_FILE [same scenario options] --replay-live SESSION.json\n  visigoth-simulator --catalog HELLO.json [--assets BAR_SOURCE_ROOT] [--unit armpw] --benchmark-suite [--benchmark-runs 10000] [--seed 1]\n  visigoth-simulator --compile-map MAP_SOURCE_OR_HELLO.json --map-out MAP.vsgmap [--acquisition CAPTURE.acquisition.json] [--content-hash HASH] [--extractor-radius 500] [--extraction-scale 1] [--legacy-movement-class NAME]\n  visigoth-simulator --catalog HELLO.json --train CONFIG.json|default [--unit armpw] [--train-out DIR] [--generations N] [--train-seed N]
+  visigoth-simulator --catalog HELLO.json --explain BRAIN.json [--train-config CONFIG.json] [--unit armpw] [--explain-out REPORT.md]
+  visigoth-simulator --catalog HELLO.json --preview-curriculum CONFIG.json [--seed N]   (seeded compositions and actual resource values)
+  visigoth-simulator --catalog HELLO.json --evaluate BRAIN.json --train-config CONFIG.json [--eval-seeds N] [--eval-seed-base N]   (prints JSON)
+  visigoth-simulator --catalog HELLO.json --watch BRAIN.json --train-config CONFIG.json [--watch-out watch.html] [--watch-seed 1]   (standalone viewer file)
+  visigoth-simulator --catalog HELLO.json --watch-meta|--watch-battle BRAIN.json --train-config CONFIG.json [--watch-scenario I --watch-opponent J --watch-seed S --watch-side 0|1]   (JSON for scripts/watch.py)
+  --left/--right accept charge, kite, orbit, hold, or brain:BRAIN.json.
+  MAP_FILE accepts a precompiled .vsgmap cache, canonical .map_source.json, or bridge hello JSON.\n  visigoth-simulator --compare-calibration FIXTURE.json --observations MEASURED.json [--report REPORT.json]"
+    );
+    eprintln!(
+        "  visigoth-simulator --seed-brain tactical_v4|strategic_v1 --brain-out BRAIN.json [--hidden 8]\n  visigoth-simulator --catalog CATALOG.json --train-strategy CONFIG.json --train-out DIR [--generations 3]\n  visigoth-simulator --catalog CATALOG.json --evaluate-strategy BRAIN.json --train-config CONFIG.json [--eval-seeds N]\n  visigoth-simulator --train-campaign examples/campaign/replay-informed.json [--train-out DIR] [--generations N] [--threads 4] [--resume] [--max-seconds N] [--external]\n  visigoth-simulator --campaign-worker JOB.json --job-out RESULT.json [--campaign-config RELOCATED_CAMPAIGN.json]"
     );
     process::exit(2)
 }
@@ -200,6 +217,198 @@ fn main() {
         return;
     }
 
+    let upgrade = value(&args, "--upgrade-brain", "");
+    if !upgrade.is_empty() {
+        use visigoth_simulator::learn::{brain::Brain, content_hash::sha256, strategic};
+        let target = value(&args, "--brain-out", "");
+        let kind = value(&args, "--brain-kind", "strategic_v2");
+        if target.is_empty() || kind != strategic::KIND_V2 {
+            fail("upgrade requires --brain-out and strategic_v2");
+        }
+        let path = Path::new(&target);
+        let receipt = path.with_extension("upgrade.json");
+        if path.exists() || receipt.exists() {
+            fail("upgrade output already exists");
+        }
+        let bytes = fs::read(&upgrade).unwrap_or_else(|e| fail(e));
+        let source = Brain::from_json(std::str::from_utf8(&bytes).unwrap_or_else(|e| fail(e)))
+            .unwrap_or_else(|e| fail(e));
+        let brain = strategic::upgrade_v1_to_v2(&source).unwrap_or_else(|e| fail(e));
+        let output = brain.to_json();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap_or_else(|e| fail(e));
+        }
+        fs::write(path, &output).unwrap_or_else(|e| fail(e));
+        let meta = serde_json::json!({"format":"minibar.brain_upgrade","version":1,"source_kind":source.kind,"output_kind":brain.kind,"source_sha256":sha256(&bytes),"output_sha256":sha256(output.as_bytes())});
+        fs::write(receipt, serde_json::to_vec_pretty(&meta).unwrap()).unwrap_or_else(|e| fail(e));
+        println!("{meta}");
+        return;
+    }
+    let seed_kind = value(&args, "--seed-brain", "");
+    if !seed_kind.is_empty() {
+        let hidden: usize = value(&args, "--hidden", "8")
+            .parse()
+            .unwrap_or_else(|_| usage());
+        let brain = match seed_kind.as_str() {
+            "strategic_v1" | "strategic_v2" => {
+                visigoth_simulator::learn::strategic::template_for_kind(&seed_kind, hidden)
+            }
+            _ => visigoth_simulator::learn::tactical::template_for_kind(&seed_kind, hidden),
+        }
+        .unwrap_or_else(|e| fail(e));
+        let target = value(&args, "--brain-out", "");
+        if target.is_empty() {
+            fail("--seed-brain requires --brain-out PATH");
+        }
+        if let Some(parent) = Path::new(&target).parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).unwrap_or_else(|e| fail(e));
+            }
+        }
+        brain.save(Path::new(&target)).unwrap_or_else(|e| fail(e));
+        println!(
+            "{}",
+            serde_json::json!({"kind":brain.kind,"parameters":brain.param_count(),"path":target,"origin":"authored from replay research"})
+        );
+        return;
+    }
+
+    let evaluate_campaign = value(&args, "--evaluate-campaign", "");
+    if !evaluate_campaign.is_empty() {
+        use visigoth_simulator::learn::{
+            brain::Brain, campaign_eval::PreparedPlan, campaign_io::CampaignConfig,
+        };
+        let path = value(&args, "--campaign-config", "");
+        let config = CampaignConfig::load(Path::new(&path)).unwrap_or_else(|e| fail(e));
+        let track_name = value(&args, "--campaign-track", "");
+        let track = config
+            .tracks
+            .iter()
+            .find(|t| t.name == track_name)
+            .unwrap_or_else(|| fail("unknown campaign track"));
+        let name = value(&args, "--campaign-plan", "validation");
+        let mut plan = match name.as_str() {
+            "validation" => track.validation.clone(),
+            "holdout" => track
+                .holdout
+                .clone()
+                .unwrap_or_else(|| fail("missing holdout")),
+            _ => fail("comparison plan must be validation or holdout"),
+        };
+        if args.iter().any(|a| a == "--eval-layouts") {
+            plan.layouts = value(&args, "--eval-layouts", "")
+                .parse()
+                .unwrap_or_else(|_| fail("invalid layouts"));
+        }
+        if args.iter().any(|a| a == "--eval-seeds") {
+            plan.seeds = value(&args, "--eval-seeds", "")
+                .parse()
+                .unwrap_or_else(|_| fail("invalid seeds"));
+        }
+        let mut prepared = PreparedPlan::new(&plan).unwrap_or_else(|e| fail(e));
+        let against = value(&args, "--against-brain", "");
+        if !against.is_empty() {
+            prepared
+                .set_opponent(Brain::load(Path::new(&against)).unwrap_or_else(|e| fail(e)))
+                .unwrap_or_else(|e| fail(e));
+        }
+        let brain = Brain::load(Path::new(&evaluate_campaign)).unwrap_or_else(|e| fail(e));
+        let base = value(&args, "--eval-seed-base", "8000000000000")
+            .parse()
+            .unwrap_or_else(|_| fail("invalid seed base"));
+        let report = prepared.evaluate(&brain, base).unwrap_or_else(|e| fail(e));
+        println!("{}", serde_json::to_string(&report).unwrap());
+        return;
+    }
+    let campaign_job = value(&args, "--campaign-worker", "");
+    if !campaign_job.is_empty() {
+        let output = value(&args, "--job-out", "");
+        if output.is_empty() {
+            fail("campaign worker requires --job-out RESULT.json");
+        }
+        let config = value(&args, "--campaign-config", "");
+        let result = visigoth_simulator::learn::campaign_work::worker(
+            Path::new(&campaign_job),
+            Path::new(&output),
+            if config.is_empty() {
+                None
+            } else {
+                Some(Path::new(&config))
+            },
+        )
+        .unwrap_or_else(|e| fail(format!("campaign worker: {e}")));
+        println!(
+            "{}",
+            serde_json::json!({"job_id":result.job_id,"fitness":result.report.fitness,"output":output})
+        );
+        return;
+    }
+    let campaign_config = value(&args, "--train-campaign", "");
+    if !campaign_config.is_empty() {
+        // A missing budget value must not silently select an unlimited run.
+        for (index, arg) in args.iter().enumerate() {
+            if [
+                "--train-campaign",
+                "--train-out",
+                "--generations",
+                "--max-seconds",
+                "--threads",
+            ]
+            .contains(&arg.as_str())
+                && args
+                    .get(index + 1)
+                    .is_none_or(|v| v.is_empty() || v.starts_with("--"))
+            {
+                fail(format!("{arg} requires a value"));
+            }
+        }
+        let generations = value(&args, "--generations", "");
+        let seconds = value(&args, "--max-seconds", "");
+        let threads: usize = value(&args, "--threads", "4")
+            .parse()
+            .unwrap_or_else(|_| fail("invalid --threads"));
+        if threads == 0 {
+            fail("--threads must be positive");
+        }
+        let options = visigoth_simulator::learn::campaign::CampaignOptions {
+            resume: args.iter().any(|a| a == "--resume"),
+            external: args.iter().any(|a| a == "--external"),
+            generations: if generations.is_empty() {
+                None
+            } else {
+                Some(
+                    generations
+                        .parse()
+                        .unwrap_or_else(|_| fail("invalid --generations")),
+                )
+            },
+            max_seconds: if seconds.is_empty() {
+                None
+            } else {
+                Some(
+                    seconds
+                        .parse()
+                        .unwrap_or_else(|_| fail("invalid --max-seconds")),
+                )
+            },
+        };
+        let out = value(&args, "--train-out", "data/brains/campaign");
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap_or_else(|e| fail(e));
+        let report = pool
+            .install(|| {
+                visigoth_simulator::learn::campaign::run(
+                    Path::new(&campaign_config),
+                    Path::new(&out),
+                    options,
+                )
+            })
+            .unwrap_or_else(|e| fail(format!("campaign config/run: {e}")));
+        println!("{}", serde_json::to_string_pretty(&report).unwrap());
+        return;
+    }
     let catalog_path = value(&args, "--catalog", "");
     if catalog_path.is_empty() {
         usage();
@@ -214,8 +423,16 @@ fn main() {
     let seed: u64 = value(&args, "--seed", "1")
         .parse()
         .unwrap_or_else(|_| usage());
-    let left = BuiltinPolicy::parse(&value(&args, "--left", "kite")).unwrap_or_else(|| usage());
-    let right = BuiltinPolicy::parse(&value(&args, "--right", "charge")).unwrap_or_else(|| usage());
+    let left_name = value(&args, "--left", "kite");
+    let right_name = value(&args, "--right", "charge");
+    let resolve_policy = |name: &str| {
+        parse_policy(name).unwrap_or_else(|error| {
+            eprintln!("error: {error}");
+            process::exit(1);
+        })
+    };
+    let left = resolve_policy(&left_name);
+    let right = resolve_policy(&right_name);
     let paired = args.iter().any(|arg| arg == "--paired");
     let trace_path = value(&args, "--trace", "");
     let viewer_path = value(&args, "--viewer", "");
@@ -270,6 +487,95 @@ fn main() {
         {
             return;
         }
+    }
+
+    let strategic_train = value(&args, "--train-strategy", "");
+    let preview_config = value(&args, "--preview-curriculum", "");
+    if !preview_config.is_empty() {
+        let config = TrainConfig::load(Path::new(&preview_config)).unwrap_or_else(|e| fail(e));
+        config.validate().unwrap_or_else(|e| fail(e));
+        let resolved = config
+            .resolved(&loaded_catalog, seed)
+            .unwrap_or_else(|e| fail(e));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "format":"minibar.curriculum_preview", "version":1, "seed":seed,
+                "brain_kind":resolved.brain_kind, "companion_brain":resolved.companion_brain,
+                "resource_formula":"metal + energy / 60",
+                "scenarios":resolved.scenarios, "matchup_records":resolved.matchup_records
+            }))
+            .unwrap()
+        );
+        return;
+    }
+    let strategic_evaluate = value(&args, "--evaluate-strategy", "");
+    if !strategic_train.is_empty() || !strategic_evaluate.is_empty() {
+        use visigoth_simulator::learn::strategic;
+        let path = if strategic_train.is_empty() {
+            value(&args, "--train-config", "")
+        } else {
+            strategic_train.clone()
+        };
+        if path.is_empty() {
+            fail("strategic evaluation needs --train-config CONFIG.json");
+        }
+        let mut config = strategic::TrainConfig::load(Path::new(&path)).unwrap_or_else(|e| fail(e));
+        if args.iter().any(|s| s == "--generations") {
+            config.generations = value(&args, "--generations", "3")
+                .parse()
+                .unwrap_or_else(|_| usage());
+        }
+        let result = if !strategic_train.is_empty() {
+            let out = value(
+                &args,
+                "--train-out",
+                "data/brains/from_replays/strategic/trial",
+            );
+            strategic::train(&config, &loaded_catalog, Path::new(&out)).unwrap_or_else(|e| fail(e))
+        } else {
+            let brain = Brain::load(Path::new(&strategic_evaluate)).unwrap_or_else(|e| fail(e));
+            let prepared =
+                strategic::Prepared::new(&config, &loaded_catalog).unwrap_or_else(|e| fail(e));
+            let seeds = value(&args, "--eval-seeds", &config.validation_seeds.to_string())
+                .parse()
+                .unwrap_or_else(|_| usage());
+            let seed_base = value(&args, "--eval-seed-base", "1000000000")
+                .parse()
+                .unwrap_or_else(|_| usage());
+            serde_json::to_value(
+                prepared
+                    .evaluate(&brain, seeds, seed_base)
+                    .unwrap_or_else(|e| fail(e)),
+            )
+            .unwrap()
+        };
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        return;
+    }
+
+    let train_target = value(&args, "--train", "");
+    if !train_target.is_empty() {
+        run_training(&args, &train_target, &unit_name, &loaded_catalog);
+        return;
+    }
+    let explain_target = value(&args, "--explain", "");
+    if !explain_target.is_empty() {
+        run_explain(&args, &explain_target, &unit_name, &loaded_catalog);
+        return;
+    }
+
+    for mode in ["--watch", "--watch-meta", "--watch-battle"] {
+        let target = value(&args, mode, "");
+        if !target.is_empty() {
+            run_watch(&args, mode, &target, &loaded_catalog);
+            return;
+        }
+    }
+    let evaluate_target = value(&args, "--evaluate", "");
+    if !evaluate_target.is_empty() {
+        run_evaluate(&args, &evaluate_target, &loaded_catalog);
+        return;
     }
 
     let declarative_scenario = value(&args, "--run-scenario", "");
@@ -329,7 +635,7 @@ fn main() {
             .unwrap_or_else(|_| usage());
         let traces = simulator
             .run_traced_parallel(
-                [&left, &right],
+                [&*left, &*right],
                 aggregate_runs,
                 seed,
                 TraceConfig {
@@ -346,7 +652,7 @@ fn main() {
                 process::exit(1);
             });
         ViewerDocument {
-            title: format!("{unit_name}: aggregate {left:?} vs {right:?}"),
+            title: format!("{unit_name}: aggregate {left_name} vs {right_name}"),
             data: ViewerData::Aggregate(aggregate),
             icons: IconCatalog::default(),
             human_side: None,
@@ -359,7 +665,7 @@ fn main() {
     }
     if !trace_path.is_empty() || !viewer_path.is_empty() {
         let (_, trace) = simulator.run_traced(
-            [&left, &right],
+            [&*left, &*right],
             seed,
             TraceConfig {
                 sample_every_ticks: trace_every.max(1),
@@ -385,7 +691,7 @@ fn main() {
                 IconCatalog::probe_bar_root(Path::new(&asset_root), keys)
             };
             ViewerDocument {
-                title: format!("{unit_name}: {left:?} vs {right:?}"),
+                title: format!("{unit_name}: {left_name} vs {right_name}"),
                 data: ViewerData::Run(trace),
                 icons,
                 human_side,
@@ -399,17 +705,17 @@ fn main() {
     }
 
     let summary = if paired {
-        simulator.run_paired_parallel([&left, &right], runs, seed)
+        simulator.run_paired_parallel([&*left, &*right], runs, seed)
     } else {
-        simulator.run_parallel([&left, &right], runs, seed)
+        simulator.run_parallel([&*left, &*right], runs, seed)
     };
     let realtime_multiple = summary.mean_duration as f64 * summary.simulations_per_second;
 
     let output = serde_json::json!({
         "experiment": {
             "unit": unit_name,
-            "left_policy": format!("{left:?}").to_ascii_lowercase(),
-            "right_policy": format!("{right:?}").to_ascii_lowercase(),
+            "left_policy": left_name.to_ascii_lowercase(),
+            "right_policy": right_name.to_ascii_lowercase(),
             "seed": seed,
             "seed_count": runs,
             "paired": paired,
@@ -426,6 +732,208 @@ fn main() {
         "throughput: {:.0} simulations/s, approximately {:.0}x aggregate realtime",
         summary.simulations_per_second, realtime_multiple
     );
+}
+
+fn fail(error: impl std::fmt::Display) -> ! {
+    eprintln!("error: {error}");
+    process::exit(1)
+}
+
+fn run_training(args: &[String], target: &str, unit_name: &str, catalog: &catalog::UnitCatalog) {
+    let mut config = if target == "default" {
+        TrainConfig::default_for_unit(unit_name)
+    } else {
+        TrainConfig::load(Path::new(target)).unwrap_or_else(|e| fail(e))
+    };
+    let generations = value(args, "--generations", "");
+    if !generations.is_empty() {
+        config.generations = generations.parse().unwrap_or_else(|_| usage());
+    }
+    let train_seed = value(args, "--train-seed", "");
+    if !train_seed.is_empty() {
+        config.es.seed = train_seed.parse().unwrap_or_else(|_| usage());
+    }
+    let out = value(args, "--train-out", "");
+    let out_dir = if out.is_empty() {
+        format!("data/brains/{}", config.name)
+    } else {
+        out
+    };
+    eprintln!(
+        "training {:?}: {} generations, population {}, {} scenarios x {} opponents -> {out_dir}",
+        config.name,
+        config.generations,
+        config.es.population,
+        config.scenarios.len(),
+        config.opponents.len()
+    );
+    let total = config.generations;
+    let summary = train(&config, catalog, Some(Path::new(&out_dir)), &mut |p| {
+        let validation = p.validation.map_or(String::new(), |v| {
+            format!(
+                " | validation win {:>3.0}% fit {:+.2}{}",
+                v.win_rate() * 100.0,
+                v.mean_fitness(),
+                if p.new_best { " *best*" } else { "" }
+            )
+        });
+        let speed = if p.wall_seconds > 0.0 {
+            format!(
+                " | {:.1}k battles, {:.0} simulated min in {:.1}s = {:.0}x realtime",
+                p.battles as f64 / 1000.0,
+                p.sim_seconds / 60.0,
+                p.wall_seconds,
+                p.sim_seconds / p.wall_seconds
+            )
+        } else {
+            String::new()
+        };
+        eprintln!(
+            "gen {:>4}/{total} population fitness {:+.2} (best {:+.2}) | mean win {:>3.0}%{}{}{speed}",
+            p.generation,
+            p.es.fitness_mean,
+            p.es.fitness_best,
+            p.center.win_rate() * 100.0,
+            p.center
+                .underdog_win_rate()
+                .map_or(String::new(), |r| format!(" underdog {:>3.0}%", r * 100.0)),
+            validation
+        );
+    })
+    .unwrap_or_else(|e| fail(e));
+
+    eprintln!(
+        "
+validation, win rate per opponent (initial -> best, generation {}):",
+        summary.best_generation
+    );
+    for (before, after) in summary.initial.rows.iter().zip(&summary.best.rows) {
+        eprintln!(
+            "  {:<16} vs {:<10} {:>3.0}% -> {:>3.0}%",
+            after.scenario,
+            after.opponent,
+            before.tally.win_rate() * 100.0,
+            after.tally.win_rate() * 100.0
+        );
+    }
+    eprintln!(
+        "
+saved {out_dir}/brain.best.json. Inspect it with:
+  --explain {out_dir}/brain.best.json --train-config {out_dir}/train_config.json --unit {unit_name}"
+    );
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&summary).expect("summary serializes")
+    );
+}
+
+fn run_watch(args: &[String], mode: &str, brain_path: &str, catalog: &catalog::UnitCatalog) {
+    let brain = Brain::load(Path::new(brain_path)).unwrap_or_else(|e| fail(e));
+    let policy = TacticalPolicy::new(brain.clone()).unwrap_or_else(|e| fail(e));
+    let config_path = value(args, "--train-config", "");
+    if config_path.is_empty() {
+        fail("watching needs --train-config CONFIG.json (it names the scenarios and opponents)");
+    }
+    let config = TrainConfig::load(Path::new(&config_path)).unwrap_or_else(|e| fail(e));
+    config.validate().unwrap_or_else(|e| fail(e));
+    let config = config.validation_view(catalog).unwrap_or_else(|e| fail(e));
+    let opponents = opponents_from_config(&config).unwrap_or_else(|e| fail(e));
+    let number = |flag: &str, default: &str| -> u64 {
+        value(args, flag, default)
+            .parse()
+            .unwrap_or_else(|_| usage())
+    };
+    let title = value(args, "--watch-title", &format!("{} council", config.name));
+    let meta = watch::meta(&brain, &config, &title);
+    let battle = |scenario: usize, opponent: usize, seed: u64, side: usize| {
+        watch::battle(
+            &config, catalog, &policy, &opponents, scenario, opponent, seed, side,
+        )
+        .unwrap_or_else(|e| fail(e))
+    };
+    match mode {
+        "--watch-meta" => println!("{}", serde_json::to_string(&meta).expect("meta serializes")),
+        "--watch-battle" => {
+            let b = battle(
+                number("--watch-scenario", "0") as usize,
+                number("--watch-opponent", "0") as usize,
+                number("--watch-seed", "1"),
+                number("--watch-side", "0") as usize,
+            );
+            println!("{}", serde_json::to_string(&b).expect("battle serializes"));
+        }
+        _ => {
+            let seed = number("--watch-seed", "1");
+            let mut battles = Vec::new();
+            for scenario in 0..config.scenarios.len() {
+                for opponent in 0..opponents.len() {
+                    battles.push(battle(scenario, opponent, seed, 0));
+                }
+            }
+            let out = value(args, "--watch-out", "watch.html");
+            fs::write(&out, watch::standalone_html(&meta, &battles))
+                .unwrap_or_else(|e| fail(format!("{out}: {e}")));
+            eprintln!(
+                "wrote {out} ({} battles). Open it in a browser; for live battles that follow an evolving champion, run scripts/watch.py.",
+                battles.len()
+            );
+        }
+    }
+}
+
+fn run_evaluate(args: &[String], brain_path: &str, catalog: &catalog::UnitCatalog) {
+    let brain = Brain::load(Path::new(brain_path)).unwrap_or_else(|e| fail(e));
+    let config_path = value(args, "--train-config", "");
+    if config_path.is_empty() {
+        fail("--evaluate needs --train-config CONFIG.json");
+    }
+    let config = TrainConfig::load(Path::new(&config_path)).unwrap_or_else(|e| fail(e));
+    config.validate().unwrap_or_else(|e| fail(e));
+    let policy = visigoth_simulator::learn::train::policy_for_brain(&config, brain)
+        .unwrap_or_else(|e| fail(e));
+    let opponents = opponents_from_config(&config).unwrap_or_else(|e| fail(e));
+    let seeds: usize = value(args, "--eval-seeds", &config.validation_seeds.to_string())
+        .parse()
+        .unwrap_or_else(|_| usage());
+    let seed_base: u64 = value(args, "--eval-seed-base", "0")
+        .parse()
+        .unwrap_or_else(|_| usage());
+    let evaluation = evaluate_at(
+        &config,
+        catalog,
+        policy.as_ref(),
+        &opponents,
+        seeds,
+        seed_base,
+    )
+    .unwrap_or_else(|e| fail(e));
+    println!(
+        "{}",
+        serde_json::to_string(&evaluation).expect("evaluation serializes")
+    );
+}
+
+fn run_explain(args: &[String], brain_path: &str, unit_name: &str, catalog: &catalog::UnitCatalog) {
+    let brain = Brain::load(Path::new(brain_path)).unwrap_or_else(|e| fail(e));
+    let policy = TacticalPolicy::new(brain.clone()).unwrap_or_else(|e| fail(e));
+    let config_path = value(args, "--train-config", "");
+    let config = if config_path.is_empty() {
+        TrainConfig::default_for_unit(unit_name)
+    } else {
+        TrainConfig::load(Path::new(&config_path)).unwrap_or_else(|e| fail(e))
+    };
+    let opponents = opponents_from_config(&config).unwrap_or_else(|e| fail(e));
+    let evaluation =
+        evaluate_validation(&config, catalog, &policy, &opponents).unwrap_or_else(|e| fail(e));
+    let recording = record(&config, catalog, &policy, &opponents, 2).unwrap_or_else(|e| fail(e));
+    let text = report(&brain, &recording, Some(&evaluation));
+    let out = value(args, "--explain-out", "");
+    if out.is_empty() {
+        println!("{text}");
+    } else {
+        fs::write(&out, &text).unwrap_or_else(|e| fail(format!("{out}: {e}")));
+        eprintln!("wrote {out}");
+    }
 }
 
 fn run_declarative_scenario(
@@ -480,7 +988,7 @@ fn run_declarative_scenario(
     options.radar_range = value(args, "--radar-range", "1200")
         .parse()
         .unwrap_or_else(|_| usage());
-    options.radar_position_resolution = value(args, "--radar-resolution", "32")
+    options.radar_position_resolution = value(args, "--radar-resolution", "96")
         .parse()
         .unwrap_or_else(|_| usage());
 

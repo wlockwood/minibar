@@ -927,6 +927,7 @@ mod tests {
         .unwrap();
         let map = Arc::new(CompiledMap::compile(source).unwrap());
         let unit = UnitDef {
+            flight: None,
             name: "runner".into(),
             icon_type: None,
             health: 100.0,

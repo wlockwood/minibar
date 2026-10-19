@@ -386,12 +386,10 @@ fn world_live_frame(world: &crate::world::World, side: SideId, map: &LiveMapFram
                 sensor_coverage: exact
                     .then(|| {
                         actual.and_then(|entity| {
-                            let (los, radar, jammer) = world.entity_sensor_ranges(observed.id, entity);
-                            (los > 0.0 || radar > 0.0 || jammer > 0.0).then_some(LiveSensorCoverage {
-                                los,
-                                radar,
-                                jammer,
-                            })
+                            let (los, radar, jammer) =
+                                world.entity_sensor_ranges(observed.id, entity);
+                            (los > 0.0 || radar > 0.0 || jammer > 0.0)
+                                .then_some(LiveSensorCoverage { los, radar, jammer })
                         })
                     })
                     .flatten(),
@@ -1114,12 +1112,12 @@ mod tests {
         assert!(viewer_response.contains("obs.fire_intents"));
         assert!(viewer_response.contains("damage_events"));
         assert!(viewer_response.contains("turret_heading"));
-        assert!(viewer_response.contains("function facing"));
-        assert!(viewer_response.contains("outer arrow = hull facing"));
+        assert!(viewer_response.contains("function bodyFacing"));
+        assert!(viewer_response.contains("triangle = body facing"));
         assert!(viewer_response.contains("Blue = your units"));
         assert!(viewer_response.contains("control-side"));
         assert!(viewer_response.contains("select_control_side"));
-        assert!(viewer_response.contains("gold/red lines"));
+        assert!(viewer_response.contains("solid blue / dashed red"));
         assert!(viewer_response.contains("type:'preview_build'"));
         assert!(viewer_response.contains("c.onpointerdown"));
         assert!(viewer_response.contains("selection cleared"));

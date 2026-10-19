@@ -262,7 +262,7 @@ html,body{margin:0;height:100%;background:#111;color:#ddd;font:14px system-ui}bo
 button,input{accent-color:#7ab6ff}#status{margin-left:auto;color:#aaa}
 </style></head><body><div id="bar"><strong id="title"></strong><button id="play">Pause</button>
 <input id="time" type="range" min="0" value="0" step="1"><select id="layer"><option value="occupancy">Occupancy</option><option value="aim_points">Aim points</option><option value="deaths">Deaths</option></select><span id="status"></span></div>
-<canvas id="view"></canvas><script>
+<div id="legend" style="position:fixed;bottom:10px;left:10px;background:#111d;padding:6px 10px;font-size:12px;pointer-events:none"><span style="color:#4da6ff">Blue = side 0 / solid shots</span> · <span style="color:#ff5b5b">Red = side 1 / dashed shots</span><br>Triangle = body facing · gold line = weapon facing · arrows = shots · dotted lines = aim intent · magenta = blocked</div><canvas id="view"></canvas><script>
 const doc=__VISIGOTH_DATA__, canvas=document.querySelector('#view'), ctx=canvas.getContext('2d');
 const slider=document.querySelector('#time'), play=document.querySelector('#play'), layer=document.querySelector('#layer');
 document.querySelector('#title').textContent=doc.title; window.visigothCommands=[];
@@ -276,8 +276,37 @@ function xy(p){const s=scale(),[w,h]=dims();return[(canvas.clientWidth-w*s)/2+p[
 function current(){return doc.data.view==='run'?doc.data.data.frames[frame]:null} function currentTick(){return current()?.tick||0}
 function color(side,a=1){return side===0?`rgba(77,166,255,${a})`:side===1?`rgba(255,91,91,${a})`:`rgba(215,215,215,${a})`;}
 function terrain(map){const s=scale(),cw=map.cell_size*s;for(let r=0;r<map.rows;r++)for(let c=0;c<map.cols;c++){let n=r*map.cols+c,h=map.heights[n]||0,water=(map.water_depth||[])[n]||0;ctx.fillStyle=water>0?`rgb(25,${65+Math.min(90,water)},120)`:`rgb(${45+h*.25},${53+h*.3},${45+h*.2})`;const p=xy([c*map.cell_size,r*map.cell_size]);ctx.fillRect(p[0],p[1],cw+.5,cw+.5);if(map.passable[n]===false){ctx.fillStyle='#0007';ctx.fillRect(p[0],p[1],cw+.5,cw+.5);}}for(const r of map.resources||[]){const p=xy(r.position),geo=r.kind==='geothermal';ctx.strokeStyle=geo?'#ff9d40':'#c7f0ff';ctx.fillStyle=geo?'#ff9d4044':'#c7f0ff44';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p[0],p[1],Math.max(4,r.radius*s),0,Math.PI*2);ctx.fill();ctx.stroke();}}
-function symbol(u){const p=xy(u.position),size=Math.max(6,Math.min(18,u.radius*scale())),key=u.icon_key.toLowerCase(),style=doc.icons.icons[key]||{},im=images[key];ctx.save();ctx.translate(...p);ctx.globalAlpha=u.alive?1:.25;if(im&&im.complete){ctx.drawImage(im,-size,-size,size*2,size*2);}else{ctx.fillStyle=color(u.side);ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.beginPath();const shape=style.fallback||['circle','triangle','square','diamond'][[...key].reduce((h,c)=>(h*16777619^c.charCodeAt(0))>>>0,0)&3];if(shape==='triangle'){ctx.moveTo(0,-size);ctx.lineTo(size,size);ctx.lineTo(-size,size);ctx.closePath();}else if(shape==='square')ctx.rect(-size,-size,size*2,size*2);else if(shape==='diamond'){ctx.moveTo(0,-size);ctx.lineTo(size,0);ctx.lineTo(0,size);ctx.lineTo(-size,0);ctx.closePath();}else ctx.arc(0,0,size,0,Math.PI*2);ctx.fill();ctx.stroke();}ctx.rotate(u.heading);ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(size*1.4,0);ctx.stroke();if(selected.includes(u.id)){ctx.strokeStyle='#fff';ctx.strokeRect(-size-3,-size-3,size*2+6,size*2+6);}ctx.restore();}
-function drawRun(run){terrain(run.map);const f=run.frames[frame];if(!f)return;for(const a of f.aim_attempts){const x=xy(a.origin),y=xy(a.aim_point);ctx.strokeStyle=a.state==='fired'?'#ffd95a':a.state.startsWith('blocked')?'#ff55aa':'#ffffff88';ctx.setLineDash(a.state==='fired'?[]:[4,4]);ctx.beginPath();ctx.moveTo(...x);ctx.lineTo(...y);ctx.stroke();}ctx.setLineDash([]);for(const u of f.units)symbol(u);document.querySelector('#status').textContent=`${f.time.toFixed(2)}s · tick ${f.tick} · ${f.units.filter(u=>u.alive).length} units`;}
+function symbol(u){
+  const p=xy(u.position),size=Math.max(6,Math.min(18,u.radius*scale())),key=u.icon_key.toLowerCase(),style=doc.icons.icons[key]||{},im=images[key];
+  ctx.save();ctx.translate(...p);ctx.globalAlpha=u.alive?1:.25;
+  if(im&&im.complete){ctx.drawImage(im,-size,-size,size*2,size*2);}else{
+    ctx.fillStyle=color(u.side);ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.beginPath();
+    const shape=style.fallback||['circle','triangle','square','diamond'][[...key].reduce((h,c)=>(h*16777619^c.charCodeAt(0))>>>0,0)&3];
+    if(shape==='triangle'){ctx.moveTo(0,-size);ctx.lineTo(size,size);ctx.lineTo(-size,size);ctx.closePath();}else if(shape==='square')ctx.rect(-size,-size,size*2,size*2);else if(shape==='diamond'){ctx.moveTo(0,-size);ctx.lineTo(size,0);ctx.lineTo(0,size);ctx.lineTo(-size,0);ctx.closePath();}else ctx.arc(0,0,size,0,Math.PI*2);
+    ctx.fill();ctx.stroke();
+  }
+  const dx=Math.cos(u.heading),dz=Math.sin(u.heading),wing=Math.max(3,size*.4);
+  ctx.fillStyle='#eff7ff';ctx.beginPath();ctx.moveTo(dx*(size+5),dz*(size+5));ctx.lineTo(dx*size-dz*wing,dz*size+dx*wing);ctx.lineTo(dx*size+dz*wing,dz*size-dx*wing);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#ffe066';ctx.lineWidth=3;
+  for(const yaw of u.weapon_headings||[]){if(!Number.isFinite(yaw))continue;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(yaw)*(size+9),Math.sin(yaw)*(size+9));ctx.stroke();}
+  if(selected.includes(u.id)){ctx.strokeStyle='#fff';ctx.strokeRect(-size-3,-size-3,size*2+6,size*2+6);}ctx.restore();
+}
+function drawRun(run){
+  terrain(run.map);const f=run.frames[frame];if(!f)return;
+  const byId=new Map(f.units.map(u=>[u.id,u]));
+  for(const a of f.aim_attempts){
+    const shooter=byId.get(a.shooter);if(!shooter)continue;
+    const x=xy(a.origin),y=xy(a.aim_point),fired=a.state==='fired',blocked=a.state.startsWith('blocked');
+    ctx.strokeStyle=blocked?'#ff55aa':color(shooter.side,fired?1:.45);ctx.lineWidth=fired?2.5:1;
+    ctx.setLineDash(fired?(shooter.side===1?[7,4]:[]):[2,5]);ctx.beginPath();ctx.moveTo(...x);ctx.lineTo(...y);ctx.stroke();ctx.setLineDash([]);
+    if(fired){
+      const angle=Math.atan2(y[1]-x[1],y[0]-x[0]),ax=x[0]+(y[0]-x[0])*.65,az=x[1]+(y[1]-x[1])*.65;
+      ctx.fillStyle=color(shooter.side);ctx.beginPath();ctx.moveTo(ax,az);ctx.lineTo(ax-9*Math.cos(angle-.45),az-9*Math.sin(angle-.45));ctx.lineTo(ax-9*Math.cos(angle+.45),az-9*Math.sin(angle+.45));ctx.closePath();ctx.fill();
+    }
+  }
+  for(const u of f.units)symbol(u);
+  document.querySelector('#status').textContent=`${f.time.toFixed(2)}s · tick ${f.tick} · ${f.units.filter(u=>u.alive).length} units`;
+}
 function heat(values,max,cols,rows,w,h,colorValue){if(!max)return;for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const v=values[r*cols+c]/max;if(!v)continue;ctx.fillStyle=colorValue(v);const a=xy([c*w/cols,r*h/rows]),b=xy([(c+1)*w/cols,(r+1)*h/rows]);ctx.fillRect(a[0],a[1],b[0]-a[0]+.5,b[1]-a[1]+.5);}}
 function drawAggregate(a){ctx.fillStyle='#263026';const p=xy([0,0]),q=xy([a.map_width,a.map_depth]);ctx.fillRect(p[0],p[1],q[0]-p[0],q[1]-p[1]);if(layer.value==='occupancy')for(const l of a.occupancy)heat(l.values,l.maximum,a.cols,a.rows,a.map_width,a.map_depth,v=>color(l.side,v*.8));else{const l=a[layer.value];heat(l.values,l.maximum,a.cols,a.rows,a.map_width,a.map_depth,v=>layer.value==='deaths'?`rgba(255,40,40,${v})`:`rgba(255,220,50,${v})`);}document.querySelector('#status').textContent=`${a.run_count} runs`;}
 function draw(){ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);doc.data.view==='run'?drawRun(doc.data.data):drawAggregate(doc.data.data);}

@@ -19,6 +19,10 @@ pub struct SideScore {
     /// Projectile impacts or damage-over-time pulses that touched a target.
     pub damage_events_hit: u64,
     pub duration: f32,
+    /// Units on this side flagged `StrategicDef::key_unit` at the start, and
+    /// how many were still alive at the end.
+    pub key_units_started: u32,
+    pub key_units_surviving: u32,
 }
 
 impl SideScore {
@@ -133,7 +137,7 @@ impl BatchSummary {
     }
 }
 
-fn wilson_interval(successes: usize, trials: usize) -> [f64; 2] {
+pub(crate) fn wilson_interval(successes: usize, trials: usize) -> [f64; 2] {
     if trials == 0 {
         return [0.0, 0.0];
     }

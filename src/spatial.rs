@@ -167,9 +167,11 @@ mod tests {
 
     fn unit(id: u32, position: Vec2, radius: f32, alive: bool) -> UnitState {
         UnitState {
+            altitude: 0.0,
             id,
             side: 0,
             definition: Arc::new(UnitDef {
+                flight: None,
                 name: format!("unit-{id}"),
                 icon_type: None,
                 health: 100.0,
@@ -190,6 +192,8 @@ mod tests {
             hp: 100.0,
             collision_height_scale: 1.0,
             paralyze_damage: 0.0,
+            flanking_direction: Vec2::new(0.0, 1.0),
+            flanking_mobility: 10.0,
             stunned: false,
             alive,
             weapons: Vec::<WeaponState>::new(),

@@ -1329,6 +1329,7 @@ mod tests {
 
     fn unit(name: &str) -> UnitDef {
         UnitDef {
+            flight: None,
             name: name.into(),
             icon_type: None,
             health: 100.0,

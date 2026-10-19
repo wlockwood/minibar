@@ -632,6 +632,30 @@ impl WeaponDef {
     }
 }
 
+/// BAR/Recoil flanking defaults. Direction is [world X, world Z] for mode 1,
+/// [local right, local forward] for modes 2 and 3. Zero disables flanking.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FlankingDef {
+    pub mode: u8,
+    pub min_damage: f32,
+    pub max_damage: f32,
+    pub mobility_add: f32,
+    pub direction: Vec2,
+}
+
+impl Default for FlankingDef {
+    fn default() -> Self {
+        Self {
+            mode: 1,
+            min_damage: 1.0,
+            max_damage: 2.0,
+            mobility_add: 0.01,
+            direction: Vec2::new(0.0, 1.0),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StrategicDef {
@@ -670,7 +694,12 @@ pub struct StrategicDef {
     pub target_categories: Vec<String>,
     /// Multiplier applied to incoming paralyzer damage. Zero is EMP immunity.
     pub paralyze_multiplier: f32,
+    pub flanking: FlankingDef,
     pub death_explosion: Option<DeathExplosionDef>,
+    /// Marks a unit whose destruction decides or dominates a game (a BAR
+    /// commander). Only scoring reads it; training objectives can reward
+    /// killing one and punish losing one. Defaults to false.
+    pub key_unit: bool,
     pub reclaim: ReclaimDef,
     pub corpse: Option<CorpseDef>,
     pub sight_distance: Option<f32>,
@@ -678,6 +707,28 @@ pub struct StrategicDef {
     pub sonar_radius: Option<f32>,
     pub jammer_radius: Option<f32>,
     pub can_cloak: bool,
+    pub stealth: bool,
+    pub sonar_stealth: bool,
+    pub sonar_jammer_radius: Option<f32>,
+    /// Recoil emits sight from model midpoint plus this height (default 20).
+    pub sight_emit_height: f32,
+    /// Missing means use sight_emit_height.
+    pub radar_emit_height: Option<f32>,
+    /// Missing means 1.5 times sight_distance, matching Recoil's UnitDef default.
+    pub air_sight_distance: Option<f32>,
+    /// Runtime visibility mode; real aircraft switch this when taking off/landing.
+    pub use_air_los: bool,
+    /// Missing uses the simulator's building classification; source exports derive
+    /// Recoil's immobile-with-yardmap rule explicitly.
+    pub leaves_ghost: Option<bool>,
+    pub start_cloaked: bool,
+    pub cloak_cost: f32,
+    /// Missing means use cloak_cost.
+    pub cloak_cost_moving: Option<f32>,
+    pub min_cloak_distance: f32,
+    pub decloak_spherical: bool,
+    pub decloak_on_fire: bool,
+    pub targeting_facility: bool,
     /// Explicit exporter-declared mechanics required to simulate this unit.
     pub required_capabilities: Vec<String>,
 }
@@ -716,7 +767,9 @@ impl Default for StrategicDef {
             armor_class: String::new(),
             target_categories: Vec::new(),
             paralyze_multiplier: 1.0,
+            flanking: FlankingDef::default(),
             death_explosion: None,
+            key_unit: false,
             reclaim: ReclaimDef::default(),
             corpse: None,
             sight_distance: None,
@@ -724,9 +777,33 @@ impl Default for StrategicDef {
             sonar_radius: None,
             jammer_radius: None,
             can_cloak: false,
+            stealth: false,
+            sonar_stealth: false,
+            sonar_jammer_radius: None,
+            sight_emit_height: 20.0,
+            radar_emit_height: None,
+            air_sight_distance: None,
+            use_air_los: false,
+            leaves_ghost: None,
+            start_cloaked: false,
+            cloak_cost: 0.0,
+            cloak_cost_moving: None,
+            min_cloak_distance: 0.0,
+            decloak_spherical: true,
+            decloak_on_fire: true,
+            targeting_facility: false,
             required_capabilities: Vec::new(),
         }
     }
+}
+
+/// Bounded fixed-wing flight contract. Altitude is terrain-relative; takeoff,
+/// landing and terrain-following climb dynamics are outside this kernel.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FlightDef {
+    pub cruise_altitude: f32,
+    pub minimum_speed: f32,
+    pub attack_run: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -741,6 +818,8 @@ pub struct UnitDef {
     pub energy_cost: f32,
     #[serde(default)]
     pub strategic: StrategicDef,
+    #[serde(default)]
+    pub flight: Option<FlightDef>,
     pub movement: MovementDef,
     #[serde(default)]
     pub weapons: Vec<WeaponDef>,
@@ -804,12 +883,16 @@ pub struct UnitState {
     pub heading: f32,
     pub(crate) forward: Vec2,
     pub speed: f32,
+    /// Height above local terrain; zero for ground units.
+    pub altitude: f32,
     pub hp: f32,
     /// Fraction of the collision volume's vertical extent currently present.
     /// Nanoframes use build progress; ordinary units remain at one.
     pub collision_height_scale: f32,
     /// EMP damage is non-lethal and declines independently of hit points.
     pub paralyze_damage: f32,
+    pub(crate) flanking_direction: Vec2,
+    pub(crate) flanking_mobility: f32,
     pub stunned: bool,
     pub alive: bool,
     pub(crate) weapons: Vec<WeaponState>,

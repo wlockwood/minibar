@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Training Progress</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10); --neutral: #f0efec;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b; --good-text: #006300;
+  --pole-pos: #2a78d6; --pole-neg: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10); --neutral: #383835;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    --good-text: #0ca30c; --pole-pos: #3987e5; --pole-neg: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10); --neutral: #383835;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  --good-text: #0ca30c; --pole-pos: #3987e5; --pole-neg: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1320px; margin: 0 auto; padding: 16px; }
+header.top { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+.sub { color: var(--ink2); font-size: 13px; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--axis); font-size: 12px; color: var(--ink2); }
+.pill.live::before { content: "● "; color: var(--good); }
+button, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover, select:hover { background: var(--neutral); }
+button[aria-selected="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; }
+.row label { color: var(--ink2); font-size: 13px; }
+.verdict { border: 1px solid var(--ring); background: var(--surface); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; border-left-width: 5px; }
+.verdict.progress { border-left-color: var(--good); } .verdict.early, .verdict.waiting { border-left-color: var(--muted); }
+.verdict.flat, .verdict.stalled, .verdict.mixed { border-left-color: var(--warn); } .verdict.regress { border-left-color: var(--crit); }
+.verdict b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink2); margin-bottom: 2px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 10px 12px; min-height: 104px; }
+.tile .label { color: var(--ink2); font-size: 12px; }
+.tile .value { font-size: 28px; font-weight: 600; line-height: 1.15; margin: 2px 0; }
+.tile .delta { font-size: 12px; color: var(--ink2); }
+.delta .up { color: var(--good-text); } .delta .down { color: var(--crit); }
+.tile svg { display: block; margin-top: 4px; }
+.meter { height: 8px; border-radius: 4px; background: var(--grid); margin-top: 8px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--s1); border-radius: 4px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(560px, 100%), 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+.card p.note { margin: 0 0 8px; color: var(--ink2); font-size: 12.5px; }
+.card.wide { grid-column: 1 / -1; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink2); margin: 2px 0 4px; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--c, var(--ink)); vertical-align: middle; margin-right: 5px; }
+.legend span.box::before { width: 10px; height: 10px; border: 0; background: var(--c); border-radius: 2px; vertical-align: -1px; }
+.chart { width: 100%; position: relative; }
+.chart svg { display: block; overflow: visible; }
+.axis-text { fill: var(--muted); font-size: 11px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+details { margin-top: 6px; } summary { cursor: pointer; color: var(--ink2); font-size: 12.5px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--grid); }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+.scroll { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+.heat { border-collapse: separate; border-spacing: 2px; font-size: 12px; width: 100%; }
+.heat th { font-weight: 500; color: var(--ink2); text-align: center; padding: 2px 4px; }
+.heat th.rowh { text-align: left; max-width: 220px; }
+.heat td { text-align: center; padding: 6px 4px; border-radius: 4px; min-width: 64px; font-variant-numeric: tabular-nums; }
+.heat-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.heat-pair h3 { font-size: 12.5px; margin: 0 0 2px; font-weight: 600; color: var(--ink2); }
+.events { list-style: none; margin: 0; padding: 0; max-height: 330px; overflow: auto; }
+.events li { display: grid; grid-template-columns: 52px 22px 1fr; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.events .gen { color: var(--muted); font-variant-numeric: tabular-nums; }
+.events .ic.good { color: var(--good-text); } .events .ic.warn { color: var(--serious); } .events .ic.info { color: var(--ink2); }
+.bar { display: grid; grid-template-columns: 110px 1fr 150px; gap: 8px; align-items: center; font-size: 12.5px; margin: 3px 0; }
+.bar .track { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--s1); border-radius: 5px; }
+.bar .fill.flat { background: var(--serious); }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--axis);
+  border-radius: 8px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); display: none; max-width: 320px; }
+.tip-title { color: var(--ink2); margin-bottom: 3px; }
+.tip-row { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.tip-row i { display: inline-block; width: 12px; border-top: 2px solid var(--c); }
+.tip-row b { font-weight: 600; } .tip-row span { color: var(--ink2); }
+footer { color: var(--muted); font-size: 12px; margin: 16px 0 4px; }
+@media (max-width: 560px) { .bar { grid-template-columns: 80px 1fr 120px; } .tile .value { font-size: 24px; } }
+.network-scroll { overflow:auto; max-height:560px; border:1px solid var(--ring); border-radius:6px; margin:8px 0; }
+.network-scroll svg { display:block; }
+.matchup-card { border:1px solid var(--grid); border-radius:8px; padding:10px 12px; margin:10px 0; }
+.matchup-card h4 { margin:0 0 6px; }
+.matchup-armies { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
+.matchup-armies p { margin:0; }
+.matchup-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:4px 16px; margin-top:8px; font-size:12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1 id="title">Training progress</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="row" style="margin:0">
+      <span class="pill" id="status"></span>
+      <span class="sub" id="generated"></span>
+      <button id="theme" title="Switch between light and dark">Theme</button>
+    </div>
+  </header>
+  <div class="row" id="tabs" role="tablist" aria-label="Track"></div>
+  <div id="view"></div>
+  <footer id="foot"></footer>
+</main>
+<div class="tip" id="tip"></div>
+<pre id="err" hidden></pre>
+<script>
+// Its own block, so a syntax error in the main script below is still reported on the page.
+window.addEventListener('error', e => { const p = document.getElementById('err'); p.hidden = false; p.textContent += (e.message || e) + ' @' + e.lineno + '\n'; });
+</script>
+<script>
+const D = /*__DATA__*/null;
+
+// ---------------------------------------------------------------- tiny DOM helpers
+const NS = 'http://www.w3.org/2000/svg';
+function build(make, attrs, kids) {
+  const e = make();
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.setAttribute('class', v);
+    else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+const h = (tag, attrs, ...kids) => build(() => document.createElement(tag), attrs, kids);
+const sv = (tag, attrs, ...kids) => build(() => document.createElementNS(NS, tag), attrs, kids);
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f3 = x => x == null || !isFinite(x) ? '–' : x.toFixed(3);
+const sgn = x => x == null || !isFinite(x) ? '–' : (x > 0 ? '+' : x < 0 ? '−' : '±') + Math.abs(x).toFixed(3);
+const pct = x => x == null || !isFinite(x) ? '–' : Math.round(x * 100) + '%';
+const pp = x => x == null || !isFinite(x) ? '–' : (x > 0 ? '+' : x < 0 ? '−' : '±') + Math.abs(Math.round(x * 100)) + ' pts';
+const num = x => x == null || !isFinite(x) ? '–' : Math.abs(x) >= 1000 ? (x / 1000).toFixed(1) + 'K' : (Math.round(x * 10) / 10).toString();
+
+function wilson(w, n) {
+  if (!n) return [0, 1];
+  const z = 1.96, p = w / n, d = 1 + z * z / n, c = (p + z * z / (2 * n)) / d;
+  const half = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+  return [Math.max(0, c - half), Math.min(1, c + half)];
+}
+function niceTicks(lo, hi, count) {
+  if (!(hi > lo)) { hi = lo + 1; }
+  const raw = (hi - lo) / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= raw) || 10 * mag;
+  const out = [];
+  for (let v = Math.floor(lo / step) * step; v <= hi + step * 0.5 && out.length < 40; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function intTicks(x0, x1, max) {
+  const span = Math.max(1, x1 - x0);
+  const step = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find(s => span / s <= max) || 1000;
+  const out = [];
+  for (let v = Math.ceil(x0 / step) * step; v <= x1; v += step) out.push(v);
+  if (!out.length) out.push(x0);
+  return out;
+}
+
+// ---------------------------------------------------------------- tooltip
+const tip = document.getElementById('tip');
+function showTip(evt, title, rows) {
+  tip.replaceChildren(h('div', { class: 'tip-title', text: title }),
+    ...rows.map(r => h('div', { class: 'tip-row' },
+      r.color ? h('i', { style: '--c:' + r.color }) : null, h('b', { text: r.value }), h('span', { text: r.label || '' }))));
+  tip.style.display = 'block';
+  const w = tip.offsetWidth, hgt = tip.offsetHeight;
+  let x = evt.clientX + 14, y = evt.clientY + 14;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - 14;
+  if (y + hgt > innerHeight - 8) y = evt.clientY - hgt - 14;
+  tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px';
+}
+const hideTip = () => { tip.style.display = 'none'; };
+
+// ---------------------------------------------------------------- charts
+function lineChart(host, o) {
+  host.replaceChildren();
+  const all = o.series.flatMap(s => s.points);
+  if (!all.length) { host.append(h('p', { class: 'empty', text: o.empty || 'Nothing recorded yet.' })); return; }
+  const W = Math.max(280, host.clientWidth || 600), H = o.height || 230, m = { l: 54, r: 14, t: 10, b: 26 };
+  let x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+  if (x0 === x1) { x0 -= 0.5; x1 += 0.5; }
+  const yv = all.map(p => p[1]).concat(o.series.flatMap(s => (s.band || []).flatMap(b => [b[1], b[2]])), (o.baselines || []).map(b => b.y));
+  let lo = Math.min(...yv), hi = Math.max(...yv);
+  if (lo === hi) { lo -= 0.5; hi += 0.5; }
+  const padY = (hi - lo) * 0.06;
+  const floor = o.zero && lo >= 0 ? 0 : lo - padY;   // counts and norms never go below zero
+  const ticks = niceTicks(floor, hi + padY, 5);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+  const Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  const svg = sv('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.label || 'chart', tabindex: 0 });
+  for (const t of ticks) {
+    svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), stroke: cssVar('--grid'), 'stroke-width': 1 }));
+    svg.append(sv('text', { x: m.l - 6, y: Y(t) + 4, 'text-anchor': 'end', class: 'axis-text', text: (o.yFmt || f3)(t) }));
+  }
+  svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: cssVar('--axis'), 'stroke-width': 1 }));
+  for (const t of intTicks(x0, x1, Math.max(3, Math.floor((W - m.l - m.r) / 56)))) {
+    svg.append(sv('text', { x: X(t), y: H - 8, 'text-anchor': 'middle', class: 'axis-text', text: (o.xFmt || (v => v))(t) }));
+  }
+  for (const b of o.baselines || []) {
+    svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: Y(b.y), y2: Y(b.y), stroke: cssVar('--muted'), 'stroke-width': 1 }));
+    svg.append(sv('text', { x: W - m.r - 2, y: Y(b.y) - 4, 'text-anchor': 'end', class: 'axis-text', text: b.label }));
+  }
+  for (const s of o.series) {
+    const color = cssVar(s.color) || s.color;
+    if (s.band && s.band.length > 1) {
+      const up = s.band.map(b => `${X(b[0])},${Y(b[2])}`), dn = s.band.slice().reverse().map(b => `${X(b[0])},${Y(b[1])}`);
+      svg.append(sv('polygon', { points: up.concat(dn).join(' '), fill: color, 'fill-opacity': 0.1 }));
+    }
+    if (s.points.length > 1) {
+      let d = '';
+      s.points.forEach((p, i) => {
+        if (i === 0) d += `M${X(p[0])},${Y(p[1])}`;
+        else d += s.step ? `L${X(p[0])},${Y(s.points[i - 1][1])}L${X(p[0])},${Y(p[1])}` : `L${X(p[0])},${Y(p[1])}`;
+      });
+      svg.append(sv('path', { d, fill: 'none', stroke: color, 'stroke-width': s.width || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    }
+    if (s.dots !== false && s.points.length <= 80) {
+      for (const p of s.points) svg.append(s.hollow ? sv('circle', { cx: X(p[0]), cy: Y(p[1]), r: 3.5, fill: cssVar('--surface'), stroke: color, 'stroke-width': 2 }) : sv('circle', { cx: X(p[0]), cy: Y(p[1]), r: 4, fill: color, stroke: cssVar('--surface'), 'stroke-width': 2 }));
+    }
+  }
+  const cross = sv('line', { y1: m.t, y2: H - m.b, stroke: cssVar('--muted'), 'stroke-width': 1, visibility: 'hidden' });
+  svg.append(cross);
+  const xsAll = [...new Set(all.map(p => p[0]))].sort((a, b) => a - b);
+  const show = (evt, x) => {
+    cross.setAttribute('x1', X(x)); cross.setAttribute('x2', X(x)); cross.setAttribute('visibility', 'visible');
+    const rows = o.series.map(s => {
+      const p = s.points.find(q => q[0] === x);
+      return p ? { color: cssVar(s.color) || s.color, value: (o.tipFmt || o.yFmt || f3)(p[1]), label: s.label + (p[2] ? ' · ' + p[2] : '') } : null;
+    }).filter(Boolean);
+    showTip(evt, (o.xTitle || 'Generation ') + (o.xFmt || (v => v))(x), rows);
+  };
+  const overlay = sv('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' });
+  overlay.addEventListener('pointermove', evt => {
+    const r = svg.getBoundingClientRect(), px = evt.clientX - r.left;
+    const x = xsAll.reduce((best, v) => Math.abs(X(v) - px) < Math.abs(X(best) - px) ? v : best, xsAll[0]);
+    show(evt, x);
+  });
+  overlay.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); hideTip(); });
+  svg.addEventListener('keydown', evt => {
+    if (evt.key !== 'ArrowLeft' && evt.key !== 'ArrowRight') return;
+    const r = svg.getBoundingClientRect();
+    svg._i = Math.min(xsAll.length - 1, Math.max(0, (svg._i == null ? xsAll.length - 1 : svg._i) + (evt.key === 'ArrowRight' ? 1 : -1)));
+    show({ clientX: r.left + X(xsAll[svg._i]), clientY: r.top + m.t + 20 }, xsAll[svg._i]); evt.preventDefault();
+  });
+  svg.addEventListener('blur', () => { cross.setAttribute('visibility', 'hidden'); hideTip(); });
+  svg.append(overlay);
+  host.append(svg);
+}
+
+function roundedTop(x, y, w, hgt, r) {
+  r = Math.min(r, w / 2, hgt);
+  return `M${x},${y + hgt}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + hgt}Z`;
+}
+function stackedBars(host, items, o) {
+  host.replaceChildren();
+  if (!items.length) { host.append(h('p', { class: 'empty', text: o.empty || 'No validation results yet.' })); return; }
+  const W = Math.max(280, host.clientWidth || 600), H = o.height || 230, m = { l: 40, r: 10, t: 10, b: 26 };
+  const band = (W - m.l - m.r) / items.length, bw = Math.min(24, band * 0.7);
+  const Y = v => H - m.b - v * (H - m.t - m.b);
+  const svg = sv('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.label || 'outcomes' });
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), stroke: cssVar('--grid'), 'stroke-width': 1 }));
+    svg.append(sv('text', { x: m.l - 6, y: Y(t) + 4, 'text-anchor': 'end', class: 'axis-text', text: Math.round(t * 100) + '%' }));
+  }
+  const every = Math.max(1, Math.ceil(items.length / Math.max(3, Math.floor((W - m.l) / 44))));
+  items.forEach((it, i) => {
+    const cx = m.l + band * (i + 0.5), x = cx - bw / 2;
+    if (i % every === 0 || i === items.length - 1) svg.append(sv('text', { x: cx, y: H - 8, 'text-anchor': 'middle', class: 'axis-text', text: it.label }));
+    const total = it.segments.reduce((a, s) => a + s.value, 0) || 1;
+    let acc = 0;
+    const live = it.segments.filter(s => s.value > 0);
+    live.forEach((seg, j) => {
+      const frac = seg.value / total, top = Y(acc + frac), bottom = Y(acc) - (j === 0 ? 0 : 2);
+      const hgt = Math.max(1, bottom - top);
+      const topmost = j === live.length - 1;
+      const node = topmost ? sv('path', { d: roundedTop(x, top, bw, hgt, 4), fill: cssVar(seg.color) || seg.color })
+                           : sv('rect', { x, y: top, width: bw, height: hgt, fill: cssVar(seg.color) || seg.color });
+      node.addEventListener('pointermove', evt => showTip(evt, it.title,
+        it.segments.map(s => ({ color: cssVar(s.color) || s.color, value: s.value + ' (' + pct(s.value / total) + ')', label: s.label }))
+          .concat(it.extra || [])));
+      node.addEventListener('pointerleave', hideTip);
+      svg.append(node);
+      acc += frac;
+    });
+  });
+  svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: cssVar('--axis'), 'stroke-width': 1 }));
+  host.append(svg);
+}
+
+function luminance(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return 0.5;
+  const c = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function mix(a, b, t) {
+  const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return '#' + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+const SEQ = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b'];
+function isDark() { return luminance(cssVar('--surface')) < 0.2; }
+function seqColor(t) {
+  t = Math.min(1, Math.max(0, t));
+  if (isDark()) t = 1 - t;   // on a dark surface "more" is brighter and "less" recedes into the background
+  const k = t * (SEQ.length - 1), i = Math.min(SEQ.length - 2, Math.floor(k));
+  return mix(SEQ[i], SEQ[i + 1], k - i);
+}
+function divColor(t) {  // t in [-1, 1]; gray midpoint, blue = better, red = worse
+  t = Math.min(1, Math.max(-1, t));
+  return t >= 0 ? mix(cssVar('--neutral'), cssVar('--pole-pos'), t) : mix(cssVar('--neutral'), cssVar('--pole-neg'), -t);
+}
+function heatmap(host, o) {
+  host.replaceChildren();
+  if (!o.rows.length) { host.append(h('p', { class: 'empty', text: o.empty || 'No data yet.' })); return; }
+  const table = h('table', { class: 'heat' },
+    h('thead', {}, h('tr', {}, h('th', {}), o.cols.map(c => h('th', { text: c })))),
+    h('tbody', {}, o.rows.map(r => h('tr', {}, h('th', { class: 'rowh', text: r }), o.cols.map(c => {
+      const cell = o.cell(r, c);
+      if (!cell) return h('td', { text: '–', style: 'color:var(--muted)' });
+      const bg = cell.bg;
+      const td = h('td', { text: cell.text, style: `background:${bg};color:${luminance(bg) > 0.4 ? '#0b0b0b' : '#ffffff'}`, tabindex: 0, 'aria-label': r + ', ' + c + ': ' + cell.tip.join('; ') });
+      td.addEventListener('pointermove', evt => showTip(evt, r + ' vs ' + c, cell.tip.map(t => ({ value: t, label: '' }))));
+      td.addEventListener('pointerleave', hideTip);
+      return td;
+    })))));
+  host.append(table);
+}
+
+function sparkline(values, color) {
+  const pts = values.filter(v => v != null && isFinite(v));
+  if (pts.length < 2) return null;
+  const W = 150, H = 28, lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+  const xy = pts.map((v, i) => [2 + i / (pts.length - 1) * (W - 4), H - 4 - (v - lo) / span * (H - 8)]);
+  return sv('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true' },
+    sv('polyline', { points: xy.map(p => p.join(',')).join(' '), fill: 'none', stroke: cssVar(color), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }),
+    sv('circle', { cx: xy[xy.length - 1][0], cy: xy[xy.length - 1][1], r: 4, fill: cssVar(color), stroke: cssVar('--surface'), 'stroke-width': 2 }));
+}
+function tableView(headers, rows, open = false) {
+  return h('details', {open}, h('summary', { text: 'Table view' }),
+    h('div', { class: 'scroll' }, h('table', { class: 'data' }, h('thead', {}, h('tr', {}, headers.map(x => h('th', { text: x })))),
+      h('tbody', {}, rows.map(r => h('tr', {}, r.map(c => h('td', { text: c }))))))));
+}
+const legend = items => h('div', { class: 'legend' }, items.map(i => h('span', { class: i.box ? 'box' : '', style: '--c:' + (cssVar(i.color) || i.color), text: i.label })));
+
+// ---------------------------------------------------------------- data derivation
+const OUTCOME = [
+  { key: 'wins', label: '✓ win', color: '--good' }, { key: 'draws', label: '= draw', color: '--muted' },
+  { key: 'timeouts', label: '◷ timeout', color: '--warn' }, { key: 'losses', label: '✕ loss', color: '--crit' },
+];
+const ISLAND_COLORS = ['--s1', '--s2', '--s3'];
+const STAGE_COLORS = ['--s3', '--s4', '--s5'];
+const state = { track: 0, island: null, kind: 'center' };
+const valOf = i => i && (state.kind === 'sample' ? i.sample : i.center);
+const candidateLabel = () => `${state.island || 'selected branch'} ${state.kind === 'sample' ? 'best sample' : 'center'}`;
+
+function islandNames(t) { return [...new Set(t.generations.flatMap(g => g.islands.map(i => i.name)))]; }
+function islandAt(g, name) { return g.islands.find(i => i.name === name); }
+function winRate(o) { return o && o.battles ? o.wins / o.battles : null; }
+function rowKey(stage, r) { return stage + '|' + r.scenario + '|' + r.opponent; }
+function collectRows(report) {
+  const map = new Map();
+  for (const st of (report && report.stages) || []) for (const r of st.rows || []) map.set(rowKey(st.name, r), { stage: st.name, ...r });
+  return map;
+}
+function trialGroups(report) {
+  const map = new Map();
+  for (const t of (report && report.trials) || []) {
+    const k = t.faction + '|' + t.map; const e = map.get(k) || { faction: t.faction, map: t.map, f: 0, n: 0 };
+    e.f += t.fitness || 0; e.n += 1; map.set(k, e);
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------- view
+function renderTiles(t) {
+  const gens = t.generations, last = gens[gens.length - 1];
+  const done = gens.length ? last.generation : 0, target = D.meta.target_generations;
+  const tiles = [];
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Generation' }),
+    h('div', { class: 'value', text: target ? `${done} / ${target}` : String(done) }),
+    h('div', { class: 'delta', text: D.meta.status + (D.meta.waiting_jobs ? ` · ${D.meta.waiting_jobs} jobs waiting` : '') }),
+    target ? h('div', { class: 'meter' }, h('i', { style: `width:${Math.min(100, done / target * 100)}%` })) : null));
+  const init = t.initial && t.initial.fitness, best = t.best && t.best.fitness;
+  const champ = gens.map(g => g.champion_fitness);
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Champion validation fitness' }),
+    h('div', { class: 'value', text: f3(best) }),
+    h('div', { class: 'delta' }, 'vs start ', h('span', { class: best > init ? 'up' : best < init ? 'down' : '', text: sgn(best - init) })),
+    sparkline([init].concat(champ), '--s1')));
+  if (t.kind === 'tactical') {
+    const wi = winRate(t.initial && t.initial.outcome), wb = winRate(t.best && t.best.outcome), ob = t.best && t.best.outcome;
+    const ci = ob ? wilson(ob.wins, ob.battles) : [0, 1];
+    tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Win rate (champion, validation)' }),
+      h('div', { class: 'value', text: pct(wb) }),
+      h('div', { class: 'delta' }, 'vs start ', h('span', { class: wb > wi ? 'up' : wb < wi ? 'down' : '', text: pp(wb - wi) })),
+      h('div', { class: 'delta', text: ob ? `${ob.wins}/${ob.battles} battles · 95% range ${pct(ci[0])}–${pct(ci[1])}` : '' })));
+  } else {
+    const tb = t.best && t.best.trial_means, ti = t.initial && t.initial.trial_means;
+    tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Projects completed per game (champion)' }),
+      h('div', { class: 'value', text: tb ? num(tb.projects_completed) : '–' }),
+      h('div', { class: 'delta', text: ti && tb ? `start ${num(ti.projects_completed)} · units ${num(ti.units_produced)} → ${num(tb.units_produced)}` : '' }),
+      h('div', { class: 'delta', text: tb ? `rejected build orders: ${num(tb.rejected_total)} (start ${ti ? num(ti.rejected_total) : '–'})` : '' })));
+  }
+  const ho = t.holdout && t.holdout.fitness, hi = t.holdout_initial && t.holdout_initial.fitness;
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Separate test fitness (holdout)' }),
+    h('div', { class: 'value', text: f3(ho) }),
+    h('div', { class: 'delta' }, hi == null ? 'no starting score recorded' : ['vs start ', h('span', { class: ho > hi ? 'up' : ho < hi ? 'down' : '', text: sgn(ho - hi) })]),
+    h('div', { class: 'delta', text: 'never used to pick champions' })));
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Diagnostic alternatives (not promoted)' }), h('div', { class: 'value', text: String(t.diagnostic_challengers || 0) }), h('div',{class:'delta',text:'Other candidates kept for strengths on particular tests; not the champion.'})));
+  const since = gens.length ? last.generation - (t.best_generation || 0) : 0;
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Last new champion' }),
+    h('div', { class: 'value', text: t.best_generation ? 'gen ' + t.best_generation : 'none yet' }),
+    h('div', { class: 'delta', text: gens.length ? (since === 0 ? 'this generation' : since + (since === 1 ? ' generation ago' : ' generations ago')) : '' }),
+    h('div', { class: 'delta', text: (t.islands_now || []).map(i => `${i.name}: ${i.restarts || 0} restarts`).join(' · ') })));
+  const norms = gens.map(g => { const i = g.islands[0]; return i && i.update_norm; });
+  tiles.push(h('div', { class: 'tile' }, h('div', { class: 'label', text: 'Search step size (update norm)' }),
+    h('div', { class: 'value', text: gens.length && last.islands[0] ? f3(last.islands[0].update_norm) : '–' }),
+    h('div', { class: 'delta', text: 'first branch’s weight update; zero means no change this round. Larger is not necessarily better.' }), sparkline(norms, '--s2')));
+  return h('div', { class: 'tiles' }, tiles);
+}
+
+function card(title, note, ...body) { return h('section', { class: 'card' }, h('h2', { text: title }), note ? h('p', { class: 'note', text: note }) : null, ...body); }
+
+function chartCoverage(t) {
+  const domain = {ground:'Ground brain', air:'Air brain', strategic:'Strategic brain', unknown:'Brain domain unavailable'}[t.brain_domain || 'unknown'];
+  const el = card('Validation fight coverage',
+    `${domain}. These are validation fights used to compare candidates and select champions, not training or holdout fights. A fight family is a matchup category, such as a heavy unit against a swarm. Investment = metal + energy / 60. Counts are distinct recorded cases including opponent and side, not wins. Family fitness uses the native report's pooled score when available; older wrappers average opponent rosters equally.`);
+  el.classList.add('wide');
+  const latest = t.generations[t.generations.length - 1];
+  const island = latest && islandAt(latest, state.island);
+  const choices = [['champion', 'Current champion', t.best], ['initial', 'Starting brain', t.initial],
+    ['candidate', 'Latest selected candidate', island && island[state.kind]]].filter(c => c[2]);
+  let selected = choices.length ? choices[0][0] : null;
+  const body = h('div');
+  const draw = () => {
+    body.replaceChildren();
+    const report = (choices.find(c => c[0] === selected) || [])[2];
+    const stages = (report && report.stages) || [];
+    const covered = stages.filter(s => Object.keys(s.coverage || {}).length || Object.keys(s.family_fitness || {}).length);
+    if (!covered.length) {
+      body.append(h('p', {class:'empty', text:'No family or resource records in this report. Older campaigns do not record this coverage.'}));
+      return;
+    }
+    for (const stage of covered) {
+      body.append(h('h3', {text:stage.name || 'Evaluation'}));
+      const families = [...new Set([...Object.keys(stage.coverage || {}), ...Object.keys(stage.family_fitness || {})])].sort();
+      body.append(tableView(['Fight family', 'Recorded cases', 'Family fitness'], families.map(f =>
+        [f.replaceAll('_', ' '), (stage.coverage || {})[f] ?? '–', f3((stage.family_fitness || {})[f])]), true));
+      const records = stage.matchup_records || [];
+      if (!records.length) {
+        body.append(h('p', {class:'sub', text:'Composition records are unavailable for this saved candidate summary.'}));
+        continue;
+      }
+      const army = roster => (roster || []).map(u => `${u.count} × ${u.name || u.unit}`).join(', ') || 'None';
+      const investment = value => value == null || !isFinite(value) ? '–' : Number(value).toLocaleString('en-US', {maximumFractionDigits:2});
+      const cards = records.map(r => {
+        const s = r.scenario || {};
+        const valueRows = [['Requested budget',r.requested_budget],['Combat investment',r.combat_value],
+          ['Objective assets',r.objective_value],['Starting investment',r.starting_value]];
+        const values = h('table',{class:'data'},
+          h('thead',{},h('tr',{},['Investment measure','Learner','Enemy'].map(text=>h('th',{text})))),
+          h('tbody',{},valueRows.map(([label,v])=>h('tr',{},h('td',{text:label}),
+            h('td',{text:investment(v?.[0])}),h('td',{text:investment(v?.[1])})))));
+        const supply = r.resource_supply === null ? 'Unlimited firing resources' : r.resource_supply
+          ? `${num(r.resource_supply.metal)} metal, ${num(r.resource_supply.energy)} energy per side` : 'Unavailable';
+        return h('article',{class:'matchup-card'},h('h4',{text:s.name || 'Unnamed fight'}),
+          h('div',{class:'matchup-armies'},h('p',{},h('b',{text:'Learner army: '}),army(s.learner)),
+            h('p',{},h('b',{text:'Enemy army: '}),army(s.enemy))),values,
+          h('div',{class:'matchup-facts'},
+            h('span',{text:`Combat gap: ${r.absolute_gap == null ? '–' : (r.absolute_gap*100).toFixed(2)+'%'} · ${r.balance_class || 'unclassified'}`}),
+            h('span',{text:`Signed combat ratio: ${r.signed_ratio == null ? '–' : (r.signed_ratio*100).toFixed(2)+'%'}`}),
+            h('span',{text:`Opponent: ${r.opponent_identity || 'Unavailable'}`}),
+            h('span',{text:`Modeled mechanics support: ${r.support_status || 'Unavailable'}`}),
+            h('span',{text:`Firing resource supply: ${supply}`}),
+            h('span',{text:`Unit cap: ${r.unit_cap ?? '–'}${r.cap_limited ? ' (cap limited)' : ''}`}),
+            h('span',{text:`Seed: ${r.seed ?? '–'} · Recorded side: ${r.learner_side ?? '–'}`}),
+            h('span',{text:`Objective: ${s.objective ? s.objective.kind+': '+s.objective.target : 'Skirmish'}`})));
+      });
+      body.append(h('details', {}, h('summary', {text:stage.matchup_records_sampled
+        ? `Inspect ${records.length} saved examples of compositions and resource totals`
+        : `Inspect ${records.length} recorded compositions and resource totals`}),
+        stage.matchup_records_sampled ? h('p',{class:'sub',text:'History keeps at most two example fights per stage. Family counts above include the full evaluated roster; these examples do not represent its distribution. Complete reports remain in the candidate receipts and work results.'}) : null,
+        h('p', {class:'sub', text:'Learner = the selected brain; enemy = its opponent. Requested budget is the packing target for combat units. Actual combat investment + objective assets = starting investment. Integer unit counts can leave a gap from the target. Combat gap and signed ratio compare combat investment; signed ratio = enemy / learner − 1, so positive means the learner has less. Modeled mechanics support describes simulator capability; firing resource supply separately describes metal and energy available for firing weapons. Recorded side is metadata; evaluation may also mirror it.'}),cards));
+    }
+  };
+  if (choices.length) el.append(h('p',{class:'sub',text:'Only this coverage panel changes when you select a report; the campaign charts keep their own selections.'}),h('label', {}, 'Validation report: ', h('select', {'aria-label':'Coverage report', onchange:e => {selected=e.target.value; draw();}},
+    choices.map(([value, text]) => h('option', {value, text})))));
+  el.append(body);
+  return {el, draw};
+}
+
+function chartRetest(t) {
+  const r = t.retest;
+  const el = card('Fresh-seed retest: is each brain really better than the start?',
+    'Each brain is re-scored on many new, paired seed bases (the same bases for every brain) and compared with the starting brain. Difference = brain minus start; t is difference divided by its standard error, so |t| of 2 or more is a real effect and below that is noise. Training scenarios are what the optimizer fits, validation scenarios select champions, and the holdout never selects anything. Produced by scripts/fresh_retest.py.');
+  const fams = r.families || [];
+  const names = [...new Set(fams.flatMap(f => f.brains.map(b => b.name)))];
+  const cell = row => {
+    if (!row) return h('td', { text: '–' });
+    const c = row.t >= 2 ? '--good' : row.t <= -2 ? '--crit' : '--muted';
+    return h('td', { style: 'color:' + (cssVar(c) || c) + ';font-weight:' + (Math.abs(row.t) >= 2 ? 600 : 400), text: sgn(row.diff) + '  (t ' + (row.t >= 0 ? '+' : '−') + Math.abs(row.t).toFixed(1) + ')' });
+  };
+  el.append(h('div', { class: 'scroll' }, h('table', { class: 'data' },
+    h('thead', {}, h('tr', {}, h('th', { text: 'brain' }), fams.map(f => h('th', { text: f.label + ' · start ' + f3(f.baseline) + ' · ' + f.n + ' seeds' })))),
+    h('tbody', {}, names.map(n => h('tr', {}, h('td', { text: n === 'champion' ? 'champion' : n + ' island latest' }), fams.map(f => cell(f.brains.find(b => b.name === n)))))))));
+  return { el, draw() {} };
+}
+
+function chartFitness(t) {
+  const gens = t.generations, names = islandNames(t);
+  const host = h('div', { class: 'chart' });
+  const series = [{ id: 'champion', label: 'Champion', color: '--ink', width: 3, step: true, dots: false,
+                    points: [[0, t.initial && t.initial.fitness]].filter(p => p[1] != null).concat(gens.map(g => [g.generation, g.champion_fitness])) }];
+  names.forEach((n, i) => {
+    series.push({ id: n + ':center', label: n + ' island, center', color: ISLAND_COLORS[i % 3],
+      points: gens.filter(g => islandAt(g, n) && islandAt(g, n).center).map(g => [g.generation, islandAt(g, n).center.fitness]) });
+    series.push({ id: n + ':sample', label: n + ' island, best sample', color: ISLAND_COLORS[i % 3], width: 1.5, hollow: true,
+      points: gens.filter(g => islandAt(g, n) && islandAt(g, n).sample).map(g => [g.generation, islandAt(g, n).sample.fitness]) });
+  });
+  const baselines = t.initial ? [{ y: t.initial.fitness, label: 'starting brain' }] : [];
+  const rows = gens.map(g => [g.generation, f3(g.champion_fitness)].concat(names.flatMap(n => { const i = islandAt(g, n); return [i && i.center ? f3(i.center.fitness) : '–', i && i.sample ? f3(i.sample.fitness) : '–']; })));
+  const el = card('How do champions score on fixed tests?', 'Fixed validation fitness (higher is better on these tests). The champion line changes when a candidate is promoted. A winner on fresh tests can score lower here. Each island is validated two ways: its center (filled dots) and its best sampled candidate (hollow dots); a promotion can come from either.',
+    legend([{ label: 'Champion', color: '--ink' }].concat(names.map((n, i) => ({ label: n + ' island', color: ISLAND_COLORS[i % 3] })))),
+    host, tableView(['Generation', 'Champion'].concat(names.flatMap(n => [n + ' center', n + ' best sample'])), rows));
+  return { el, draw: () => lineChart(host, { series, baselines, label: 'Champion fitness by generation', empty: 'No champion yet.' }) };
+}
+
+function chartOutcomes(t) {
+  const host = h('div', { class: 'chart' });
+  const rowsOut = [];
+  const draw = () => {
+    const items = [], name = state.island;
+    const mk = (label, title, o) => ({ label, title, segments: OUTCOME.map(k => ({ ...k, value: o[k.key] || 0 })),
+      extra: [{ value: o.underdog_battles ? `${o.underdog_wins}/${o.underdog_battles}` : '–', label: 'underdog wins' },
+              { value: o.battles ? (o.duration_sum / o.battles).toFixed(0) + ' s' : '–', label: 'avg battle length' }] });
+    if (t.initial && t.initial.outcome) items.push(mk('start', 'Starting brain', t.initial.outcome));
+    for (const g of t.generations) { const i = islandAt(g, name); const v = valOf(i); if (v && v.outcome) items.push(mk(String(g.generation), `Generation ${g.generation} · ${name} ${state.kind}`, v.outcome)); }
+    stackedBars(host, items, { label: 'Validation outcomes by generation', empty: 'No validation results yet (validation runs every ' + (D.meta.validation_every || 'few') + ' generations).' });
+    tbody.replaceChildren(...items.map(it => h('tr', {}, [it.label].concat(it.segments.map(s => s.value)).map(c => h('td', { text: c })))));
+  };
+  const tbody = h('tbody');
+  const el = card('Validation outcomes · ' + candidateLabel(), 'The selected branch candidate, rather than the retained champion. Every validation battle, by outcome. A growing timeout slice means the learner stalls instead of winning. "start" is the starting brain.',
+    legend(OUTCOME.map(k => ({ label: k.label, color: k.color, box: true }))), host,
+    h('details', {}, h('summary', { text: 'Table view' }), h('div', { class: 'scroll' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, ['Generation'].concat(OUTCOME.map(k => k.label)).map(x => h('th', { text: x })))), tbody))));
+  return { el, draw };
+}
+
+function chartEconomy(t) {
+  const wrap = h('div', {});
+  const metrics = [['projects_completed', 'Projects completed', num], ['units_produced', 'Units produced', num],
+                   ['rejected_total', 'Rejected build orders', num], ['metal_overflow', 'Metal wasted (overflow)', num]];
+  const hosts = metrics.map(() => h('div', { class: 'chart' }));
+  const draw = () => {
+    metrics.forEach(([key, title, fmt], k) => {
+      const pts = [];
+      if (t.initial && t.initial.trial_means) pts.push([0, t.initial.trial_means[key === 'rejected_total' ? 'rejected_total' : key]]);
+      for (const g of t.generations) { const v = valOf(islandAt(g, state.island)); const m = v && v.trial_means; if (m) pts.push([g.generation, m[key]]); }
+      lineChart(hosts[k], { series: [{ id: key, label: title, color: '--s1', points: pts }], yFmt: fmt, height: 130, zero: true, label: title, empty: 'No validation yet.' });
+    });
+  };
+  metrics.forEach(([, title], k) => wrap.append(h('div', {}, h('div', { class: 'sub', text: title }), hosts[k])));
+  wrap.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px 14px';
+  const rows = [];
+  const el = card('Validation economy · ' + candidateLabel(), 'Mean over every validation game for the selected branch candidate. Starts at the starting brain (generation 0). Falling rejections mean fewer wasted orders; falling metal overflow means less wasted income.', wrap);
+  return { el, draw };
+}
+
+function chartPopulation(t) {
+  const names = islandNames(t), host = h('div', { class: 'chart' }), host2 = h('div', { class: 'chart' });
+  const series = names.map((n, i) => ({ id: n, label: n + ' island', color: ISLAND_COLORS[i % 3],
+    points: t.generations.map(g => { const s = islandAt(g, n); return s && s.mean != null ? [g.generation, s.mean] : null; }).filter(Boolean),
+    band: t.generations.map(g => { const s = islandAt(g, n); return s && s.best != null ? [g.generation, s.worst, s.best] : null; }).filter(Boolean), dots: false }));
+  const norm = names.map((n, i) => ({ id: n, label: n + ' island', color: ISLAND_COLORS[i % 3],
+    points: t.generations.map(g => { const s = islandAt(g, n); return s && s.update_norm != null ? [g.generation, s.update_norm] : null; }).filter(Boolean), dots: false }));
+  const rows = t.generations.map(g => [g.generation].concat(names.flatMap(n => { const s = islandAt(g, n) || {}; return [f3(s.mean), f3(s.worst), f3(s.best), f3(s.update_norm)]; })));
+  const heads = ['Generation'].concat(names.flatMap(n => [n + ' mean', n + ' worst', n + ' best', n + ' step']));
+  const el = card('Is the search alive?', 'Training-set fitness of this generation\'s candidates: line = mean, shaded band = worst to best candidate. This is the noisy, optimistic number; validation is the honest one. A band that collapses to a line means the candidates no longer differ.',
+    legend(names.map((n, i) => ({ label: n + ' island', color: ISLAND_COLORS[i % 3] }))), host,
+    h('div', { class: 'sub', text: 'Step size taken by the optimizer each generation' }), host2, tableView(heads, rows));
+  return { el, draw: () => { lineChart(host, { series, label: 'Population fitness' }); lineChart(host2, { series: norm, height: 120, zero: true, label: 'Update norm' }); } };
+}
+
+function chartStages(t) {
+  const host = h('div', { class: 'chart' }), stages = [];
+  const draw = () => {
+    const names = [];
+    const series = [];
+    const collect = rep => ((rep && rep.stages) || []).forEach(s => { if (!names.includes(s.name)) names.push(s.name); });
+    collect(t.initial); t.generations.forEach(g => collect(valOf(islandAt(g, state.island))));
+    names.forEach((n, k) => {
+      const pts = [];
+      const st0 = t.initial && t.initial.stages.find(s => s.name === n); if (st0 && st0.fitness != null) pts.push([0, st0.fitness]);
+      for (const g of t.generations) { const v = valOf(islandAt(g, state.island)); const st = v && v.stages.find(s => s.name === n); if (st && st.fitness != null) pts.push([g.generation, st.fitness]); }
+      series.push({ id: n, label: n, color: STAGE_COLORS[k % 3], points: pts });
+    });
+    stages.length = 0; stages.push(...series);
+    legendHost.replaceChildren(legend(series.map(s => ({ label: s.label, color: s.color }))));
+    lineChart(host, { series, label: 'Validation fitness by stage', empty: 'No validation yet.' });
+  };
+  const legendHost = h('div');
+  const el = card('Validation stages · ' + candidateLabel(), 'The selected branch candidate, rather than the retained champion. Fixed validation fitness per stage (easy, mixed, objectives). Generation 0 is the starting brain. If easy drops while a harder stage rises, this candidate is trading skills.', legendHost, host);
+  return { el, draw };
+}
+
+function chartHeat(t) {
+  const el = card('Where is it winning, and where is it stuck?', null);
+  const draw = () => {
+    el.querySelectorAll('.heat-body').forEach(n => n.remove());
+    const body = h('div', { class: 'heat-body' });
+    if (t.kind === 'tactical') {
+      const now = collectRows(t.best), start = collectRows(t.initial);
+      const rows = [], cols = [];
+      for (const r of now.values()) { const k = r.stage + ' · ' + r.scenario; if (!rows.includes(k)) rows.push(k); if (!cols.includes(r.opponent)) cols.push(r.opponent); }
+      const cellOf = (map, rowLabel, opp) => { const [stage, ...rest] = rowLabel.split(' · '); return map.get(stage + '|' + rest.join(' · ') + '|' + opp); };
+      const A = h('div', {}), B = h('div', {});
+      heatmap(A, { rows, cols, cell: (r, c) => { const x = cellOf(now, r, c); if (!x || !x.battles) return null; const w = x.wins / x.battles, ci = wilson(x.wins, x.battles);
+        return { text: pct(w), bg: seqColor(w), tip: [`${x.wins} wins of ${x.battles}`, `95% range ${pct(ci[0])}–${pct(ci[1])}`, `${x.timeouts} timeouts, ${x.losses} losses`] }; } });
+      heatmap(B, { rows, cols, cell: (r, c) => { const x = cellOf(now, r, c), y = cellOf(start, r, c); if (!x || !y || !x.battles || !y.battles) return null; const d = x.wins / x.battles - y.wins / y.battles;
+        return { text: pp(d).replace(' pts', ''), bg: divColor(d), tip: [`start ${y.wins}/${y.battles} → now ${x.wins}/${x.battles}`, 'few battles per cell: treat single cells as noise'] }; } });
+      body.append(h('div', { class: 'heat-pair' }, h('div', {}, h('h3', { text: 'Win rate now (champion)' }), A), h('div', {}, h('h3', { text: 'Change since the untrained brain (percentage points)' }), B)));
+    } else {
+      const now = trialGroups(t.best), start = trialGroups(t.initial);
+      const facs = [...new Set([...now.values()].map(e => e.faction))], maps = [...new Set([...now.values()].map(e => e.map))];
+      const A = h('div', {}), B = h('div', {});
+      const get = (m, f, p) => m.get(f + '|' + p);
+      heatmap(A, { rows: facs, cols: maps, cell: (r, c) => { const e = get(now, r, c); if (!e) return null; const v = e.f / e.n; return { text: f3(v), bg: seqColor((v + 0.2) / 1.6), tip: [`mean fitness ${f3(v)} over ${e.n} games`] }; } });
+      heatmap(B, { rows: facs, cols: maps, cell: (r, c) => { const e = get(now, r, c), s = get(start, r, c); if (!e || !s) return null; const d = e.f / e.n - s.f / s.n; return { text: sgn(d), bg: divColor(d / 0.5), tip: [`start ${f3(s.f / s.n)} → now ${f3(e.f / e.n)}`] }; } });
+      body.append(h('div', { class: 'heat-pair' }, h('div', {}, h('h3', { text: 'Mean fitness now (champion)' }), A), h('div', {}, h('h3', { text: 'Change since the untrained brain' }), B)));
+    }
+    el.append(body);
+  };
+  el.querySelector('h2').after(h('p', { class: 'note', text: t.kind === 'tactical' ? 'Champion validation: rows are scenarios; columns are opponent behaviors (charge, hold or kite). Each cell is only a handful of battles, so look for rows and columns that move together, not single cells.' : 'Champion validation fitness by faction and map, compared with the starting brain.' }));
+  el.classList.add('wide');
+  return { el, draw };
+}
+
+function chartDrift(t) {
+  const el = card('What has the brain actually changed?', 'Change in matching enabled weights and biases since the start. The percentage compares the length of the change vector with the length of the starting parameter vector; it is not a percentage of neurons or connections. Structural changes appear in the diagram above. Weight movement alone does not prove improvement.');
+  const drift = (t.drift || []).slice().sort((a, b) => b.relative - a.relative);
+  if (!drift.length) { el.append(h('p', { class: 'empty', text: 'No starting/current brain pair in state.json.' })); return { el, draw() {} }; }
+  for (const d of drift) {
+    el.append(h('div', { class: 'bar', title: d.role || '' }, h('span', { text: d.module }),
+      h('span', { class: 'sub', text: 'relative to starting weights' }),
+      h('span', { text: (d.relative * 100).toFixed(0) + '% relative weight change' })));
+    if (d.top_inputs.length) el.append(h('div', { class: 'sub', style: 'margin:-1px 0 4px 118px', text: 'moved most: ' + d.top_inputs.map(i => i.input).join(', ') }));
+  }
+  el.append(tableView(['Module', 'Weight change', 'Relative change', 'Most-changed inputs'], drift.map(d => [d.module, d.change.toFixed(3), (d.relative * 100).toFixed(0) + '%', d.top_inputs.map(i => i.input + ' ' + i.change.toFixed(2)).join('; ')])));
+  return { el, draw() {} };
+}
+
+function chartSignal(t) {
+  const el = card('Can training distinguish better candidates?', 'Spread of candidate fitness inside the latest generation, per stage. σ is the standard deviation of the scores; distinct counts different fitness scores. Zero spread means every candidate received the same score, so that stage provides no ranking signal this generation.');
+  el.append(...[]);
+  const last = t.generations[t.generations.length - 1];
+  if (!last) { el.append(h('p', { class: 'empty', text: 'No generations yet.' })); return { el, draw() {} }; }
+  const maxStd = Math.max(1e-9, ...last.islands.flatMap(i => i.stage_diagnostics.map(d => d.std_dev || 0)));
+  for (const i of last.islands) {
+    el.append(h('div', { class: 'sub', text: i.name + ' island, generation ' + last.generation }));
+    for (const d of i.stage_diagnostics) {
+      const flat = (d.std_dev || 0) < 1e-9 || (d.unique_fitness || 0) <= 1;
+      el.append(h('div', { class: 'bar' }, h('span', { text: d.name }),
+        h('div', { class: 'track' }, h('div', { class: 'fill' + (flat ? ' flat' : ''), style: `width:${Math.max(2, (d.std_dev || 0) / maxStd * 100)}%` })),
+        h('span', { text: flat ? '⚠ flat' : 'σ ' + d.std_dev.toFixed(3) + ' · ' + d.unique_fitness + ' distinct' })));
+    }
+  }
+  return { el, draw() {} };
+}
+
+function chartEvents(t) {
+  const icons = { good: '✓', warn: '⚠', info: 'ℹ' };
+  const el = card('What happened?', 'Newest first: champions, candidate rejection reasons, restarts and warnings. Screening chooses which candidates advance; independent fresh tests decide whether to replace the champion. Center means current branch weights; sample means its best training variation.');
+  el.append(t.events.length ? h('ul', { class: 'events' }, t.events.map(e => h('li', {}, h('span', { class: 'gen', text: 'gen ' + e.generation }), h('span', { class: 'ic ' + e.level, text: icons[e.level] || '•' }), h('span', { text: e.text }))))
+                            : h('p', { class: 'empty', text: 'Nothing notable yet.' }));
+  return { el, draw() {} };
+}
+
+
+// The graph describes wiring, not which inputs caused a decision in a battle.
+function chartStructure(t) {
+  const el = h('section', {class:'card wide', 'aria-label':'Brain transformation'});
+  el.append(h('h2', {text:'How the brain is changing'}),
+    h('p', {class:'note', text:'Viewing recorded brains is read-only. The selectors below change only this diagram and its comparison; the campaign summary above always describes the current champion. A champion is the best brain accepted by the campaign’s checks. Experiments inherit its weights, change one structural setting, then train their weights before competing to replace it.'}));
+  const snapshots = t.structure_snapshots || {}, events = t.structural_events || [], promotions = t.promotion_history || [];
+  const labels = {}, order = [];
+  function nameSnapshot(key,label) { if(key && snapshots[key]) { if(!order.includes(key)) order.push(key); labels[key]=label; } }
+  nameSnapshot(t.initial_snapshot,'Starting champion');
+  events.forEach(e => nameSnapshot(e.proposal_sha256,`Experiment · generation ${e.generation} · ${e.island} · attempt ${e.attempt}`));
+  promotions.forEach(e => nameSnapshot(e.brain_sha256,`Accepted champion · generation ${e.generation} · ${e.island}`));
+  nameSnapshot(t.champion_snapshot,'Current champion');
+  if(!order.length) { el.append(h('p',{class:'empty',text:'Brain snapshots are unavailable in this run.'})); return {el,draw(){}}; }
+  const select = h('select', {'aria-label':'Brain snapshot'}, order.map(key=>h('option',{value:key,text:labels[key],selected:key===t.champion_snapshot})));
+  const moduleSelect = h('select', {'aria-label':'Decision module'});
+  const compare = h('select', {'aria-label':'Compare structure with'},
+    h('option',{value:'parent',text:'Its parent'}), h('option',{value:'initial',text:'Starting champion'}));
+  const disabled = h('input', {type:'checkbox','aria-label':'Show disabled connections'});
+  const controls = h('div',{class:'row'},h('label',{},'Brain: ',select),h('label',{},'Decision module: ',moduleSelect),
+    h('label',{},'Compare with: ',compare),h('label',{},disabled,' Show disabled connections'));
+  const summary = h('p',{class:'sub'}), response = h('p',{class:'note'}), changes = h('div'), graph = h('div', {class:'network-scroll'});
+  const outputHelp = h('p',{class:'note'});
+  el.append(controls,summary,response,
+    h('details',{},h('summary',{text:'How to read this network · what tanh, Softsign and Leaky ReLU mean'}),h('p',{class:'note',text:'Read left to right: battle facts → hidden neurons (small calculations) → instruction. Activation means how a neuron turns its calculated number into an outgoing signal. tanh gives a smooth −1…+1 dial; Softsign approaches those limits more gradually; Leaky ReLU keeps positive values and reduces negative values to 1%. Final outputs always use tanh.'})),
+    h('div',{class:'legend'},h('span',{style:'--c:var(--ink2)',text:'solid: enabled connection'}),h('span',{style:'--c:var(--s2)',text:'orange: changed since comparison'}),h('span',{text:'dashed / OFF: disabled connection or input'})),
+    h('p',{class:'note',text:'Orange dashed edges are changed disabled connections; these stay visible even with the checkbox off. Disabled inputs always keep their labels. On narrow screens, scroll the diagram sideways to follow the full path.'}), outputHelp,changes,graph);
+  const pretty = value => ({tanh:'tanh',softsign:'Softsign',leaky_relu:'Leaky ReLU'})[value] || String(value);
+  const label = value => String(value).replaceAll('_',' ');
+  function describe(c) {
+    if(c.kind==='shape') return c.text;
+    if(c.kind==='activation') return `${c.module}: ${c.label} changed from ${pretty(c.before)} to ${pretty(c.after)}`;
+    return `${c.after?'Enabled':'Disabled'} ${c.kind==='input'?'input':'connection'} ${label(c.label)} in ${c.module}`;
+  }
+  function draw() {
+    const key=select.value, snapshot=snapshots[key];
+    graph.replaceChildren();changes.replaceChildren();
+    if(!snapshot?.available) { summary.textContent=snapshot?.error || 'Snapshot unavailable.';return; }
+    const mod=snapshot.modules.find(m=>m.name===moduleSelect.value);
+    if(!mod) { summary.textContent='This snapshot has no matching decision module.';return; }
+    const outputs = mod.nodes.filter(n=>n.layer===mod.sizes.length-1).map(n=>n.label);
+    outputHelp.textContent=outputs.includes('advance') ? 'For advance: negative pushes backward, zero adds no movement, positive pushes toward the target. Other modules also contribute to final movement.' : mod.name==='target_selector' ? 'This module ranks possible targets: a higher score makes a contact more preferred. The diagram shows wiring, not a live target choice.' : 'Outputs range from −1 to +1. Their meaning depends on the named decision module; this diagram shows structure, not a live decision.';
+    const comparison = compare.value==='initial' ? t.initial_snapshot : t.snapshot_parents?.[key];
+    const diff=(t.structure_diffs?.[key]?.[compare.value] || []).filter(c=>c.module===mod.name);
+    const changed=new Map(diff.map(c=>[c.target,c]));
+    const relation = comparison ? (labels[comparison] || 'recorded parent') : 'parent unavailable';
+    summary.textContent=`${mod.role} · ${mod.enabled_inputs}/${mod.available_inputs} inputs enabled; ${mod.connected_inputs} have a path to an output · ${mod.enabled_connections}/${mod.possible_connections} connections enabled.`;
+    response.textContent='Hidden processing functions: '+Object.entries(mod.activation_counts).filter(([,n])=>n).map(([a,n])=>`${n} ${pretty(a)}`).join(', ')+'. Counts describe wiring, not how important an input is.';
+    const W=Math.max(1000,360+240*(mod.sizes.length-1)), H=Math.max(290,90+mod.sizes.reduce((a,b)=>Math.max(a,b),0)*34);
+    const svg=sv('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':`${mod.name} network. ${mod.enabled_inputs} inputs enabled. ${diff.length} structural changes.`,style:`width:100%;min-width:780px;height:auto`});
+    const positions=new Map();
+    mod.nodes.forEach(n=>positions.set(n.id,[260+n.layer*(W-420)/(mod.sizes.length-1),65+(n.neuron+0.5)*(H-105)/mod.sizes[n.layer]]));
+    const edges=sv('g',{}),nodes=sv('g',{});
+    const marker=sv('marker',{id:'structure-arrow',viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'},sv('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'var(--muted)'}));
+    svg.append(sv('defs',{},marker));
+    ['Battle facts',...mod.sizes.slice(1,-1).map((_,i)=>`Hidden layer ${i+1}`),'Instruction'].forEach((text,i)=>svg.append(sv('text',{x:260+i*(W-420)/(mod.sizes.length-1),y:24,'text-anchor':'middle',fill:'var(--ink2)','font-size':13,text})));
+    mod.edges.forEach(e=>{
+      const change=changed.get(e.id);
+      if(!e.effective && !disabled.checked && !change) return;
+      const [x,y]=positions.get(e.source),[u,v]=positions.get(e.target);
+      edges.append(sv('path',{d:`M${x+13},${y} C${(x+u)/2},${y} ${(x+u)/2},${v} ${u-15},${v}`,fill:'none',stroke:change?'var(--s2)':'var(--muted)','stroke-width':change?2.5:1,'stroke-dasharray':e.effective?null:'5 5',opacity:change?1:e.effective?0.5:0.22,'marker-end':'url(#structure-arrow)'},
+        sv('title',{text:`${e.id} · ${e.enabled?'enabled':'disabled'}${e.enabled&&!e.effective?' (input is disabled)':''} · weight ${e.weight}`})));
+    });
+    mod.nodes.forEach(n=>{
+      const [x,y]=positions.get(n.id),change=changed.get(n.id);
+      const node=sv('g',{});
+      node.append(sv('circle',{cx:x,cy:y,r:13,fill:'var(--surface)',stroke:change?'var(--s2)':'var(--ink2)','stroke-width':change?3:1.5,'stroke-dasharray':n.enabled?null:'3 3'}));
+      node.append(sv('text',{x,y:y+4,'text-anchor':'middle',fill:'var(--ink)','font-size':10,text:n.layer===0?(n.enabled?'I':'OFF'):n.layer===mod.sizes.length-1?'O':'H'}));
+      const text=n.layer===0?label(n.label)+(n.enabled?'':' [OFF]'):n.layer===mod.sizes.length-1?label(n.label):`${n.label} · ${pretty(n.activation)}`;
+      node.append(sv('text',{x:n.layer===0?x-22:x+22,y:y+4,'text-anchor':n.layer===0?'end':'start',fill:'var(--ink)','font-size':12,text:text.length>36?text.slice(0,35)+'…':text}));
+      node.append(sv('title',{text:label(n.label)+(n.activation?' · '+pretty(n.activation):n.enabled?n.connected?' · enabled and connected':' · enabled, no output path':' · disabled')+(change?' · changed':'')}));
+      nodes.append(node);
+    });
+    svg.append(edges,nodes);graph.append(svg);
+    changes.append(h('p',{class:'note',text:comparison?`Compared with ${relation}: ${diff.length} structural change(s) in this module. Parent means the champion an experiment inherited from, or the incumbent an accepted brain replaced; it can be several generations earlier. Weight training is separate.`:'No recorded parent for this snapshot. Choose “Starting champion” to compare with the initial brain.'}));
+    if(diff.length) changes.append(h('ul',{},diff.map(c=>h('li',{text:describe(c)}))));
+  }
+  function modules() {
+    const previous=moduleSelect.value;
+    moduleSelect.replaceChildren(...(snapshots[select.value]?.modules || []).map(m=>h('option',{value:m.name,text:label(m.name)})));
+    const preferred=(t.structure_diffs?.[select.value]?.parent || []).find(c=>c.module)?.module;
+    if(preferred && [...moduleSelect.options].some(o=>o.value===preferred))moduleSelect.value=preferred;
+    else if([...moduleSelect.options].some(o=>o.value===previous))moduleSelect.value=previous;
+    draw();
+  }
+  select.addEventListener('change',modules);moduleSelect.addEventListener('change',draw);compare.addEventListener('change',draw);disabled.addEventListener('change',draw);
+  el.append(h('h3',{text:'Transformation history'}),h('p',{class:'note',text:'Generation counts weight-training rounds. Attempt counts structural experiments within a search branch (an “island”). A recorded experiment shows its proposed structure before weight training. Accepted changes may reflect both the edit and subsequent weight training.'}));
+  if(!t.structural_history_available)el.append(h('p',{text:'Structural history was not recorded for this run. Only the available starting/current brains can be shown.'}));
+  else if(!events.length)el.append(h('p',{text:'No structural experiments committed yet. This may be a weight-only run or training may not have reached its first structural generation.'}));
+  else {
+    const outcomes={training:'Still training',evaluated_without_promotion:'Evaluated; not promoted',accepted:'Accepted as champion',superseded_without_evaluation:'Replaced by next experiment before evaluation'};
+    const rows=events.map(e=>[e.generation,`${e.island} · attempt ${e.attempt}`,(e.changes||[]).map(describe).join('; ')||'Snapshot unavailable',(outcomes[e.outcome]||e.outcome)+(e.accepted_generation?' at generation '+e.accepted_generation:'')]);
+    const historyTable=tableView(['Generation','Search branch','Proposed change','Outcome so far'],rows);
+    historyTable.open=true;
+    const historyLabel=historyTable.querySelector('summary');if(historyLabel)historyLabel.textContent='Recorded structural experiments';
+    el.append(h('div',{class:'scroll'},historyTable));
+  }
+  modules();return {el,draw};
+}
+
+let drawers = [];
+function render() {
+  hideTip();
+  const t = D.tracks[state.track];
+  const view = document.getElementById('view');
+  view.replaceChildren();
+  if (!t) { view.append(h('p', { class: 'empty', text: 'No tracks recorded yet.' })); return; }
+  const names = islandNames(t);
+  if (!state.island || !names.includes(state.island)) state.island = names[0] || null;
+  view.append(h('div', { class: 'verdict ' + t.verdict.level }, h('b', { text: ({ progress: 'Making progress', early: 'Too early to tell', flat: 'No change yet', mixed: 'Mixed evidence', regress: 'Getting worse', stalled: D.meta.status === 'completed' ? 'Completed · no recent improvement' : 'No recent improvement', waiting: 'Waiting' })[t.verdict.level] || '' }), t.verdict.text));
+  view.append(h('h2',{style:'font-size:15px',text:'Campaign summary — current champion'}));
+  view.append(renderTiles(t));
+  const coverage = chartCoverage(t);
+  view.append(coverage.el);
+  const search = (t.search_islands || []).map(i => i.structural_search
+    ? `${i.name}: tries one change to an activation function, input or connection, then trains its weights for ${i.structural_search.every || 10} generations`
+    : i.follow_champion ? `${i.name}: refines the latest champion's weights and adopts any new champion structure next generation`
+    : `${i.name}: refines weights on its inherited structure`);
+  if(search.length) view.append(h('p',{class:'sub',text:search.join('. ')+'.'}));
+  view.append(h('p',{class:'sub',text:'Fitness rewards the configured battle or economy goals. Higher is better within the same evaluation; zero is not a pass/fail mark. Validation and holdout use different tests, so compare each with its own starting score.'}));
+  const structure = chartStructure(t);
+  view.append(structure.el);
+  const setHash = () => { location.hash = t.name + '/' + (state.island || '') + '/' + state.kind; };
+  const controls = [];
+  if (names.length > 1) controls.push(h('label', { text: 'Island:' }), h('select', { 'aria-label': 'Island', onchange: e => { state.island = e.target.value; setHash(); render(); } },
+    names.map(n => h('option', { value: n, text: n, selected: n === state.island }))));
+  controls.push(h('label', { text: 'Candidate:' }), h('select', { 'aria-label': 'Candidate validated', onchange: e => { state.kind = e.target.value; setHash(); render(); } },
+    [['center', 'island center'], ['sample', 'best sample']].map(([v, l]) => h('option', { value: v, text: l, selected: v === state.kind }))));
+  controls.push(h('span', { class: 'sub', text: 'Center = current branch weights; best sample = the variation with the best training score that round. Applies to outcome, economy and stage charts below.' }));
+  view.append(h('div', { class: 'row' }, controls));
+  const parts = t.kind === 'tactical'
+    ? [...(t.retest ? [chartRetest(t)] : []), chartFitness(t), chartOutcomes(t), chartPopulation(t), chartStages(t), chartHeat(t), chartDrift(t), chartSignal(t), chartEvents(t)]
+    : [chartFitness(t), chartEconomy(t), chartPopulation(t), chartStages(t), chartHeat(t), chartDrift(t), chartSignal(t), chartEvents(t)];
+  const grid = h('div', { class: 'grid' }, parts.map(p => p.el));
+  view.append(grid);
+  drawers = [coverage.draw, structure.draw, ...parts.map(p => p.draw)];
+  redraw();
+}
+function redraw() { drawers.forEach(d => d()); }
+
+function boot() {
+  const m = D.meta;
+  document.getElementById('title').textContent = 'Training progress · ' + m.campaign;
+  document.getElementById('subtitle').textContent = m.directory;
+  const st = document.getElementById('status');
+  st.textContent = m.live_seconds ? `live · refreshes every ${m.live_seconds}s` : m.status; if (m.live_seconds) st.classList.add('live');
+  document.getElementById('generated').textContent = 'updated ' + m.generated_at;
+  const tabs = document.getElementById('tabs');
+  tabs.after(h('p',{class:'sub',text:'Each track trains a separate brain: Tactical learns combat movement and targeting; Strategic learns production and economy decisions.'}));
+  D.tracks.forEach((t, i) => tabs.append(h('button', { role: 'tab', 'aria-selected': String(i === state.track), 'data-i': i,
+    text: t.name[0].toUpperCase() + t.name.slice(1) + ' · ' + t.generations.length + ' gens',
+    onclick: () => { state.track = i; state.island = null; location.hash = t.name; [...tabs.children].forEach((b, j) => b.setAttribute('aria-selected', String(i === j))); render(); } })));
+  document.getElementById('theme').addEventListener('click', () => {
+    const r = document.documentElement, cur = r.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    r.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark'); redraw();
+  });
+  const forced = new URLSearchParams(location.search).get('theme');
+  if (forced === 'light' || forced === 'dark') document.documentElement.setAttribute('data-theme', forced);
+  const [tn, isl, kind] = location.hash.slice(1).split('/');
+  if (kind === 'center' || kind === 'sample') state.kind = kind;
+  const idx = D.tracks.findIndex(t => t.name === tn); if (idx >= 0) { state.track = idx; state.island = isl || null; [...tabs.children].forEach((b, j) => b.setAttribute('aria-selected', String(idx === j))); }
+  document.getElementById('foot').textContent = 'Fitness is a weighted raw objective (higher is better). Champion and candidate validation charts use fixed tests; population and signal charts use training scores. ' + (m.fresh_screening ? `Candidates also face a rotating screen against the champion (minimum gain ${m.screen_min_gain}), then ${m.promotion_seeds} independent fresh paired batches (minimum gain ${m.min_gain}). ` : '') + 'The holdout checks performance on separate scenarios and never selects champions. Win-rate ranges are 95% Wilson intervals. Validation runs every ' + (m.validation_every || '?') + ' generation(s), so some charts have fewer points than the generation count.' + ((m.parked_tracks || []).length ? ` Paused training: ${m.parked_tracks.join(', ')}; those champion files are preserved.` : '');
+  render();
+  let timer; new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(redraw, 120); }).observe(document.querySelector('main'));
+  if (m.live_seconds) setTimeout(() => location.reload(), m.live_seconds * 1000);
+}
+if (D) boot(); else document.getElementById('view').textContent = 'No data embedded. Generate this page with scripts/campaign_dashboard.py.';
+</script>
+</body>
+</html>

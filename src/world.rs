@@ -14,6 +14,7 @@ use crate::construction::{
 use crate::economy::{ResourceDemand, ResourcePool, Resources, TeamEconomy};
 use crate::engine::{
     CombatCommand, CombatDefinitionId, CombatError, CombatSpawn, CombatStepper, CombatantUpdate,
+    TargetObservation,
 };
 use crate::entity::{EntityId, EntityStore};
 use crate::map::{CompiledMap, MapError, StaticBlocker};
@@ -28,6 +29,7 @@ use crate::score::{
     MilestoneCondition, MilestoneDeclaration, ResourceLedger, StrategicMetric,
     StrategicMetricVector,
 };
+use crate::sensors::{self, Detection, SensorUnit};
 use crate::strategy::{
     ActionCapabilities, ActionDecision, ActionEntity, ActionInbox, ActionRejection,
     ActionValidator, ActionWorld, AttackTarget, CancelTarget, FactoryQueueOperation,
@@ -394,6 +396,25 @@ struct WallBreachRecord {
     entrants: BTreeSet<EntityId>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct ContactMemory {
+    last: ObservedEntity,
+    ghost: Option<ObservedEntity>,
+    continuous: bool,
+    uncertainty: f32,
+    /// `sensor_seconds` of the last tick a sensor detected this entity.
+    seen_at: f64,
+}
+
+#[derive(Clone, Debug)]
+struct CloakState {
+    wanted: bool,
+    cloaked: bool,
+    blocked_until: f64,
+    next_check: f64,
+    last_position: Vec2,
+}
+
 /// One deterministic strategic trial. Parallelism belongs around `World`, not
 /// within `step`, so action and resource ordering remain reproducible.
 pub struct World {
@@ -420,7 +441,10 @@ pub struct World {
     repair_orders: BTreeMap<EntityId, EntityId>,
     reclaim_orders: BTreeMap<EntityId, ReclaimTarget>,
     observation_policy: ObservationPolicy,
-    observation_memory: RefCell<[BTreeMap<EntityId, ObservedEntity>; 2]>,
+    observation_memory: RefCell<[BTreeMap<EntityId, ContactMemory>; 2]>,
+    observation_memory_policy: RefCell<[Option<ObservationPolicy>; 2]>,
+    cloak_states: BTreeMap<EntityId, CloakState>,
+    sensor_seconds: f64,
     next_project_id: ProjectId,
     combat: Option<WorldCombatRuntime>,
     walls: BTreeMap<EntityId, WallRecord>,
@@ -469,6 +493,9 @@ impl World {
             reclaim_orders: BTreeMap::new(),
             observation_policy: config.observation_policy,
             observation_memory: RefCell::new(std::array::from_fn(|_| BTreeMap::new())),
+            observation_memory_policy: RefCell::new([None, None]),
+            cloak_states: BTreeMap::new(),
+            sensor_seconds: 0.0,
             next_project_id: 1,
             combat: None,
             walls: BTreeMap::new(),
@@ -1132,6 +1159,7 @@ impl World {
         }
         self.construction.remove(project_id);
         if let Some(entity) = project.entity {
+            self.forget_observed_removal(entity);
             self.walls.remove(&entity);
             self.occupancy.remove_occupant(occupant(entity));
             self.entities.remove(entity);
@@ -1144,7 +1172,40 @@ impl World {
         true
     }
 
+    fn forget_observed_removal(&mut self, entity: EntityId) {
+        // A death observed in LOS or radar is known. Only an entirely unseen
+        // building death can leave a dead ghost (UnitDrawerData::canSeeGhost).
+        let policies = *self.observation_memory_policy.borrow();
+        for side in 0..2 {
+            let observed = policies[side].is_some_and(|policy| {
+                let Some(target) = self.entities.get(entity) else {
+                    return false;
+                };
+                match policy {
+                    ObservationPolicy::Omniscient => true,
+                    ObservationPolicy::Filtered {
+                        line_of_sight_range,
+                        radar_range,
+                        ..
+                    } => {
+                        let units = self.sensor_snapshots(line_of_sight_range, radar_range);
+                        let target =
+                            self.sensor_snapshot(entity, target, line_of_sight_range, radar_range);
+                        sensors::detect(side as u8, &target, &units, |a, b, c, d| {
+                            self.sensor_terrain_clear(a, b, c, d)
+                        })
+                        .is_some()
+                    }
+                }
+            });
+            if observed {
+                self.observation_memory.get_mut()[side as usize].remove(&entity);
+            }
+        }
+    }
+
     pub fn destroy_entity(&mut self, entity: EntityId) -> bool {
+        self.forget_observed_removal(entity);
         let Some(removed) = self.entities.remove(entity) else {
             return false;
         };
@@ -1249,6 +1310,178 @@ impl World {
         self.observation_policy
     }
 
+    /// Desired cloak and actual cloak differ when enemies, EMP, firing or
+    /// energy costs prevent cloaking. This method reports actual visibility.
+    pub fn entity_is_cloaked(&self, id: EntityId) -> bool {
+        let Some(entity) = self.entities.get(id) else {
+            return false;
+        };
+        let Some(definition) = self.catalog.get(entity.definition) else {
+            return false;
+        };
+        if !definition.strategic.can_cloak || !entity.is_active() {
+            return false;
+        }
+        // initCloaked requests cloak; actual cloak begins only after admission.
+        self.cloak_states.get(&id).is_some_and(|c| c.cloaked)
+    }
+
+    pub fn set_cloak(&mut self, id: EntityId, wanted: bool) -> Result<(), WorldError> {
+        let entity = self.entities.get(id).ok_or(WorldError::InvalidEntity(id))?;
+        let definition = self.catalog.get(entity.definition).expect("catalog ID");
+        if !definition.strategic.can_cloak {
+            return Err(WorldError::InvalidEntity(id));
+        }
+        if self
+            .cloak_states
+            .get(&id)
+            .is_some_and(|state| state.wanted == wanted)
+        {
+            return Ok(());
+        }
+        let state = self.cloak_states.entry(id).or_insert(CloakState {
+            wanted: definition.strategic.start_cloaked,
+            cloaked: false,
+            blocked_until: 0.0,
+            next_check: self.sensor_seconds,
+            last_position: entity.position,
+        });
+        state.wanted = wanted;
+        if !wanted {
+            state.cloaked = false;
+        }
+        state.next_check = self.sensor_seconds;
+        self.advance_cloaks(0.0);
+        Ok(())
+    }
+
+    fn advance_cloaks(&mut self, seconds: f64) {
+        if seconds > 0.5 {
+            let mut remaining = seconds;
+            while remaining > 0.5 {
+                self.advance_cloaks(0.5);
+                remaining -= 0.5;
+            }
+            if remaining > 0.0 {
+                self.advance_cloaks(remaining);
+            }
+            return;
+        }
+        self.sensor_seconds += seconds;
+        self.cloak_states
+            .retain(|id, _| self.entities.contains(*id));
+        let units = self
+            .entities
+            .iter()
+            .filter_map(|(id, e)| {
+                let d = self.catalog.get(e.definition)?;
+                d.strategic
+                    .can_cloak
+                    .then_some((id, e.position, e.owner, e.is_active(), d))
+            })
+            .collect::<Vec<_>>();
+        for (id, position, side, active, definition) in units {
+            let d = &definition.strategic;
+            let state = self.cloak_states.entry(id).or_insert(CloakState {
+                wanted: d.start_cloaked,
+                cloaked: false,
+                blocked_until: 0.0,
+                next_check: 0.0,
+                last_position: position,
+            });
+            if self.sensor_seconds + 1e-9 < state.next_check {
+                state.last_position = position;
+                continue;
+            }
+            let dt = seconds.max(1.0 / 30.0);
+            let speed = self
+                .combat
+                .as_ref()
+                .and_then(|c| c.stepper.combatant(id.to_raw()))
+                .map_or_else(
+                    || position.distance(state.last_position) / dt as f32,
+                    |u| u.speed.abs(),
+                );
+            let stunned = self
+                .combat
+                .as_ref()
+                .and_then(|c| c.stepper.combatant(id.to_raw()))
+                .is_some_and(|u| u.stunned);
+            let proximity = d.min_cloak_distance > 0.0
+                && self.entities.iter().any(|(other_id, e)| {
+                    if other_id == id
+                        || e.owner >= 2
+                        || e.owner == side
+                        || e.role == EntityRole::Feature
+                    {
+                        return false;
+                    }
+                    let mut distance = position.distance_squared(e.position);
+                    if d.decloak_spherical {
+                        let target_def = self.catalog.get(e.definition).expect("catalog ID");
+                        let y = self.map.ground_height(position.x, position.z)
+                            + definition.movement.collision_mid_y();
+                        let other_y = self.map.ground_height(e.position.x, e.position.z)
+                            + target_def.movement.collision_mid_y();
+                        distance += (y - other_y).powi(2);
+                    }
+                    let radius = d.min_cloak_distance
+                        + if d.decloak_spherical {
+                            self.catalog
+                                .get(e.definition)
+                                .expect("catalog ID")
+                                .movement
+                                .radius
+                                .max(0.0)
+                        } else {
+                            0.0
+                        };
+                    distance <= radius * radius
+                });
+            let allowed = state.wanted
+                && active
+                && !stunned
+                && !proximity
+                && self.sensor_seconds + 1e-9 >= state.blocked_until
+                && side < 2;
+            let cost = if speed > 0.2_f32.sqrt() * crate::model::SIM_HZ {
+                d.cloak_cost_moving.unwrap_or(d.cloak_cost)
+            } else {
+                d.cloak_cost
+            };
+            let charge = f64::from(cost.max(0.0)) * 0.5;
+            state.cloaked =
+                allowed && self.teams[side.min(1) as usize].economy.energy.stored + 1e-12 >= charge;
+            if state.cloaked {
+                self.teams[side as usize].economy.energy.spend(charge);
+            }
+            // BAR's cloak gadget charges each successful half-second check.
+            // Proximity and insufficient energy do not add a firing cooldown.
+            state.next_check = self.sensor_seconds + 0.5;
+            state.last_position = position;
+        }
+    }
+
+    fn update_sensor_memory(&self) {
+        if let ObservationPolicy::Filtered {
+            line_of_sight_range,
+            radar_range,
+            radar_position_resolution,
+            remember_last_seen,
+        } = self.observation_policy
+        {
+            for side in 0..2 {
+                self.filtered_entities(
+                    side,
+                    line_of_sight_range,
+                    radar_range,
+                    radar_position_resolution,
+                    remember_last_seen,
+                );
+            }
+        }
+    }
+
     /// Selects the policy used by [`Self::observation`] and attack-target
     /// validation. Omniscient remains the default for existing callers.
     pub fn set_observation_policy(&mut self, policy: ObservationPolicy) {
@@ -1257,6 +1490,7 @@ impl World {
                 .get_mut()
                 .iter_mut()
                 .for_each(BTreeMap::clear);
+            *self.observation_memory_policy.get_mut() = [None, None];
         }
         self.observation_policy = policy;
     }
@@ -1354,6 +1588,15 @@ impl World {
                         .as_ref()
                         .is_none_or(|identified| identified.contains(&source));
                 let blocked_by_friendly_wall = target_id
+                    .filter(|id| {
+                        entities.iter().any(|e| {
+                            e.id == *id
+                                && matches!(
+                                    e.visibility,
+                                    ObservationVisibility::Own | ObservationVisibility::LineOfSight
+                                )
+                        })
+                    })
                     .and_then(|target_id| {
                         self.entities
                             .get(target_id)
@@ -1451,7 +1694,62 @@ impl World {
                 (entity.health as f32 / definition.health.max(f32::EPSILON)).clamp(0.0, 1.0),
             ),
             visibility,
+            age_seconds: 0.0,
+            position_error: 0.0,
         }
+    }
+
+    fn sensor_snapshot(
+        &self,
+        id: EntityId,
+        entity: &WorldEntity,
+        los: f32,
+        radar: f32,
+    ) -> SensorUnit {
+        let definition = self.catalog.get(entity.definition).expect("catalog ID");
+        let mut unit = SensorUnit::from_definition(
+            id.to_raw(),
+            entity.owner,
+            entity.position,
+            self.map.ground_height(entity.position.x, entity.position.z) - self.map.water_level,
+            definition,
+        );
+        unit.active = entity.role != EntityRole::Feature && entity.is_active();
+        unit.being_built = !entity.is_active();
+        let stunned = self
+            .combat
+            .as_ref()
+            .and_then(|c| c.stepper.combatant(id.to_raw()))
+            .is_some_and(|u| u.stunned);
+        // Recoil deactivation/stun disables electronic coverage; an energy
+        // shortage alone does not implicitly toggle a radar or jammer off.
+        unit.enabled = entity.enabled && !stunned;
+        if definition.strategic.sight_distance.is_none() {
+            unit.sight = los;
+            unit.air_sight = definition.strategic.air_sight_distance.unwrap_or(los * 1.5);
+        }
+        if definition.strategic.radar_radius.is_none() {
+            unit.radar = radar;
+        }
+        unit.cloaked = self.entity_is_cloaked(id);
+        unit
+    }
+
+    fn sensor_snapshots(&self, los: f32, radar: f32) -> Vec<SensorUnit> {
+        self.entities
+            .iter()
+            .map(|(id, e)| self.sensor_snapshot(id, e, los, radar))
+            .collect()
+    }
+
+    fn sensor_terrain_clear(&self, from: Vec2, from_y: f32, to: Vec2, to_y: f32) -> bool {
+        sampled_terrain_line_of_sight(
+            &self.map,
+            from,
+            from_y + self.map.water_level,
+            to,
+            to_y + self.map.water_level,
+        )
     }
 
     fn filtered_entities(
@@ -1462,127 +1760,230 @@ impl World {
         radar_position_resolution: f32,
         remember_last_seen: bool,
     ) -> Vec<ObservedEntity> {
-        let los_range_squared = finite_sensor_range_squared(line_of_sight_range);
-        let radar_range_squared = finite_sensor_range_squared(radar_range);
-        let sensors: Vec<_> = self
-            .entities
-            .iter()
-            .filter(|(_, entity)| {
-                entity.owner == side && entity.is_active() && entity.role != EntityRole::Feature
-            })
-            .collect();
-
-        let mut entities: Vec<_> = self
-            .entities
-            .iter()
-            .filter_map(|(id, entity)| {
-                if entity.owner == side {
-                    return Some(self.exact_entity_observation(
-                        id,
-                        entity,
-                        ObservationVisibility::Own,
-                    ));
-                }
-
-                match self.visibility_from_sensors(
-                    &sensors,
-                    id,
-                    entity,
-                    los_range_squared,
-                    radar_range_squared,
-                ) {
-                    Some(ObservationVisibility::LineOfSight) => {
-                        Some(self.exact_entity_observation(
-                            id,
-                            entity,
-                            ObservationVisibility::LineOfSight,
-                        ))
-                    }
-                    Some(ObservationVisibility::Radar) => Some(ObservedEntity {
-                        id,
-                        side: entity.owner,
-                        definition: None,
-                        kind: StrategyEntityKind::Unknown,
-                        position: quantized_radar_position(
-                            entity.position,
-                            radar_position_resolution,
-                            self.map.width,
-                            self.map.depth,
-                        ),
-                        health_fraction: None,
-                        visibility: ObservationVisibility::Radar,
-                    }),
-                    _ => None,
-                }
-            })
-            .collect();
-
-        if !remember_last_seen {
-            return entities;
-        }
-
-        let current_ids: BTreeSet<_> = entities.iter().map(|entity| entity.id).collect();
+        self.observation_memory_policy.borrow_mut()[side as usize] =
+            Some(ObservationPolicy::Filtered {
+                line_of_sight_range,
+                radar_range,
+                radar_position_resolution,
+                remember_last_seen,
+            });
+        let units = self.sensor_snapshots(line_of_sight_range, radar_range);
+        let clear = |a, b, c, d| self.sensor_terrain_clear(a, b, c, d);
+        let error = sensors::radar_error_size(side, &units, radar_position_resolution);
+        let frame = (self.sensor_seconds * f64::from(crate::model::SIM_HZ)).round() as u64;
         let mut all_memory = self.observation_memory.borrow_mut();
         let memory = &mut all_memory[side as usize];
-
-        for entity in &entities {
-            if entity.side == side {
-                memory.remove(&entity.id);
-            } else {
-                let mut remembered = entity.clone();
-                remembered.visibility = ObservationVisibility::Remembered;
-                memory.insert(entity.id, remembered);
+        let mut entities = Vec::new();
+        let mut current_ids = BTreeSet::new();
+        for unit in &units {
+            let id = EntityId::from_raw(unit.key);
+            let entity = self.entities.get(id).expect("snapshot entity");
+            if entity.role == EntityRole::Feature {
+                // BAR modrules featureVisibility=3: rocks and wrecks are
+                // globally disclosed, independently of unit sensor maps.
+                memory.remove(&id);
+                entities.push(self.exact_entity_observation(
+                    id,
+                    entity,
+                    ObservationVisibility::LineOfSight,
+                ));
+                continue;
             }
+            if entity.owner == side {
+                memory.remove(&id);
+                entities.push(self.exact_entity_observation(
+                    id,
+                    entity,
+                    ObservationVisibility::Own,
+                ));
+                continue;
+            }
+            let detection = sensors::detect(side, unit, &units, clear);
+            let Some(detection) = detection else {
+                continue;
+            };
+            let previous = memory.get(&id);
+            let observed = if detection == Detection::Los {
+                self.exact_entity_observation(id, entity, ObservationVisibility::LineOfSight)
+            } else {
+                let known = previous
+                    .and_then(|m| m.ghost.as_ref().or_else(|| m.continuous.then_some(&m.last)));
+                ObservedEntity {
+                    id,
+                    side: entity.owner,
+                    definition: known.and_then(|m| m.definition.clone()),
+                    kind: known.map_or(StrategyEntityKind::Unknown, |m| m.kind),
+                    position: previous.and_then(|m| m.ghost.as_ref()).map_or_else(
+                        || sensors::radar_position(unit.key, frame, entity.position, error),
+                        |g| g.position,
+                    ),
+                    health_fraction: None,
+                    visibility: if detection == Detection::Sonar {
+                        ObservationVisibility::Sonar
+                    } else {
+                        ObservationVisibility::Radar
+                    },
+                    age_seconds: 0.0,
+                    // A ghost pins the position of a building exactly.
+                    position_error: if previous.is_some_and(|m| m.ghost.is_some()) {
+                        0.0
+                    } else {
+                        error
+                    },
+                }
+            };
+            let mut ghost = previous.and_then(|m| m.ghost.clone());
+            if detection == Detection::Los && unit.leaves_ghost {
+                let mut g = observed.clone();
+                g.visibility = ObservationVisibility::Ghost;
+                g.health_fraction = None;
+                ghost = Some(g);
+            }
+            memory.insert(
+                id,
+                ContactMemory {
+                    last: observed.clone(),
+                    ghost,
+                    continuous: true,
+                    uncertainty: if detection == Detection::Los {
+                        0.0
+                    } else {
+                        error
+                    },
+                    seen_at: self.sensor_seconds,
+                },
+            );
+            current_ids.insert(id);
+            entities.push(observed);
         }
-
-        memory.retain(|id, remembered| {
-            current_ids.contains(id)
-                || !self.position_is_observed(
-                    side,
-                    &sensors,
-                    remembered.position,
-                    los_range_squared,
-                    radar_range_squared,
-                )
+        memory.retain(|id, m| {
+            if current_ids.contains(id) {
+                return true;
+            }
+            m.continuous = false;
+            if !remember_last_seen && m.ghost.is_none() {
+                return false;
+            }
+            let remembered = m.ghost.as_ref().unwrap_or(&m.last);
+            // Recoil live ghosts survive cloak even in visible terrain. Dead
+            // ghosts are removed only by a position-LOS recheck, never radar.
+            let live_ghost = m.ghost.is_some() && self.entities.contains(*id);
+            let known = remembered
+                .definition
+                .as_deref()
+                .and_then(|name| self.catalog.get_by_name(name).map(|(_, d)| d));
+            let fallback = self
+                .catalog
+                .definitions()
+                .first()
+                .expect("remembered catalog");
+            let mut target = SensorUnit::from_definition(
+                id.to_raw(),
+                remembered.side,
+                remembered.position,
+                self.map
+                    .ground_height(remembered.position.x, remembered.position.z)
+                    - self.map.water_level,
+                known.unwrap_or(fallback),
+            );
+            // Geometry follows disclosed knowledge, never the live hidden
+            // unit's mode. Anonymous stale contacts require ground LOS.
+            target.use_air_los = known.is_some_and(|d| d.strategic.use_air_los);
+            let uncertainty = if m.ghost.is_some() {
+                0.0
+            } else {
+                m.uncertainty
+            };
+            live_ghost
+                || !units.iter().any(|u| {
+                    u.side == side
+                        && u.position.distance(target.position) + uncertainty <= u.sight
+                        && sensors::visual_coverage(u, &target, &clear)
+                })
         });
-        entities.extend(
-            memory
-                .iter()
-                .filter(|(id, _)| !current_ids.contains(id))
-                .map(|(_, remembered)| remembered.clone()),
-        );
-        entities.sort_unstable_by_key(|entity| entity.id);
+        {
+            let fastest = self.fastest_mobile_speed();
+            let diagonal = (self.map.width as f32).hypot(self.map.depth as f32);
+            entities.extend(
+                memory
+                    .iter()
+                    .filter(|(id, m)| {
+                        !current_ids.contains(id) && (remember_last_seen || m.ghost.is_some())
+                    })
+                    .map(|(_, m)| {
+                        let age = (self.sensor_seconds - m.seen_at).max(0.0) as f32;
+                        if let Some(ghost) = &m.ghost {
+                            // A building cannot have moved: only its existence
+                            // is in doubt, which the Ghost visibility says.
+                            let mut ghost = ghost.clone();
+                            ghost.age_seconds = age;
+                            ghost.position_error = 0.0;
+                            ghost
+                        } else {
+                            let mut last = m.last.clone();
+                            last.visibility = ObservationVisibility::Remembered;
+                            last.age_seconds = age;
+                            let speed = self.contact_speed_bound(&last, fastest);
+                            last.position_error = (m.uncertainty + speed * age).min(diagonal);
+                            last
+                        }
+                    }),
+            );
+        }
+        entities.sort_unstable_by_key(|e| e.id);
         entities
     }
 
-    pub fn entity_sensor_ranges(&self, entity_id: EntityId, entity: &WorldEntity) -> (f32, f32, f32) {
-        if !entity.is_active() || entity.role == EntityRole::Feature {
-            return (0.0, 0.0, 0.0);
+    /// The fastest any mobile unit in the catalog can move: the worst case
+    /// for a contact whose identity was never disclosed.
+    fn fastest_mobile_speed(&self) -> f32 {
+        self.catalog
+            .definitions()
+            .iter()
+            .filter(|definition| definition.strategic.is_mobile)
+            .map(|definition| definition.movement.max_speed)
+            .fold(0.0, f32::max)
+    }
+
+    /// Upper bound on how fast a remembered contact can have moved, from only
+    /// what has been disclosed about it.
+    fn contact_speed_bound(&self, contact: &ObservedEntity, fastest: f32) -> f32 {
+        match contact.kind {
+            StrategyEntityKind::Mobile => contact
+                .definition
+                .as_deref()
+                .and_then(|name| self.catalog.get_by_name(name))
+                .map_or(fastest, |(_, definition)| definition.movement.max_speed),
+            StrategyEntityKind::Unknown => fastest,
+            StrategyEntityKind::Structure
+            | StrategyEntityKind::Nanoframe
+            | StrategyEntityKind::Wall
+            | StrategyEntityKind::Factory
+            | StrategyEntityKind::Feature => 0.0,
         }
-        let is_complete = self.construction_progress(entity_id).map_or(true, |p| p >= 1.0);
-        if !is_complete {
-            return (0.0, 0.0, 0.0);
-        }
-        let def = self.catalog.get(entity.definition);
-        let los = def
-            .and_then(|d| d.strategic.sight_distance)
-            .or_else(|| match self.observation_policy {
-                ObservationPolicy::Filtered {
-                    line_of_sight_range,
-                    ..
-                } => Some(line_of_sight_range),
-                _ => None,
-            })
-            .unwrap_or(0.0);
-        let (radar, jammer) = if entity.enabled {
-            (
-                def.and_then(|d| d.strategic.radar_radius).unwrap_or(0.0),
-                def.and_then(|d| d.strategic.jammer_radius).unwrap_or(0.0),
-            )
-        } else {
-            (0.0, 0.0)
+    }
+
+    pub fn entity_sensor_ranges(
+        &self,
+        entity_id: EntityId,
+        entity: &WorldEntity,
+    ) -> (f32, f32, f32) {
+        let los = match self.observation_policy {
+            ObservationPolicy::Filtered {
+                line_of_sight_range,
+                ..
+            } => line_of_sight_range,
+            _ => 0.0,
         };
-        (los, radar, jammer)
+        let unit = self.sensor_snapshot(entity_id, entity, los, 0.0);
+        if !unit.active || unit.being_built {
+            return (0.0, 0.0, 0.0);
+        }
+        (
+            unit.sight,
+            if unit.enabled { unit.radar } else { 0.0 },
+            if unit.enabled { unit.jammer } else { 0.0 },
+        )
     }
 
     pub fn target_is_jammed(&self, target: &WorldEntity) -> bool {
@@ -1590,182 +1991,40 @@ impl World {
     }
 
     pub fn position_is_jammed(&self, side: u8, position: Vec2) -> bool {
-        self.entities.iter().any(|(id, entity)| {
-            entity.owner == side
-                && entity.is_active()
-                && entity.enabled
-                && entity.role != EntityRole::Feature
-                && self.construction_progress(id).map_or(true, |p| p >= 1.0)
-                && self
-                    .catalog
-                    .get(entity.definition)
-                    .and_then(|d| d.strategic.jammer_radius)
-                    .is_some_and(|rad| {
-                        rad > 0.0 && entity.position.distance_squared(position) <= rad * rad
-                    })
-        })
-    }
-
-    fn sensor_ranges_squared(
-        &self,
-        sensor_id: EntityId,
-        sensor: &WorldEntity,
-        default_los_range_squared: f32,
-        default_radar_range_squared: f32,
-    ) -> (f32, f32) {
-        if !sensor.is_active() || sensor.role == EntityRole::Feature {
-            return (0.0, 0.0);
-        }
-        let is_complete = self.construction_progress(sensor_id).map_or(true, |p| p >= 1.0);
-        if !is_complete {
-            return (0.0, 0.0);
-        }
-        let def = self.catalog.get(sensor.definition);
-        let los_sq = match def.and_then(|d| d.strategic.sight_distance) {
-            Some(dist) => finite_sensor_range_squared(dist),
-            None => default_los_range_squared,
-        };
-        let radar_sq = if !sensor.enabled {
-            0.0
-        } else {
-            match def.and_then(|d| d.strategic.radar_radius) {
-                Some(rad) => finite_sensor_range_squared(rad),
-                None => default_radar_range_squared,
-            }
-        };
-        (los_sq, radar_sq)
-    }
-
-    fn position_is_observed(
-        &self,
-        side: u8,
-        sensors: &[(EntityId, &WorldEntity)],
-        position: Vec2,
-        los_range_squared: f32,
-        radar_range_squared: f32,
-    ) -> bool {
-        let enemy_side = 1 - (side % 2);
-        let is_jammed = self.position_is_jammed(enemy_side, position);
-        sensors.iter().any(|&(sensor_id, sensor)| {
-            let (sensor_los_sq, sensor_radar_sq) =
-                self.sensor_ranges_squared(sensor_id, sensor, los_range_squared, radar_range_squared);
-            let distance_squared = sensor.position.distance_squared(position);
-            (!is_jammed && sensor_radar_sq > 0.0 && distance_squared <= sensor_radar_sq)
-                || (sensor_los_sq > 0.0
-                    && distance_squared <= sensor_los_sq
-                    && self.sensor_has_line_of_sight_to_position(
-                        sensor_id,
-                        sensor,
-                        None,
-                        position,
-                        self.map.ground_height(position.x, position.z) + 0.5,
-                    ))
+        let units = self.sensor_snapshots(0.0, 0.0);
+        units.iter().any(|u| {
+            u.side == side
+                && u.active
+                && u.enabled
+                && !u.being_built
+                && u.jammer > 0.0
+                && u.position.distance_squared(position) <= u.jammer * u.jammer
         })
     }
 
     fn visibility_from_sensors(
         &self,
-        sensors: &[(EntityId, &WorldEntity)],
+        _sensors: &[(EntityId, &WorldEntity)],
         target_id: EntityId,
         target: &WorldEntity,
         los_range_squared: f32,
         radar_range_squared: f32,
     ) -> Option<ObservationVisibility> {
-        let is_jammed = self.target_is_jammed(target);
-        let mut radar_contact = false;
-        for &(sensor_id, sensor) in sensors {
-            let (sensor_los_sq, sensor_radar_sq) =
-                self.sensor_ranges_squared(sensor_id, sensor, los_range_squared, radar_range_squared);
-            let distance_squared = sensor.position.distance_squared(target.position);
-            if sensor_los_sq > 0.0
-                && distance_squared <= sensor_los_sq
-                && self.sensor_has_line_of_sight(sensor_id, sensor, target_id, target)
-            {
-                return Some(ObservationVisibility::LineOfSight);
-            }
-            if !is_jammed && sensor_radar_sq > 0.0 && distance_squared <= sensor_radar_sq {
-                radar_contact = true;
-            }
-        }
-        radar_contact.then_some(ObservationVisibility::Radar)
-    }
-
-    fn sensor_has_line_of_sight(
-        &self,
-        sensor_id: EntityId,
-        sensor: &WorldEntity,
-        target_id: EntityId,
-        target: &WorldEntity,
-    ) -> bool {
-        let target_definition = self.catalog.get(target.definition).expect("catalog ID");
-        let target_y = self.map.ground_height(target.position.x, target.position.z)
-            + target_definition.movement.collision_mid_y().max(0.5);
-        self.sensor_has_line_of_sight_to_position(
-            sensor_id,
-            sensor,
-            Some(target_id),
-            target.position,
-            target_y,
-        )
-    }
-
-    fn sensor_has_line_of_sight_to_position(
-        &self,
-        sensor_id: EntityId,
-        sensor: &WorldEntity,
-        target_id: Option<EntityId>,
-        target_position: Vec2,
-        target_y: f32,
-    ) -> bool {
-        let sensor_definition = self.catalog.get(sensor.definition).expect("catalog ID");
-        let sensor_y = self.map.ground_height(sensor.position.x, sensor.position.z)
-            + sensor_definition.movement.collision_height().max(1.0);
-        if !sampled_terrain_line_of_sight(
-            &self.map,
-            sensor.position,
-            sensor_y,
-            target_position,
-            target_y,
-        ) {
-            return false;
-        }
-
-        let ray = target_position - sensor.position;
-        let ray_length_squared = ray.length_squared();
-        if ray_length_squared <= f32::EPSILON {
-            return true;
-        }
-        !self.entities.iter().any(|(blocker_id, blocker)| {
-            if blocker_id == sensor_id || target_id == Some(blocker_id) {
-                return false;
-            }
-            let definition = self.catalog.get(blocker.definition).expect("catalog ID");
-            if !definition.movement.blocks_fire {
-                return false;
-            }
-            let offset = blocker.position - sensor.position;
-            let along =
-                ((offset.x * ray.x + offset.z * ray.z) / ray_length_squared).clamp(0.0, 1.0);
-            if !(0.0 < along && along < 1.0) {
-                return false;
-            }
-            let nearest = sensor.position + ray * along;
-            if nearest.distance_squared(blocker.position)
-                > definition.movement.radius.max(0.0).powi(2)
-            {
-                return false;
-            }
-            let ground = self
-                .map
-                .ground_height(blocker.position.x, blocker.position.z);
-            let (bottom, mut top) = definition.movement.collision_vertical_bounds(ground);
-            if !blocker.is_active() {
-                let build_fraction =
-                    (blocker.health as f32 / definition.health.max(f32::EPSILON)).clamp(0.0, 1.0);
-                top = bottom + (top - bottom) * build_fraction;
-            }
-            let ray_y = sensor_y + (target_y - sensor_y) * along;
-            bottom <= ray_y && ray_y <= top
+        let units = self.sensor_snapshots(los_range_squared.sqrt(), radar_range_squared.sqrt());
+        let unit = self.sensor_snapshot(
+            target_id,
+            target,
+            los_range_squared.sqrt(),
+            radar_range_squared.sqrt(),
+        );
+        let side = _sensors.first().map(|(_, e)| e.owner)?;
+        sensors::detect(side, &unit, &units, |a, b, c, d| {
+            self.sensor_terrain_clear(a, b, c, d)
+        })
+        .map(|v| match v {
+            Detection::Los => ObservationVisibility::LineOfSight,
+            Detection::Radar => ObservationVisibility::Radar,
+            Detection::Sonar => ObservationVisibility::Sonar,
         })
     }
 
@@ -1929,6 +2188,10 @@ impl World {
         self.refresh_team_economies(seconds);
         self.advance_construction(seconds);
         self.advance_repairs_and_reclaim(seconds);
+        if self.combat.is_none() {
+            self.advance_cloaks(seconds);
+            self.update_sensor_memory();
+        }
         self.advance_combat(seconds);
         self.record_wall_leaks();
         self.finalize_construction();
@@ -2108,6 +2371,11 @@ impl World {
                         entity.enabled = *active;
                         entity.powered = *active;
                     }
+                }
+            }
+            StrategyAction::SetCloak { entities, cloaked } => {
+                for entity in entities {
+                    let _ = self.set_cloak(*entity, *cloaked);
                 }
             }
             StrategyAction::Reclaim {
@@ -2307,11 +2575,31 @@ impl World {
         }
     }
 
-    /// Stable FNV-1a digest of authoritative strategic state. It intentionally
-    /// excludes caches and transient events.
+    /// Stable FNV-1a digest of strategic state, including sensor knowledge that
+    /// affects future orders. It excludes geometric caches and transient events.
     pub fn state_hash(&self) -> u64 {
         let mut hash = 0xcbf29ce484222325_u64;
         hash_u64(&mut hash, self.tick);
+        hash_u64(&mut hash, self.sensor_seconds.to_bits());
+        for side in self.observation_memory.borrow().iter() {
+            for (id, memory) in side {
+                hash_u64(&mut hash, id.to_raw());
+                for byte in serde_json::to_vec(memory).expect("finite sensor memory") {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x100000001b3);
+                }
+            }
+            hash_u64(&mut hash, u64::MAX);
+        }
+        for (id, state) in &self.cloak_states {
+            hash_u64(&mut hash, id.to_raw());
+            hash_u64(&mut hash, state.wanted as u64);
+            hash_u64(&mut hash, state.cloaked as u64);
+            hash_u64(&mut hash, state.blocked_until.to_bits());
+            hash_u64(&mut hash, state.next_check.to_bits());
+            hash_u64(&mut hash, state.last_position.x.to_bits() as u64);
+            hash_u64(&mut hash, state.last_position.z.to_bits() as u64);
+        }
         for (id, entity) in self.entities.iter() {
             hash_u64(&mut hash, id.to_raw());
             hash_u64(&mut hash, entity.definition.0 as u64);
@@ -3434,6 +3722,8 @@ impl World {
 
         for _ in 0..tactical_ticks {
             self.sync_combatants();
+            self.advance_cloaks(f64::from(DT));
+            self.update_sensor_memory();
             self.prepare_combat_commands();
             self.record_wall_friendly_obstruction(f64::from(DT));
             let before = [
@@ -3446,6 +3736,18 @@ impl World {
                     energy: self.teams[1].economy.energy.stored,
                 },
             ];
+            let cloak_shots: Vec<_> = self
+                .cloak_states
+                .iter()
+                .filter(|(_, c)| c.wanted)
+                .filter_map(|(id, _)| {
+                    self.combat
+                        .as_ref()?
+                        .stepper
+                        .combatant(id.to_raw())
+                        .map(|u| (*id, u.weapons.iter().map(|w| w.shot_sequence).sum::<u64>()))
+                })
+                .collect();
             let after = {
                 let combat = self.combat.as_mut().expect("combat remains enabled");
                 combat.stepper.set_resources(Some(before));
@@ -3455,6 +3757,23 @@ impl World {
                     .resources()
                     .expect("finite resources were set")
             };
+            for (id, before_shots) in cloak_shots {
+                let fired = self
+                    .combat
+                    .as_ref()
+                    .and_then(|c| c.stepper.combatant(id.to_raw()))
+                    .is_some_and(|u| {
+                        u.definition.strategic.decloak_on_fire
+                            && u.weapons.iter().map(|w| w.shot_sequence).sum::<u64>()
+                                != before_shots
+                    });
+                if fired && let Some(cloak) = self.cloak_states.get_mut(&id) {
+                    cloak.cloaked = false;
+                    cloak.blocked_until =
+                        self.sensor_seconds + 128.0 / f64::from(crate::model::SIM_HZ);
+                    cloak.next_check = self.sensor_seconds;
+                }
+            }
             for side in 0..2 {
                 self.teams[side]
                     .economy
@@ -3466,6 +3785,7 @@ impl World {
                     .spend((before[side].energy - after[side].energy).max(0.0));
             }
             self.apply_combat_state();
+            self.update_sensor_memory();
         }
     }
 
@@ -3535,7 +3855,81 @@ impl World {
     }
 
     fn prepare_combat_commands(&mut self) {
+        let observations: [BTreeMap<EntityId, ObservedEntity>; 2] = std::array::from_fn(|side| {
+            let entities = match self.observation_policy {
+                ObservationPolicy::Filtered {
+                    line_of_sight_range,
+                    radar_range,
+                    radar_position_resolution,
+                    remember_last_seen,
+                } => self.filtered_entities(
+                    side as u8,
+                    line_of_sight_range,
+                    radar_range,
+                    radar_position_resolution,
+                    remember_last_seen,
+                ),
+                ObservationPolicy::Omniscient => self
+                    .entities
+                    .iter()
+                    .map(|(id, e)| {
+                        self.exact_entity_observation(
+                            id,
+                            e,
+                            if e.owner == side as u8 {
+                                ObservationVisibility::Own
+                            } else {
+                                ObservationVisibility::LineOfSight
+                            },
+                        )
+                    })
+                    .collect(),
+            };
+            entities.into_iter().map(|e| (e.id, e)).collect()
+        });
         let combat = self.combat.as_mut().expect("combat is enabled");
+        for (side, contacts) in observations.iter().enumerate() {
+            let disclosed: Vec<_> = contacts
+                .values()
+                .filter(|e| {
+                    e.side != side as u8
+                        && matches!(
+                            e.visibility,
+                            ObservationVisibility::LineOfSight
+                                | ObservationVisibility::Radar
+                                | ObservationVisibility::Sonar
+                        )
+                })
+                .filter_map(|e| {
+                    let actual = self.entities.get(e.id)?;
+                    let exact = e.visibility == ObservationVisibility::LineOfSight;
+                    let definition = self.catalog.get(actual.definition)?;
+                    Some(TargetObservation {
+                        target: e.id.to_raw(),
+                        position: e.position,
+                        height: self.map.ground_height(e.position.x, e.position.z)
+                            + if exact {
+                                definition.movement.collision_mid_y()
+                            } else {
+                                0.5
+                            },
+                        velocity: if exact {
+                            combat
+                                .stepper
+                                .combatant(e.id.to_raw())
+                                .map(|u| u.velocity())
+                        } else {
+                            None
+                        },
+                        exact,
+                    })
+                })
+                .collect();
+            combat
+                .stepper
+                .set_target_observations(side as u8, &disclosed)
+                .expect("current contacts are synchronized combatants");
+        }
         combat.targets.clear();
         for id in combat.known.iter().copied() {
             let Some(entity) = self.entities.get(id) else {
@@ -3550,59 +3944,77 @@ impl World {
                 combat
                     .stepper
                     .clear_command(id.to_raw())
-                    .expect("known combatant remains addressable");
+                    .expect("known combatant");
                 continue;
             }
-
-            let (ordered_target, should_acquire_target) = match self.attack_orders.get(&id) {
-                Some(AttackTarget::Entity { entity }) if self.entities.contains(*entity) => {
-                    (Some(*entity), false)
-                }
-                // Preserve an explicit ground-fire order. A destroyed entity
-                // target, and an idle combatant, both fall back to local
-                // acquisition so a unit does not become inert after a kill.
-                Some(AttackTarget::Ground { .. }) => (None, false),
-                Some(AttackTarget::Entity { .. }) | None => (None, true),
+            let contacts = &observations[entity.owner as usize];
+            let ordered_contact = self.attack_orders.get(&id).and_then(|order| match order {
+                AttackTarget::Entity { entity } => contacts.get(entity),
+                _ => None,
+            });
+            let ground_target = match self.attack_orders.get(&id) {
+                Some(AttackTarget::Ground { position }) => Some(*position),
+                _ => ordered_contact
+                    .filter(|e| e.visibility == ObservationVisibility::Ghost)
+                    .map(|e| e.position),
             };
-            let automatic_target = should_acquire_target
-                .then(|| Self::automatic_target(&self.entities, &self.catalog, id, entity))
-                .flatten();
-            let target_entity = ordered_target.or(automatic_target);
+            let ordered_target = ordered_contact
+                .filter(|e| {
+                    matches!(
+                        e.visibility,
+                        ObservationVisibility::LineOfSight
+                            | ObservationVisibility::Radar
+                            | ObservationVisibility::Sonar
+                    )
+                })
+                .map(|e| e.id);
+            // Never reacquire an unseen unit merely because it still exists in
+            // authoritative state. Ghosts are explicit position fire only.
+            let should_acquire = ground_target.is_none()
+                && (self.attack_orders.get(&id).is_none()
+                    || matches!(self.attack_orders.get(&id),Some(AttackTarget::Entity{entity})
+                    if !self.entities.contains(*entity) && ordered_contact.is_none()));
+            let target_entity = ordered_target.or_else(|| {
+                should_acquire
+                    .then(|| {
+                        Self::automatic_target(&self.entities, &self.catalog, id, entity, contacts)
+                    })
+                    .flatten()
+            });
             if let Some(target) = target_entity {
                 combat.targets.insert(id, target);
             }
-            let target = target_entity.map(EntityId::to_raw);
             let mut destination = self
                 .movement_orders
                 .get(&id)
-                .and_then(|waypoints| waypoints.front().copied());
+                .and_then(|w| w.front().copied());
             let mut throttle = if destination.is_some() { 1.0 } else { 0.0 };
-            if destination.is_none()
-                && let Some(target_key) = target
-            {
-                let target_position = self
-                    .entities
-                    .get(EntityId::from_raw(target_key))
-                    .map(|target| target.position);
-                if let (Some(target_position), Some(definition)) =
+            if destination.is_none() {
+                let target_position = target_entity
+                    .and_then(|target| contacts.get(&target).map(|e| e.position))
+                    .or(ground_target)
+                    .or_else(|| ordered_contact.map(|e| e.position))
+                    .or_else(|| match self.attack_orders.get(&id) {
+                        Some(AttackTarget::Entity { entity: target }) => {
+                            self.observation_memory.borrow()[entity.owner as usize]
+                                .get(target)
+                                .map(|m| m.last.position)
+                        }
+                        _ => None,
+                    });
+                if let (Some(position), Some(definition)) =
                     (target_position, self.catalog.get(entity.definition))
                 {
-                    let maximum_range = definition
+                    let range = definition
                         .weapons
                         .iter()
-                        .map(|weapon| weapon.range.max(0.0))
+                        .map(|w| w.range.max(0.0))
                         .fold(0.0_f32, f32::max);
-                    if maximum_range > 0.0
-                        && entity.position.distance_squared(target_position)
-                            > maximum_range * maximum_range
-                    {
-                        // An ordinary attack order closes to weapon range.
-                        destination = Some(target_position);
+                    if range > 0.0 && entity.position.distance_squared(position) > range * range {
+                        destination = Some(position);
                         throttle = 1.0;
-                    } else if definition.weapons.iter().any(|weapon| !weapon.turret) {
-                        // A fixed mount still needs a facing destination while
-                        // remaining stationary once it is in range.
-                        destination = Some(target_position);
+                    } else if definition.weapons.iter().any(|w| !w.turret) {
+                        destination = Some(position);
                     }
                 }
             }
@@ -3611,62 +4023,66 @@ impl World {
                 .set_command(
                     id.to_raw(),
                     CombatCommand {
-                        target,
+                        target: target_entity.map(EntityId::to_raw),
                         destination,
                         throttle,
                     },
                 )
-                .expect("validated combat targets are synchronized");
+                .expect("validated combat targets");
+            combat
+                .stepper
+                .set_ground_target(id.to_raw(), ground_target)
+                .expect("known ground order");
         }
     }
 
-    /// Finds the closest enemy that this unit can engage *now*. This is a
-    /// local stance, not an attack-move: units do not march across the map
-    /// without an explicit order. It prevents an idle defender (or a unit
-    /// whose explicit target died) from ignoring an enemy already in range.
+    /// Automatic acquisition uses current shared contacts, never stale memory.
     fn automatic_target(
         entities: &EntityStore<WorldEntity>,
         catalog: &WorldCatalog,
         source_id: EntityId,
         source: &WorldEntity,
+        contacts: &BTreeMap<EntityId, ObservedEntity>,
     ) -> Option<EntityId> {
         let source_definition = catalog.get(source.definition)?;
-        entities
+        contacts
             .iter()
-            .filter_map(|(target_id, target)| {
-                (target_id != source_id
-                    && target.owner < 2
-                    && target.owner != source.owner
-                    && target.is_active())
-                .then_some((target_id, target))
+            .filter_map(|(id, contact)| {
+                if *id == source_id
+                    || contact.side >= 2
+                    || contact.side == source.owner
+                    || !matches!(
+                        contact.visibility,
+                        ObservationVisibility::LineOfSight
+                            | ObservationVisibility::Radar
+                            | ObservationVisibility::Sonar
+                    )
+                {
+                    return None;
+                }
+                let target = entities.get(*id)?;
+                let definition = catalog.get(target.definition)?;
+                let distance = source.position.distance_squared(contact.position);
+                source_definition
+                    .weapons
+                    .iter()
+                    .any(|weapon| {
+                        !weapon.manual_fire
+                            && weapon.range > 0.0
+                            && distance <= weapon.range * weapon.range
+                            && (weapon.only_target_categories.is_empty()
+                                || weapon.only_target_categories.iter().any(|allowed| {
+                                    definition
+                                        .strategic
+                                        .target_categories
+                                        .iter()
+                                        .any(|category| category.eq_ignore_ascii_case(allowed))
+                                }))
+                    })
+                    .then_some((*id, distance))
             })
-            .filter(|(_, target)| {
-                let Some(target_definition) = catalog.get(target.definition) else {
-                    return false;
-                };
-                let distance_squared = source.position.distance_squared(target.position);
-                source_definition.weapons.iter().any(|weapon| {
-                    !weapon.manual_fire
-                        && weapon.range > 0.0
-                        && distance_squared <= weapon.range * weapon.range
-                        && (weapon.only_target_categories.is_empty()
-                            || weapon.only_target_categories.iter().any(|allowed| {
-                                target_definition
-                                    .strategic
-                                    .target_categories
-                                    .iter()
-                                    .any(|category| category.eq_ignore_ascii_case(allowed))
-                            }))
-                })
-            })
-            .min_by(|(left_id, left), (right_id, right)| {
-                source
-                    .position
-                    .distance_squared(left.position)
-                    .total_cmp(&source.position.distance_squared(right.position))
-                    .then_with(|| left_id.to_raw().cmp(&right_id.to_raw()))
-            })
-            .map(|(target_id, _)| target_id)
+            .min_by(|(a, ad), (b, bd)| ad.total_cmp(bd).then(a.cmp(b)))
+            .map(|(id, _)| id)
     }
 
     fn apply_combat_state(&mut self) {
@@ -3957,6 +4373,7 @@ impl World {
                 }
                 continue;
             }
+            self.forget_observed_removal(target_id);
             self.entities.remove(target_id);
             self.occupancy.remove_occupant(occupant(target_id));
             deposit_pool(
@@ -4051,6 +4468,7 @@ impl ActionWorld for World {
                 repair: strategic.is_builder && state.is_active(),
                 factory_queue: strategic.is_factory && state.is_active(),
                 activation: strategic.onoffable && state.is_active(),
+                cloak: strategic.can_cloak && state.is_active(),
                 reclaim: strategic.is_builder && state.is_active(),
                 cancel: true,
             },
@@ -4068,6 +4486,9 @@ impl ActionWorld for World {
         let Some(target) = self.entities.get(entity) else {
             return false;
         };
+        if target.role == EntityRole::Feature {
+            return true;
+        }
         if target.owner == side {
             return true;
         }
@@ -4197,6 +4618,7 @@ fn static_feature_definition(name: String, blocker: &StaticBlocker) -> UnitDef {
         ..StrategicDef::default()
     };
     UnitDef {
+        flight: None,
         name,
         icon_type: Some("feature".into()),
         health: 1.0,
@@ -4285,21 +4707,6 @@ fn finite_sensor_range_squared(range: f32) -> f32 {
     } else {
         0.0
     }
-}
-
-fn quantized_radar_position(
-    position: Vec2,
-    resolution: f32,
-    map_width: f32,
-    map_depth: f32,
-) -> Vec2 {
-    if !resolution.is_finite() || resolution <= 0.0 {
-        return position;
-    }
-    Vec2::new(
-        ((position.x / resolution).round() * resolution).clamp(0.0, map_width),
-        ((position.z / resolution).round() * resolution).clamp(0.0, map_depth),
-    )
 }
 
 fn sampled_terrain_line_of_sight(
@@ -4486,12 +4893,20 @@ mod tests {
 
     fn unit(name: &str) -> UnitDef {
         UnitDef {
+            flight: None,
             name: name.into(),
             icon_type: None,
             health: 100.0,
             metal_cost: 0.0,
             energy_cost: 0.0,
-            strategic: StrategicDef::default(),
+            // World fixtures assert base damage and resource conservation.
+            strategic: StrategicDef {
+                flanking: crate::model::FlankingDef {
+                    mode: 0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             movement: MovementDef {
                 radius: 4.0,
                 height: 8.0,
@@ -5006,6 +5421,9 @@ mod tests {
     fn filtered_observation_distinguishes_los_radar_and_unseen_contacts() {
         let mut world =
             World::new(visibility_map(true), catalog(), WorldConfig::default()).unwrap();
+        let mut definitions = world.catalog.definitions().to_vec();
+        definitions[3].strategic.radar_emit_height = Some(200.0);
+        world.catalog = Arc::new(WorldCatalog::new(definitions).unwrap());
         let own = world
             .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
             .unwrap();
@@ -5045,7 +5463,10 @@ mod tests {
         assert_eq!(radar_contact.definition, None);
         assert_eq!(radar_contact.kind, StrategyEntityKind::Unknown);
         assert_eq!(radar_contact.health_fraction, None);
-        assert_eq!(radar_contact.position, Vec2::new(160.0, 32.0));
+        assert_eq!(
+            radar_contact.position,
+            sensors::radar_position(radar.to_raw(), 0, Vec2::new(166.0, 32.0), 32.0)
+        );
         assert!(observation.entity(unseen).is_none());
         assert!(
             observation
@@ -5089,9 +5510,12 @@ mod tests {
     }
 
     #[test]
-    fn radar_memory_stays_anonymous_and_quantized() {
+    fn radar_memory_stays_anonymous_and_keeps_its_last_disclosed_error() {
         let mut world =
             World::new(visibility_map(true), catalog(), WorldConfig::default()).unwrap();
+        let mut definitions = world.catalog.definitions().to_vec();
+        definitions[3].strategic.radar_emit_height = Some(200.0);
+        world.catalog = Arc::new(WorldCatalog::new(definitions).unwrap());
         let sensor = world
             .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
             .unwrap();
@@ -5108,7 +5532,10 @@ mod tests {
         let first = world.observation_with_policy(0, policy).unwrap();
         let radar = first.entity(target).unwrap();
         assert_eq!(radar.visibility, ObservationVisibility::Radar);
-        assert_eq!(radar.position, Vec2::new(160.0, 32.0));
+        assert_eq!(
+            radar.position,
+            sensors::radar_position(target.to_raw(), 0, Vec2::new(166.0, 32.0), 32.0)
+        );
 
         world.entities.get_mut(sensor).unwrap().position = Vec2::new(224.0, 32.0);
         world.entities.get_mut(target).unwrap().position = Vec2::new(32.0, 32.0);
@@ -5121,10 +5548,193 @@ mod tests {
         let remembered = world.observation_with_policy(0, hidden_policy).unwrap();
         let contact = remembered.entity(target).unwrap();
         assert_eq!(contact.visibility, ObservationVisibility::Remembered);
-        assert_eq!(contact.position, Vec2::new(160.0, 32.0));
+        assert_eq!(
+            contact.position,
+            sensors::radar_position(target.to_raw(), 0, Vec2::new(166.0, 32.0), 32.0)
+        );
         assert_eq!(contact.definition, None);
         assert_eq!(contact.kind, StrategyEntityKind::Unknown);
         assert_eq!(contact.health_fraction, None);
+    }
+
+    #[test]
+    fn identity_learned_in_los_survives_a_radar_only_contact() {
+        let mut world =
+            World::new(visibility_map(false), catalog(), WorldConfig::default()).unwrap();
+        world
+            .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let target = world
+            .spawn_active(1, UnitDefId(3), Vec2::new(80.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let policy = ObservationPolicy::Filtered {
+            line_of_sight_range: 64.0,
+            radar_range: 180.0,
+            radar_position_resolution: 32.0,
+            remember_last_seen: true,
+        };
+
+        let first = world.observation_with_policy(0, policy).unwrap();
+        let seen = first.entity(target).unwrap();
+        assert_eq!(seen.visibility, ObservationVisibility::LineOfSight);
+        let (definition, kind) = (seen.definition.clone(), seen.kind);
+        assert_eq!(definition.as_deref(), Some("pawn"));
+
+        // Out of LOS (134 > 64) but inside radar (134 <= 180): the blip is
+        // imprecise, yet it is the unit we already identified.
+        world.entities.get_mut(target).unwrap().position = Vec2::new(166.0, 32.0);
+        let second = world.observation_with_policy(0, policy).unwrap();
+        let blip = second.entity(target).unwrap();
+        assert_eq!(blip.visibility, ObservationVisibility::Radar);
+        assert_eq!(
+            blip.position,
+            sensors::radar_position(target.to_raw(), 0, Vec2::new(166.0, 32.0), 32.0)
+        );
+        assert_eq!(blip.definition, definition);
+        assert_eq!(blip.kind, kind);
+    }
+
+    #[test]
+    fn identity_learned_in_los_survives_radar_then_memory() {
+        let mut world =
+            World::new(visibility_map(false), catalog(), WorldConfig::default()).unwrap();
+        let sensor = world
+            .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let target = world
+            .spawn_active(1, UnitDefId(3), Vec2::new(80.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let policy = ObservationPolicy::Filtered {
+            line_of_sight_range: 64.0,
+            radar_range: 180.0,
+            radar_position_resolution: 32.0,
+            remember_last_seen: true,
+        };
+        let first = world.observation_with_policy(0, policy).unwrap();
+        let kind = first.entity(target).unwrap().kind;
+
+        // Radar-only tick: this used to overwrite the stored identity.
+        world.entities.get_mut(target).unwrap().position = Vec2::new(166.0, 32.0);
+        let radar = world.observation_with_policy(0, policy).unwrap();
+        assert_eq!(
+            radar.entity(target).unwrap().visibility,
+            ObservationVisibility::Radar
+        );
+
+        // Every sensor now loses the target; only the memory is left.
+        world.entities.get_mut(sensor).unwrap().position = Vec2::new(240.0, 32.0);
+        world.entities.get_mut(target).unwrap().position = Vec2::new(32.0, 32.0);
+        let hidden = ObservationPolicy::Filtered {
+            line_of_sight_range: 40.0,
+            radar_range: 40.0,
+            radar_position_resolution: 32.0,
+            remember_last_seen: true,
+        };
+        let remembered = world.observation_with_policy(0, hidden).unwrap();
+        let ghost = remembered.entity(target).unwrap();
+        assert_eq!(ghost.visibility, ObservationVisibility::Remembered);
+        assert_eq!(
+            ghost.position,
+            sensors::radar_position(target.to_raw(), 0, Vec2::new(166.0, 32.0), 32.0)
+        );
+        assert_eq!(ghost.definition.as_deref(), Some("pawn"));
+        assert_eq!(ghost.kind, kind);
+    }
+
+    #[test]
+    fn remembered_mobile_contact_grows_position_error_with_age_up_to_the_map_diagonal() {
+        let mut world =
+            World::new(visibility_map(false), catalog(), WorldConfig::default()).unwrap();
+        let sensor = world
+            .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let target = world
+            .spawn_active(1, UnitDefId(3), Vec2::new(80.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let policy = ObservationPolicy::Filtered {
+            line_of_sight_range: 64.0,
+            radar_range: 0.0,
+            radar_position_resolution: 32.0,
+            remember_last_seen: true,
+        };
+        let speed = world.catalog.get(UnitDefId(3)).unwrap().movement.max_speed;
+        assert!(speed > 0.0);
+
+        let seen = world.observation_with_policy(0, policy).unwrap();
+        let live = seen.entity(target).unwrap();
+        assert_eq!(live.visibility, ObservationVisibility::LineOfSight);
+        assert_eq!((live.age_seconds, live.position_error), (0.0, 0.0));
+
+        world.entities.get_mut(sensor).unwrap().position = Vec2::new(224.0, 32.0);
+        world.step_seconds(2.0);
+        let soon = world.observation_with_policy(0, policy).unwrap();
+        let contact = soon.entity(target).unwrap();
+        assert_eq!(contact.visibility, ObservationVisibility::Remembered);
+        assert!((contact.age_seconds - 2.0).abs() < 1e-3);
+        assert!((contact.position_error - speed * 2.0).abs() < 1e-2);
+
+        world.step_seconds(60.0);
+        let late = world.observation_with_policy(0, policy).unwrap();
+        let contact = late.entity(target).unwrap();
+        assert!((contact.age_seconds - 62.0).abs() < 1e-3);
+        let diagonal = (world.map.width as f32).hypot(world.map.depth as f32);
+        assert_eq!(contact.position_error, diagonal);
+    }
+
+    #[test]
+    fn building_ghost_ages_but_keeps_an_exact_position() {
+        let mut world =
+            World::new(visibility_map(false), catalog(), WorldConfig::default()).unwrap();
+        let sensor = world
+            .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let wall = world
+            .spawn_active(1, UnitDefId(1), Vec2::new(80.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let policy = ObservationPolicy::Filtered {
+            line_of_sight_range: 64.0,
+            radar_range: 0.0,
+            radar_position_resolution: 32.0,
+            remember_last_seen: true,
+        };
+        let seen = world.observation_with_policy(0, policy).unwrap();
+        assert_eq!(
+            seen.entity(wall).unwrap().visibility,
+            ObservationVisibility::LineOfSight
+        );
+
+        world.entities.get_mut(sensor).unwrap().position = Vec2::new(224.0, 32.0);
+        world.step_seconds(30.0);
+        let later = world.observation_with_policy(0, policy).unwrap();
+        let ghost = later.entity(wall).unwrap();
+        assert_eq!(ghost.visibility, ObservationVisibility::Ghost);
+        assert!((ghost.age_seconds - 30.0).abs() < 1e-3);
+        assert_eq!(ghost.position_error, 0.0);
+        assert_eq!(ghost.position, Vec2::new(80.0, 32.0));
+    }
+
+    #[test]
+    fn live_contacts_have_zero_age_and_radar_reports_its_error_bound() {
+        let mut world =
+            World::new(visibility_map(false), catalog(), WorldConfig::default()).unwrap();
+        world
+            .spawn_active(0, UnitDefId(3), Vec2::new(32.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let blip = world
+            .spawn_active(1, UnitDefId(3), Vec2::new(166.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let policy = ObservationPolicy::Filtered {
+            line_of_sight_range: 64.0,
+            radar_range: 180.0,
+            radar_position_resolution: 32.0,
+            remember_last_seen: true,
+        };
+        world.step_seconds(5.0);
+        let observation = world.observation_with_policy(0, policy).unwrap();
+        let contact = observation.entity(blip).unwrap();
+        assert_eq!(contact.visibility, ObservationVisibility::Radar);
+        assert_eq!(contact.age_seconds, 0.0);
+        assert_eq!(contact.position_error, 32.0);
     }
 
     #[test]
@@ -5168,7 +5778,7 @@ mod tests {
     }
 
     #[test]
-    fn fire_blocking_unit_cylinder_occludes_line_of_sight() {
+    fn fire_blocking_unit_cylinder_does_not_occlude_sensor_maps() {
         let mut world =
             World::new(visibility_map(false), catalog(), WorldConfig::default()).unwrap();
         world
@@ -5197,7 +5807,10 @@ mod tests {
             observation.entity(wall).unwrap().visibility,
             ObservationVisibility::LineOfSight
         );
-        assert!(observation.entity(behind_wall).is_none());
+        assert_eq!(
+            observation.entity(behind_wall).unwrap().visibility,
+            ObservationVisibility::LineOfSight
+        );
     }
 
     #[test]
@@ -6364,7 +6977,8 @@ mod tests {
         let mut combatant = unit("combatant");
         combatant.strategic.sight_distance = Some(50.0);
 
-        let catalog = Arc::new(WorldCatalog::new(vec![radar_tower, scout, jammer_bot, combatant]).unwrap());
+        let catalog =
+            Arc::new(WorldCatalog::new(vec![radar_tower, scout, jammer_bot, combatant]).unwrap());
         let mut world = World::new(
             map,
             catalog,
@@ -6405,8 +7019,15 @@ mod tests {
             .spawn_active(0, UnitDefId(1), Vec2::new(120.0, 40.0), BuildFacing::North)
             .unwrap();
         let obs_side_0_los = world.observation(0).unwrap();
-        let observed_target = obs_side_0_los.entities.iter().find(|e| e.id == target_id).unwrap();
-        assert_eq!(observed_target.visibility, ObservationVisibility::LineOfSight);
+        let observed_target = obs_side_0_los
+            .entities
+            .iter()
+            .find(|e| e.id == target_id)
+            .unwrap();
+        assert_eq!(
+            observed_target.visibility,
+            ObservationVisibility::LineOfSight
+        );
 
         // Remove scout so it's not in LOS
         world.entities.remove(scout_id);
@@ -6414,7 +7035,11 @@ mod tests {
         // If jammer is disabled (turned off), radar can now detect target as radar contact!
         world.entities.get_mut(jammer_id).unwrap().enabled = false;
         let obs_side_0_unlocked = world.observation(0).unwrap();
-        let radar_blip = obs_side_0_unlocked.entities.iter().find(|e| e.id == target_id).unwrap();
+        let radar_blip = obs_side_0_unlocked
+            .entities
+            .iter()
+            .find(|e| e.id == target_id)
+            .unwrap();
         assert_eq!(radar_blip.visibility, ObservationVisibility::Radar);
     }
 

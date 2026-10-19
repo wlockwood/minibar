@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Council viewer</title>
+<style>
+:root{
+  --bg:#0f1115; --card:#15181e; --card2:#1a1e26; --line:#262b34; --text:#e6e9ef; --muted:#8a93a3;
+  --blue:#6fb1ff; --blue2:#4f9dff; --red:#ff5d5d; --gold:#ffd95a; --green:#6fd39a;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{padding:14px 16px 28px;max-width:1500px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+h1{font-size:18px;margin:0 0 2px;font-weight:650}
+.sub{font:12px var(--mono);color:var(--muted)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chip{border:1px solid var(--line);background:var(--card2);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--muted)}
+.chip b{color:var(--text);font-family:var(--mono);font-weight:600}
+#banner{display:none;margin:10px 0 0;padding:8px 14px;border-radius:10px;background:#1c2a3d;border:1px solid #2c4468;color:#cfe4ff;font-size:13px}
+#banner.flash{display:block}
+#evo{display:none;margin-top:10px;font:12px var(--mono);color:var(--muted)}
+#evo b{color:var(--text)}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin:12px 0}
+.group{display:flex;gap:6px;align-items:center}
+.group label{color:var(--muted);font-size:12px}
+select,button,input[type=number]{background:var(--card2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:5px 10px;font:inherit}
+button{cursor:pointer}
+button:hover,select:hover{border-color:#3a4252}
+button.on{background:#1d2a45;border-color:#34527f;color:#cfe4ff}
+button.pill{border-radius:999px}
+input[type=range]{accent-color:var(--blue2);vertical-align:middle}
+#scrub{flex:1 1 260px;min-width:160px}
+#clock{font:12px var(--mono);color:var(--muted);min-width:96px}
+#speedval{font:12px var(--mono);min-width:44px;display:inline-block;text-align:right}
+.main{display:grid;grid-template-columns:minmax(380px,1fr) minmax(460px,1.15fr);gap:14px}
+@media(max-width:1050px){.main{grid-template-columns:1fr}}
+#field{position:relative;padding:0;overflow:hidden;min-height:420px}
+canvas{display:block;width:100%;height:100%;min-height:420px}
+#overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:#0b0d1199;font-size:30px;font-weight:700;letter-spacing:.04em;pointer-events:none;text-align:center}
+#overlay small{font:13px var(--mono);color:var(--muted);letter-spacing:0;margin-top:6px}
+.legend{position:absolute;left:10px;right:10px;bottom:8px;font:11px var(--mono);color:var(--muted);pointer-events:none;background:#0f1217dd;padding:5px 7px;border-radius:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 4px 0 8px;vertical-align:-1px}
+.legend .shot{display:inline-block;margin-left:8px;font-weight:bold;font-size:15px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.tabs button{border-radius:999px;padding:6px 14px}
+.role{color:var(--muted);font-size:12.5px;margin:0 0 8px;min-height:2.6em}
+.gwrap{display:grid;grid-template-columns:1fr 300px;gap:12px}
+@media(max-width:1300px){.gwrap{grid-template-columns:1fr}}
+#graphbox{background:#11141a;border:1px solid var(--line);border-radius:12px;padding:4px;align-self:start}
+svg text{font-family:var(--mono)}
+.node circle{fill:#1b1f27;stroke:#5d6575;stroke-width:1.5;cursor:pointer;transition:stroke .1s}
+.node:hover circle{stroke:#fff}
+.node.sel circle{stroke:var(--gold);stroke-width:2.5}
+.nlab{fill:#aab3c2;font-size:10px;text-anchor:middle;pointer-events:none}
+.nval{fill:#e6e9ef;font-size:10px;text-anchor:middle;pointer-events:none}
+.ilab{fill:#c3cad6;font-size:10.5px;text-anchor:end;pointer-events:none}
+.olab{fill:#c3cad6;font-size:11px;text-anchor:start;pointer-events:none}
+.colhead{fill:#6b7484;font-size:10px;text-anchor:middle;letter-spacing:.08em}
+.edge{fill:none;stroke-linecap:round}
+.side{display:flex;flex-direction:column;gap:10px}
+.post{border:1px solid #2c4468;background:linear-gradient(180deg,#14203a,#101a2e);border-radius:12px;padding:10px 12px;text-align:center}
+.post .h{font-size:16px;font-weight:650;color:var(--blue)}
+.post .s{font:11.5px var(--mono);color:#8fb3e6;margin-top:2px}
+.kick{font:11px var(--mono);letter-spacing:.1em;color:var(--muted);margin:2px 0 -4px}
+.meter{display:grid;grid-template-columns:78px 1fr 46px;gap:8px;align-items:center;font:12px var(--mono)}
+.meter .track{position:relative;height:8px;border-radius:5px;background:#20252e}
+.meter .fill{position:absolute;top:0;bottom:0;border-radius:5px}
+.meter .zero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#4a5262}
+.cands{display:flex;flex-direction:column;gap:4px;max-height:200px;overflow:auto}
+.cand{display:grid;grid-template-columns:1fr 52px;gap:6px;align-items:center;font:12px var(--mono);padding:3px 8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:var(--card2)}
+.cand.sel{border-color:#34527f;background:#1d2a45}
+.cand.chosen b{color:var(--gold)}
+#inspect{border:1px dashed #333a46;border-radius:10px;padding:10px 12px;font:12px var(--mono);color:var(--muted);min-height:150px;white-space:pre-wrap;overflow-wrap:anywhere}
+#inspect b{color:var(--text)}
+#inspect .pos{color:var(--blue)}#inspect .neg{color:var(--red)}
+#inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 26px;margin-top:12px}
+.inp .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px}
+.inp .top span:last-child{font-family:var(--mono);color:var(--muted)}
+.inp input{width:100%}
+#probebar{display:none;margin-top:10px;padding:7px 12px;border-radius:10px;background:#2a2314;border:1px solid #5a4a1c;color:#ffe3a0;font-size:12.5px;align-items:center;gap:12px}
+#probebar.on{display:flex}
+.hint{color:var(--muted);font-size:12px;margin-top:8px}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--card2)}
+</style>
+</head>
+<body>
+
+<div class="card" id="head">
+  <h1 id="title">Council viewer</h1>
+  <div class="sub" id="subtitle">Feed-forward council of small perceptrons</div>
+  <div class="chips" id="chips"></div>
+  <div id="evo"></div>
+  <div id="banner"></div>
+</div>
+
+<div class="bar" id="selectors">
+  <div class="group" id="liveSel">
+    <label>Scenario</label><select id="selScenario"></select>
+    <label>vs</label><select id="selOpponent"></select>
+    <label>Seed</label>
+    <button id="seedPrev" title="previous seed">−</button>
+    <input id="seed" type="number" value="1" min="0" style="width:76px">
+    <button id="seedNext" title="next seed">+</button>
+    <label>Council plays</label><select id="selSide"><option value="0">left</option><option value="1">right</option></select>
+    <label title="When a battle ends, start the next seed automatically"><input type="checkbox" id="auto" checked> auto-next</label>
+  </div>
+  <div class="group" id="staticSel" style="display:none">
+    <label>Battle</label><select id="selBattle"></select>
+  </div>
+</div>
+
+<div class="bar" id="transport">
+  <div class="group">
+    <button id="restart" title="Restart (Home)">⏮</button>
+    <button id="stepBack" title="Back one frame (←)">◀</button>
+    <button id="play" class="pill on" style="min-width:74px">Pause</button>
+    <button id="stepFwd" title="Forward one frame (→)">▶</button>
+  </div>
+  <input type="range" id="scrub" min="0" max="1000" value="0">
+  <span id="clock">0.0 / 0.0 s</span>
+  <div class="group">
+    <label>Speed</label>
+    <input type="range" id="speed" min="0" max="1000" value="500" style="width:150px">
+    <span id="speedval">0.25×</span>
+    <span id="presets"></span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="card" id="field">
+    <canvas id="cv"></canvas>
+    <div id="overlay"></div>
+    <div class="legend"><i style="background:var(--blue)"></i>friendly council<i style="background:var(--red)"></i>enemy opponent<br><span class="shot" style="color:var(--blue)">━━▶</span>friendly shots <span class="shot" style="color:var(--red)">┄┄▶</span>enemy shots<br>△ body facing · gold line = weapon facing · gold dashed = selected target</div>
+  </div>
+
+  <div class="card">
+    <div class="tabs" id="tabs"></div>
+    <p class="role" id="role"></p>
+    <div class="gwrap">
+      <div id="graphbox"><svg id="graph" viewBox="0 0 560 340" width="100%"></svg></div>
+      <div class="side">
+        <div class="kick">CURRENT DECISION</div>
+        <div class="post"><div class="h" id="postH">—</div><div class="s" id="postS"></div></div>
+        <div id="meters"></div>
+        <div class="kick" id="candKick">TARGET SCORES</div>
+        <div class="cands" id="cands"></div>
+        <div id="inspect">Hover or tap any node to inspect its live linear combination, formula and weights.</div>
+      </div>
+    </div>
+    <div id="probebar"><span><b>What-if mode.</b> You are driving this module's inputs by hand; the battle is paused.</span><button id="live">Return to live</button></div>
+    <div id="inputs"></div>
+    <div class="hint"><kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> step · <kbd>[</kbd><kbd>]</kbd> slower/faster · <kbd>Home</kbd> restart. Drag an input slider to ask “what would this module do if…?”.</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const EMBEDDED = /*__WATCH_DATA__*/null;
+const $ = (id) => document.getElementById(id);
+const S = {
+  meta: null, battle: null, battles: [], t: 0, playing: true, speed: 0.25,
+  follow: null, mod: 0, cand: null, probe: null, sel: null, hover: null,
+  live: !EMBEDDED, version: null, endedAt: null, loading: false, graph: null,
+};
+const SPEED_MIN = 0.02, SPEED_MAX = 8;
+const PRESETS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4];
+const fmt = (x, d = 2) => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(d);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const short = (n) => n.replace(/_over_range/g, "/range").replace(/_over_mine/g, "/mine").replace(/_fraction/g, "").replace(/_/g, " ");
+
+// ---------- math ----------------------------------------------------------------
+function edgeEnabled(mod, layer, row, col) {
+  return (mod.structure?.connections?.[layer]?.[row]?.[col] ?? true) && (layer !== 0 || (mod.structure?.inputs?.[col] ?? true));
+}
+function activationName(mod, layer, neuron) { return mod.structure?.hidden?.[layer]?.[neuron] || 'tanh'; }
+function activate(name, x) { return name === 'softsign' ? x / (1 + Math.abs(x)) : name === 'leaky_relu' ? (x < 0 ? 0.01*x : x) : Math.tanh(x); }
+function forward(mod, input) {
+  const acts = [input.slice()], pre = [input.slice()];
+  mod.layers.forEach((layer, L) => {
+    const p = layer.weights.map((row, k) => row.reduce((sum, w, i) => edgeEnabled(mod,L,k,i) ? sum + w * acts.at(-1)[i] : sum, layer.biases[k]));
+    pre.push(p); acts.push(p.map((x,k) => activate(activationName(mod,L,k),x)));
+  });
+  return { acts, pre };
+}
+
+const macs = (mod) => mod.layers.reduce((s, l) => s + l.weights.length * l.weights[0].length, 0);
+
+// ---------- loading -------------------------------------------------------------
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.text()) || r.statusText);
+  return r.json();
+}
+function setMeta(meta) {
+  S.meta = meta;
+  const mods = meta.brain.modules;
+  const params = mods.reduce((s, m) => s + m.layers.reduce((a, l) => a + l.weights.length * (l.weights[0].length + 1), 0), 0);
+  const total = mods.reduce((s, m) => s + macs(m) * (m.name === "target_selector" ? 3 : 1), 0);
+  const hidden = mods.reduce((s, m) => s + m.hidden.reduce((a, b) => a + b, 0), 0);
+  $("title").textContent = meta.title || "Council viewer";
+  $("subtitle").textContent = `Feed-forward council · ${meta.brain.kind} · neuron responses shown on hover`;
+  $("chips").innerHTML = [[mods.length, "modules"], [params, "parameters"], [hidden, "hidden units"], [total, "MACs / decision"]]
+    .map(([v, l]) => `<span class="chip"><b>${v}</b> ${l}</span>`).join("");
+  $("tabs").innerHTML = mods.map((m, i) => `<button data-i="${i}" class="pill">${esc(m.name)}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach((b) => (b.onclick = () => { S.mod = +b.dataset.i; S.probe = null; S.sel = null; S.cand = null; buildGraph(); refresh(); }));
+  const opt = (arr, f) => arr.map((x, i) => `<option value="${i}">${esc(f(x))}</option>`).join("");
+  const keepS = $("selScenario").value, keepO = $("selOpponent").value;
+  $("selScenario").innerHTML = opt(meta.scenarios, (s) => `${s.name}  (${s.learner} vs ${s.enemy})`);
+  $("selOpponent").innerHTML = opt(meta.opponents, (o) => o.replace(/^brain:.*[\\/]/, "brain:"));
+  if (keepS) $("selScenario").value = keepS;
+  if (keepO) $("selOpponent").value = keepO;
+  buildGraph();
+}
+function setBattle(b) {
+  S.battle = b; S.t = 0; S.endedAt = null; S.follow = null; S.cand = null; S.probe = null;
+  // Hull and weapon yaws are distinct. Older files omit w; keep unknown aim absent.
+  const info = new Map(b.units.map((u) => [u.id, u]));
+  for (const f of b.frames) {
+    const weapons = new Map(f.w || []);
+    f.units = f.u.map((a) => { const u = info.get(a[0]); return { id: a[0], side: u.side, max_hp: u.max_hp, radius: u.radius, position: [a[1], a[2]], heading: a[3], weapon_headings: weapons.get(a[0]) || [], hp: a[4], alive: a[4] > 0 }; });
+    f.aim_attempts = f.f.map((a) => ({ shooter: a[0], weapon: a[5] ?? 0, origin: [a[1], a[2]], aim_point: [a[3], a[4]], state: "fired" }));
+    f._by = new Map(f.units.map((u) => [u.id, u]));
+  }
+  // View bounds over every position the battle visits.
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const f of b.frames) for (const u of f.units) { x0 = Math.min(x0, u.position[0]); x1 = Math.max(x1, u.position[0]); z0 = Math.min(z0, u.position[1]); z1 = Math.max(z1, u.position[1]); }
+  const pad = Math.max(60, b.range * 0.6); S.cam = null;
+  b._view = { x0: x0 - pad, x1: x1 + pad, z0: z0 - pad, z1: z1 + pad };
+  b._duration = b.frames.length ? b.frames[b.frames.length - 1].time : 0;
+  $("scrub").value = 0;
+  $("overlay").style.display = "none";
+  refresh();
+}
+async function loadLive() {
+  if (S.loading) return;
+  S.loading = true;
+  $("overlay").style.display = "flex"; $("overlay").innerHTML = "Simulating…";
+  try {
+    const q = new URLSearchParams({ scenario: $("selScenario").value || 0, opponent: $("selOpponent").value || 0, seed: $("seed").value || 0, side: $("selSide").value || 0 });
+    setBattle(await getJSON("/api/battle?" + q));
+  } catch (e) { $("overlay").style.display = "flex"; $("overlay").innerHTML = "Could not load the battle<small>" + esc(e.message) + "</small>"; }
+  S.loading = false;
+}
+function useStatic(i) {
+  setBattle(EMBEDDED.battles[i]);
+}
+
+// ---------- decisions & selection -------------------------------------------------
+function frameAt(t) {
+  const fs = S.battle.frames;
+  let lo = 0, hi = fs.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (fs[mid].time <= t) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+function selectedUnit(i) {
+  const b = S.battle, f = b.frames[i];
+  const mine = (u) => u.side === b.learner_side && u.alive;
+  let u = S.follow != null ? f._by.get(S.follow) : null;
+  if (!u || !u.alive) u = f.units.find(mine);
+  return u || null;
+}
+// Outputs and hidden activations are not on the wire; recompute them from the
+// inputs and the weights, exactly as the policy did.
+function decisionOf(i, id) {
+  const d = S.battle.frames[i]?.d.find((x) => x.unit === id) || null;
+  if (!d || d._ok) return d;
+  const mods = S.meta.brain.modules;
+  for (const r of d.runs) r.outputs = forward(mods[r.module], r.inputs).acts.at(-1);
+  const out = (name) => { const r = d.runs.find((x) => mods[x.module].name === name); return r ? r.outputs[0] : 0; };
+  d.advance = out("spacing"); d.orbit = out("strafe"); d.regroup = out("cohesion"); d.retreat = out("engagement"); d.bloom = out("encircle"); d._ok = true;
+  return d;
+}
+
+// ---------- graph -----------------------------------------------------------------
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+function buildGraph() {
+  const mod = S.meta.brain.modules[S.mod];
+  const svg = $("graph"); svg.innerHTML = "";
+  $("tabs").querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === S.mod));
+  $("role").textContent = mod.role;
+  const sizes = [mod.inputs.length, ...mod.hidden, mod.outputs.length];
+  const W = 560, H = Math.max(240, 56 + Math.max(...sizes) * 46);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const xs = sizes.map((_, L) => 222 + (L / (sizes.length - 1)) * 235);
+  const pos = sizes.map((n, L) => Array.from({ length: n }, (_, k) => [xs[L], H / 2 + (k - (n - 1) / 2) * Math.min(46, (H - 64) / Math.max(1, n - 1))]));
+  const g = { mod, sizes, pos, edges: [], nodes: [], W, H };
+  const eg = el("g", {}, svg), ng = el("g", {}, svg);
+  el("text", { x: xs[0], y: 18, class: "colhead" }, svg).textContent = "INPUTS";
+  if (sizes.length > 2) el("text", { x: (xs[1] + xs[xs.length - 2]) / 2, y: 18, class: "colhead" }, svg).textContent = "HIDDEN";
+  el("text", { x: xs[xs.length - 1], y: 18, class: "colhead" }, svg).textContent = "OUTPUT";
+  for (let L = 1; L < sizes.length; L++) {
+    g.edges[L] = [];
+    for (let k = 0; k < sizes[L]; k++) {
+      g.edges[L][k] = [];
+      for (let i = 0; i < sizes[L - 1]; i++) {
+        const [x1, y1] = pos[L - 1][i], [x2, y2] = pos[L][k], mx = (x1 + x2) / 2;
+        const path = el("path", { d: `M${x1 + 15},${y1} C${mx},${y1} ${mx},${y2} ${x2 - 15},${y2}`, class: "edge" }, eg);
+        g.edges[L][k][i] = path;
+      }
+    }
+  }
+  for (let L = 0; L < sizes.length; L++) {
+    g.nodes[L] = [];
+    for (let k = 0; k < sizes[L]; k++) {
+      const [x, y] = pos[L][k];
+      const n = el("g", { class: "node", transform: `translate(${x},${y})` }, ng);
+      el("circle", { r: 15 }, n);
+      const tag = L === 0 ? "I" + (k + 1) : L === sizes.length - 1 ? "O" + (k + 1) : "H" + (k + 1);
+      el("text", { class: "nlab", y: 3.5 }, n).textContent = tag;
+      const val = el("text", { class: "nval", y: 30 }, n);
+      const bar = el("rect", { x: -9, y: 19.5, width: 0, height: 2.4, rx: 1.2, fill: "#6fb1ff" }, n);
+      el("title", {}, n).textContent = L === 0 ? mod.inputs[k] + ((mod.structure?.inputs?.[k] ?? true) ? " · enabled" : " · disabled") : activationName(mod, L-1, k);
+      if (L === 0) el("text", { class: "ilab", x: -22, y: 4 }, n).textContent = short(mod.inputs[k]) + ((mod.structure?.inputs?.[k] ?? true) ? "" : " [off]");
+      if (L === sizes.length - 1) el("text", { class: "olab", x: 22, y: 4 }, n).textContent = mod.outputs[k];
+      n.onmouseenter = () => { S.hover = [L, k]; paintHover(); inspect(L, k, true); };
+      n.onmouseleave = () => { S.hover = null; paintHover(); inspect(); };
+      n.onclick = (ev) => { ev.stopPropagation(); S.sel = S.sel && S.sel[0] === L && S.sel[1] === k ? null : [L, k]; paintHover(); inspect(); };
+      g.nodes[L][k] = { n, val, bar };
+    }
+  }
+  svg.onclick = () => { S.sel = null; paintHover(); inspect(); };
+  S.graph = g;
+  buildInputs();
+}
+
+let lastVals = null;
+function updateGraph(vals) {
+  lastVals = vals;
+  const g = S.graph; if (!g) return;
+  const { acts } = vals;
+  for (let L = 0; L < g.sizes.length; L++) for (let k = 0; k < g.sizes[L]; k++) {
+    const a = acts[L][k], { val, bar } = g.nodes[L][k];
+    val.textContent = L === 0 ? a.toFixed(2) : a.toFixed(2);
+    const range = L === 0 ? S.meta.input_ranges[g.mod.inputs[k]] : [-1, 1];
+    const frac = clamp(Math.abs(a) / Math.max(Math.abs(range[0]), Math.abs(range[1]), 1e-6), 0, 1);
+    bar.setAttribute("width", (18 * frac).toFixed(1)); bar.setAttribute("fill", a >= 0 ? "#6fb1ff" : "#ff5d5d");
+  }
+  const layers = g.mod.layers;
+  for (let L = 1; L < g.sizes.length; L++) for (let k = 0; k < g.sizes[L]; k++) for (let i = 0; i < g.sizes[L - 1]; i++) {
+    const enabled = edgeEnabled(g.mod,L-1,k,i);
+    const c = enabled ? layers[L - 1].weights[k][i] * acts[L - 1][i] : 0, m = clamp(Math.abs(c) * 1.4, 0, 1), e = g.edges[L][k][i];
+    e.setAttribute("stroke", c >= 0 ? "#6fb1ff" : "#ff5d5d");
+    e.setAttribute("stroke-width", (0.4 + 4 * m).toFixed(2));
+    e.setAttribute("stroke-dasharray", c >= 0 ? "" : "1.5 4.5");
+    e.dataset.o = enabled ? (0.1 + 0.9 * m).toFixed(3) : '0.025';
+  }
+  paintHover();
+  if (S.sel || S.hover) inspect(...(S.hover || S.sel), !!S.hover);
+}
+function paintHover() {
+  const g = S.graph; if (!g) return;
+  const focus = S.hover || S.sel;
+  for (let L = 1; L < g.sizes.length; L++) for (let k = 0; k < g.sizes[L]; k++) for (let i = 0; i < g.sizes[L - 1]; i++) {
+    const e = g.edges[L][k][i], base = +e.dataset.o || 0.1;
+    const linked = focus && ((focus[0] === L && focus[1] === k) || (focus[0] === L - 1 && focus[1] === i));
+    e.setAttribute("opacity", focus ? (linked ? Math.max(0.55, base) : base * 0.18) : base);
+  }
+  g.nodes.forEach((col, L) => col.forEach((nd, k) => nd.n.classList.toggle("sel", !!S.sel && S.sel[0] === L && S.sel[1] === k)));
+}
+function inspect(L, k) {
+  const box = $("inspect"), g = S.graph;
+  if (L == null) {
+    if (S.sel) return inspect(S.sel[0], S.sel[1]);
+    box.textContent = "Hover or tap any node to inspect its live linear combination, formula and weights."; return;
+  }
+  if (!lastVals) return;
+  const { acts, pre } = lastVals, mod = g.mod;
+  if (L === 0) {
+    const name = mod.inputs[k], r = S.meta.input_ranges[name];
+    const outs = []; // strongest effect on next layer
+    mod.layers[0].weights.forEach((row, h) => { if (edgeEnabled(mod,0,h,k)) outs.push([h, row[k]]); });
+    outs.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    box.innerHTML = `<b>${esc(name)}</b> = <b>${acts[0][k].toFixed(3)}</b> ${(mod.structure?.inputs?.[k] ?? true) ? '' : '(disabled: contributes zero)'}\ninput range ${r[0]} … ${r[1]}\n\nstrongest weights into the next layer:\n` +
+      outs.slice(0, 4).map(([h, w]) => `  → H${h + 1}  <span class="${w >= 0 ? "pos" : "neg"}">${fmt(w, 3)}</span>`).join("\n");
+    return;
+  }
+  const layer = mod.layers[L - 1], names = L === 1 ? mod.inputs : null;
+  const response = activationName(mod,L-1,k);
+  const terms = layer.weights[k].map((w, i) => ({ i, w, x: acts[L - 1][i], t: w * acts[L - 1][i] })).filter(t => edgeEnabled(mod,L-1,k,t.i));
+  terms.sort((a, b) => Math.abs(b.t) - Math.abs(a.t));
+  const label = L === g.sizes.length - 1 ? `O${k + 1} (${mod.outputs[k]})` : `H${k + 1}`;
+  const src = (i) => (names ? names[i] : (L - 1 === 0 ? "" : "H" + (i + 1)));
+  const shown = terms.slice(0, 6);
+  const rest = terms.length - shown.length;
+  box.innerHTML = `<b>${esc(label)}</b> = ${esc(response)}( bias <span class="${layer.biases[k] >= 0 ? "pos" : "neg"}">${fmt(layer.biases[k], 3)}</span>\n` +
+    shown.map((t) => `  <span class="${t.t >= 0 ? "pos" : "neg"}">${fmt(t.w, 2)}</span> × ${t.x.toFixed(2)} = ${fmt(t.t, 2)}  ${esc(short(src(t.i)))}`).join("\n") +
+    (rest > 0 ? `\n  … ${rest} smaller term${rest > 1 ? "s" : ""}` : "") +
+    `\n)\n= ${esc(response)}(${pre[L][k].toFixed(3)}) = <b>${acts[L][k].toFixed(3)}</b>`;
+}
+
+// ---------- inputs (live values + what-if sliders) ---------------------------------
+function buildInputs() {
+  const mod = S.graph.mod, root = $("inputs"); root.innerHTML = "";
+  mod.inputs.forEach((name, i) => {
+    const [lo, hi] = S.meta.input_ranges[name];
+    const d = document.createElement("div"); d.className = "inp";
+    d.innerHTML = `<div class="top"><span>I${i + 1}: ${esc(short(name))}</span><span id="iv${i}">0.00</span></div>` +
+      `<input type="range" min="${lo}" max="${hi}" step="${(hi - lo) / 200}" value="${lo}" id="is${i}">`;
+    root.appendChild(d);
+    $("is" + i).oninput = (e) => {
+      if (!S.probe) { S.probe = (lastVals ? lastVals.acts[0] : mod.inputs.map(() => 0)).slice(); S.playing = false; syncPlay(); }
+      S.probe[i] = +e.target.value; refresh();
+    };
+  });
+}
+$("live").onclick = () => { S.probe = null; refresh(); };
+
+// ---------- the per-frame refresh ---------------------------------------------------
+function currentRun(dec) {
+  const mod = S.graph.mod, idx = S.mod;
+  const runs = dec ? dec.runs.filter((r) => r.module === idx) : [];
+  if (!runs.length) return { runs, run: null };
+  let run = runs[0];
+  if (mod.name === "target_selector" || mod.name === "air_target") {
+    const want = S.cand != null ? S.cand : dec.target;
+    run = runs.find((r) => r.candidate === want) || runs.find((r) => r.candidate === dec.target) || runs[0];
+  }
+  return { runs, run };
+}
+function refresh() {
+  if (!S.meta || !S.graph) return;
+  const mod = S.graph.mod;
+  let i = 0, dec = null, unit = null;
+  if (S.battle) { i = frameAt(S.t); unit = selectedUnit(i); dec = unit ? decisionOf(i, unit.id) : null; }
+  const { runs, run } = currentRun(dec);
+  let input = S.probe || (run ? run.inputs : mod.inputs.map((n) => S.meta.input_ranges[n][0]));
+  const vals = forward(mod, input);
+  updateGraph(vals);
+  $("probebar").classList.toggle("on", !!S.probe);
+  mod.inputs.forEach((n, k) => {
+    $("iv" + k).textContent = input[k].toFixed(2);
+    const sl = $("is" + k); if (document.activeElement !== sl) sl.value = input[k];
+  });
+  // Decision card.
+  if (dec) {
+    const isAir = S.meta.brain.kind === "tactical-air-v1";
+    const meter = (name, v) => `<div class="meter"><span>${name}</span><div class="track"><div class="zero"></div><div class="fill" style="${v >= 0 ? `left:50%;width:${v * 50}%;background:var(--blue)` : `right:50%;width:${-v * 50}%;background:var(--red)`}"></div></div><span>${fmt(v)}</span></div>`;
+    if (isAir) {
+      $("postH").textContent = "Flight controller";
+      $("postS").textContent = `unit #${unit.id} → enemy #${dec.target} · throttle ${dec.throttle.toFixed(2)}`;
+      const flightIndex = S.meta.brain.modules.findIndex(m => m.name === "air_flight");
+      const flight = dec.runs.find(r => r.module === flightIndex);
+      $("meters").innerHTML = flight ? S.meta.brain.modules[flightIndex].outputs
+        .map((name, index) => meter(`${name} signal`, flight.outputs[index])).join("") : "";
+    } else {
+    const parts = [];
+    if (dec.retreat > 0.5) parts.push("Retreating");
+    else if (dec.throttle < 0.05) parts.push("Hold & shoot");
+    else {
+      if (dec.retreat > 0.25) parts.push("Falling back");
+      if (dec.advance > 0.25) parts.push("Closing in"); else if (dec.advance < -0.25) parts.push("Backing off");
+      if (Math.abs(dec.orbit) > 0.25) parts.push(dec.orbit > 0 ? "Circling ↺" : "Circling ↻");
+      if (dec.regroup > 0.25) parts.push("Regrouping"); else if (dec.regroup < -0.25) parts.push("Spreading out");
+      if (!parts.length) parts.push("Creeping");
+    }
+    $("postH").textContent = parts.join(" · ");
+    $("postS").textContent = `unit #${unit.id} → enemy #${dec.target} · throttle ${dec.throttle.toFixed(2)} \u00b7 platoon commit ${dec.commit.toFixed(2)}`;
+    $("meters").innerHTML = meter("advance", dec.advance) + meter("orbit", dec.orbit) + meter("regroup", dec.regroup) + meter("retreat", dec.retreat) + meter("bloom", dec.bloom);
+    }
+    const targetModule = isAir ? "air_target" : "target_selector";
+    const sel = S.meta.brain.modules.findIndex((m) => m.name === targetModule);
+    const cr = dec.runs.filter((r) => r.module === sel);
+    $("candKick").style.display = $("cands").style.display = cr.length ? "" : "none";
+    $("cands").innerHTML = cr.map((r) => `<div class="cand ${r.candidate === dec.target ? "chosen" : ""} ${(S.cand ?? dec.target) === r.candidate && mod.name === targetModule ? "sel" : ""}" data-c="${r.candidate}"><span>${r.candidate === dec.target ? "<b>★</b> " : ""}enemy #${r.candidate}</span><span>${fmt(r.outputs[0])}</span></div>`).join("");
+    $("cands").querySelectorAll(".cand").forEach((c) => (c.onclick = () => { S.cand = +c.dataset.c; S.mod = sel; S.probe = null; buildGraph(); refresh(); }));
+  } else {
+    $("postH").textContent = S.battle ? "No decision" : "—";
+    $("postS").textContent = S.battle ? "no living council unit" : "";
+    $("meters").innerHTML = ""; $("cands").innerHTML = "";
+  }
+  drawField(i, unit, dec);
+  if (S.battle) {
+    const d = S.battle._duration;
+    $("clock").textContent = `${S.t.toFixed(1)} / ${d.toFixed(1)} s`;
+  }
+}
+
+// ---------- battlefield --------------------------------------------------------------
+const cv = $("cv"), cx = cv.getContext("2d");
+function fit() {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * d) || cv.height !== Math.round(r.height * d)) { cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d); }
+  cx.setTransform(d, 0, 0, d, 0, 0);
+  return [r.width, r.height];
+}
+// Camera: frame the living units (smoothed while playing, exact when paused).
+function updateCam(f0, f1, a, snap) {
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const u of f0.units) {
+    if (!u.alive) continue;
+    const n = f1._by.get(u.id) || u, x = lerp(u.position[0], n.position[0], a), z = lerp(u.position[1], n.position[1], a);
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+  }
+  if (x0 > x1) return;
+  const span = Math.max(x1 - x0, z1 - z0, 1), pad = Math.max(110, span * 0.25);
+  const half = Math.max(260, (span + pad * 2) / 2), cx0 = (x0 + x1) / 2, cz0 = (z0 + z1) / 2;
+  const want = { x0: cx0 - half, x1: cx0 + half, z0: cz0 - half, z1: cz0 + half };
+  const k = snap ? 1 : 0.1, c = S.cam;
+  S.cam = c && !snap ? { x0: lerp(c.x0, want.x0, k), x1: lerp(c.x1, want.x1, k), z0: lerp(c.z0, want.z0, k), z1: lerp(c.z1, want.z1, k) } : want;
+}
+function proj(w, h) {
+  const v = S.cam || S.battle._view, sx = w / (v.x1 - v.x0), sz = h / (v.z1 - v.z0), s = Math.min(sx, sz);
+  const ox = (w - (v.x1 - v.x0) * s) / 2, oz = (h - (v.z1 - v.z0) * s) / 2;
+  return { s, p: (x, z) => [ox + (x - v.x0) * s, oz + (z - v.z0) * s] };
+}
+const lerp = (a, b, t) => a + (b - a) * t;
+function lerpAngle(a, b, t) { let d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * t; }
+function drawField(i, sel, dec) {
+  const [w, h] = fit();
+  cx.clearRect(0, 0, w, h); cx.fillStyle = "#0f1217"; cx.fillRect(0, 0, w, h);
+  if (!S.battle) return;
+  const b = S.battle, fs = b.frames, f0 = fs[i], f1 = fs[Math.min(i + 1, fs.length - 1)];
+  const a = f1 === f0 ? 0 : clamp((S.t - f0.time) / (f1.time - f0.time), 0, 1);
+  updateCam(f0, f1, a, !(S.playing && !S.probe));
+  const { s, p } = proj(w, h);
+  // grid
+  cx.strokeStyle = "#171b22"; cx.lineWidth = 1;
+  const v = S.cam || b._view, step = 100;
+  for (let x = Math.ceil(v.x0 / step) * step; x < v.x1; x += step) { const [px] = p(x, 0); cx.beginPath(); cx.moveTo(px, 0); cx.lineTo(px, h); cx.stroke(); }
+  for (let z = Math.ceil(v.z0 / step) * step; z < v.z1; z += step) { const [, pz] = p(0, z); cx.beginPath(); cx.moveTo(0, pz); cx.lineTo(w, pz); cx.stroke(); }
+  const col = (side, al = 1) => (side === b.learner_side ? `rgba(111,177,255,${al})` : `rgba(255,93,93,${al})`);
+  // trails: the last ~1.2 s of every living unit
+  for (const u of f0.units) {
+    if (!u.alive) continue;
+    cx.strokeStyle = col(u.side, 0.18); cx.lineWidth = 1.5; cx.beginPath();
+    let started = false;
+    for (let j = Math.max(0, i - 12); j <= i; j++) { const q = fs[j]._by.get(u.id); if (!q) continue; const [px, pz] = p(q.position[0], q.position[1]); if (!started) { cx.moveTo(px, pz); started = true; } else cx.lineTo(px, pz); }
+    cx.stroke();
+  }
+  // units (interpolated)
+  const place = (u) => { const n = f1._by.get(u.id) || u; return { x: lerp(u.position[0], n.position[0], a), z: lerp(u.position[1], n.position[1], a), hd: lerpAngle(u.heading, n.heading, a), weapons: u.weapon_headings.map((yaw, k) => Number.isFinite(yaw) ? lerpAngle(yaw, n.weapon_headings[k] ?? yaw, a) : null), hp: lerp(u.hp, n.hp, a), n }; };
+  const at = new Map(f0.units.map((u) => [u.id, place(u)]));
+  // aim lines (fired this sample)
+  for (const am of f0.aim_attempts || []) {
+    if (am.state !== "fired") continue;
+    const [x1, z1] = p(am.origin[0], am.origin[1]), [x2, z2] = p(am.aim_point[0], am.aim_point[1]);
+    const shooter = f0._by.get(am.shooter);
+    if (!shooter) continue;
+    const friendly = shooter.side === b.learner_side, color = col(shooter.side, 0.95);
+    cx.strokeStyle = color; cx.fillStyle = color; cx.lineWidth = 2.5;
+    cx.setLineDash(friendly ? [] : [7, 4]);
+    cx.beginPath(); cx.moveTo(x1, z1); cx.lineTo(x2, z2); cx.stroke();
+    cx.setLineDash([]);
+    const angle = Math.atan2(z2 - z1, x2 - x1), ax = lerp(x1, x2, 0.65), az = lerp(z1, z2, 0.65);
+    cx.beginPath(); cx.moveTo(ax, az); cx.lineTo(ax - 9 * Math.cos(angle - 0.45), az - 9 * Math.sin(angle - 0.45)); cx.lineTo(ax - 9 * Math.cos(angle + 0.45), az - 9 * Math.sin(angle + 0.45)); cx.closePath(); cx.fill();
+  }
+  // selected unit: range ring, target line, movement arrow
+  if (sel) {
+    const me = at.get(sel.id), [mx, mz] = p(me.x, me.z);
+    if (b.range) { cx.setLineDash([5, 6]); cx.strokeStyle = "rgba(255,217,90,.35)"; cx.lineWidth = 1; cx.beginPath(); cx.arc(mx, mz, b.range * s, 0, 7); cx.stroke(); cx.setLineDash([]); }
+    if (dec && dec.target != null && at.has(dec.target)) {
+      const t = at.get(dec.target), [tx, tz] = p(t.x, t.z);
+      cx.setLineDash([3, 5]); cx.strokeStyle = "rgba(255,217,90,.7)"; cx.lineWidth = 1.4; cx.beginPath(); cx.moveTo(mx, mz); cx.lineTo(tx, tz); cx.stroke(); cx.setLineDash([]);
+      cx.strokeStyle = "rgba(255,217,90,.9)"; cx.beginPath(); cx.arc(tx, tz, 13, 0, 7); cx.stroke();
+    }
+    if (dec && dec.throttle >= 0.05) {
+      const len = Math.hypot(dec.movement[0], dec.movement[1]) || 1, ux = dec.movement[0] / len, uz = dec.movement[1] / len, L = 18 + 60 * Math.min(1, dec.throttle);
+      const ex = mx + ux * L, ez = mz + uz * L;
+      cx.strokeStyle = "#6fd39a"; cx.fillStyle = "#6fd39a"; cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(mx, mz); cx.lineTo(ex, ez); cx.stroke();
+      const an = Math.atan2(uz, ux); cx.beginPath(); cx.moveTo(ex, ez); cx.lineTo(ex - 9 * Math.cos(an - 0.45), ez - 9 * Math.sin(an - 0.45)); cx.lineTo(ex - 9 * Math.cos(an + 0.45), ez - 9 * Math.sin(an + 0.45)); cx.closePath(); cx.fill();
+    }
+  }
+  // bodies
+  for (const u of f0.units) {
+    const q = at.get(u.id), [px, pz] = p(q.x, q.z), r = Math.max(5, u.radius * s);
+    cx.globalAlpha = u.alive ? 1 : 0.22;
+    cx.fillStyle = col(u.side, 0.9); cx.strokeStyle = "#0b0d11"; cx.lineWidth = 2;
+    cx.beginPath(); cx.arc(px, pz, r, 0, 7); cx.fill(); cx.stroke();
+    // Small hull triangle at the rim; each weapon gets its own independent barrel.
+    const dx = Math.cos(q.hd), dz = Math.sin(q.hd), wing = Math.max(3, r * 0.4);
+    cx.fillStyle = "#eff7ff"; cx.beginPath(); cx.moveTo(px + dx * (r + 5), pz + dz * (r + 5)); cx.lineTo(px + dx * r - dz * wing, pz + dz * r + dx * wing); cx.lineTo(px + dx * r + dz * wing, pz + dz * r - dx * wing); cx.closePath(); cx.fill();
+    cx.strokeStyle = "#ffe066"; cx.lineWidth = 3;
+    for (const yaw of q.weapons) { if (!Number.isFinite(yaw)) continue; cx.beginPath(); cx.moveTo(px, pz); cx.lineTo(px + Math.cos(yaw) * (r + 9), pz + Math.sin(yaw) * (r + 9)); cx.stroke(); }
+    if (u.alive) { // health bar
+      const bw = Math.max(16, r * 2.2), f = clamp(q.hp / u.max_hp, 0, 1);
+      cx.fillStyle = "#0b0d11"; cx.fillRect(px - bw / 2, pz - r - 9, bw, 4);
+      cx.fillStyle = f > 0.5 ? "#6fd39a" : f > 0.25 ? "#ffd95a" : "#ff5d5d"; cx.fillRect(px - bw / 2, pz - r - 9, bw * f, 4);
+    }
+    if (sel && u.id === sel.id) { cx.globalAlpha = 1; cx.strokeStyle = "#ffd95a"; cx.lineWidth = 2; cx.beginPath(); cx.arc(px, pz, r + 5, 0, 7); cx.stroke(); }
+    cx.globalAlpha = 1;
+  }
+  // header text
+  cx.fillStyle = "#8a93a3"; cx.font = "12px ui-monospace,Consolas,monospace";
+  const sc = S.meta.scenarios[b.scenario], op = S.meta.opponents[b.opponent].replace(/^brain:.*[\\/]/, "brain:");
+  cx.fillText(`${sc.name} · ${sc.learner} vs ${sc.enemy} · opp ${op} · seed ${b.seed}`, 12, 20);
+  // end of battle
+  const over = S.t >= b._duration - 1e-6;
+  const ov = $("overlay");
+  if (over && !S.loading) {
+    const colr = { win: "#6fd39a", loss: "#ff5d5d", timeout: "#ffd95a", "wipe-out": "#aab3c2" }[b.outcome];
+    ov.style.display = "flex";
+    ov.innerHTML = `<span style="color:${colr}">${b.outcome.toUpperCase()}</span><small>fitness ${fmt(b.fitness)} · exchange ${fmt(b.exchange)}${S.live && $("auto").checked ? " · next battle…" : ""}</small>`;
+  } else if (!S.loading) ov.style.display = "none";
+}
+cv.onclick = (e) => {
+  if (!S.battle) return;
+  const r = cv.getBoundingClientRect(), { s, p } = proj(r.width, r.height), i = frameAt(S.t), f = S.battle.frames[i];
+  let best = null, bd = 22;
+  for (const u of f.units) { if (!u.alive || u.side !== S.battle.learner_side) continue; const [px, pz] = p(u.position[0], u.position[1]), d = Math.hypot(px - (e.clientX - r.left), pz - (e.clientY - r.top)); if (d < bd) { best = u; bd = d; } }
+  if (best) { S.follow = best.id; S.cand = null; refresh(); }
+};
+
+// ---------- transport ----------------------------------------------------------------
+const speedFromSlider = (v) => SPEED_MIN * Math.pow(SPEED_MAX / SPEED_MIN, v / 1000);
+const sliderFromSpeed = (s) => 1000 * Math.log(s / SPEED_MIN) / Math.log(SPEED_MAX / SPEED_MIN);
+function setSpeed(s) {
+  S.speed = clamp(s, SPEED_MIN, SPEED_MAX);
+  $("speed").value = sliderFromSpeed(S.speed);
+  $("speedval").textContent = (S.speed < 1 ? S.speed.toFixed(2) : S.speed.toFixed(1)).replace(/\.?0+$/, (m) => (m.includes(".") ? "" : m)) + "×";
+  $("presets").querySelectorAll("button").forEach((b) => b.classList.toggle("on", Math.abs(+b.dataset.s - S.speed) < 1e-6));
+}
+$("presets").innerHTML = PRESETS.map((s) => `<button data-s="${s}" class="pill" style="padding:2px 8px;font-size:12px">${s}×</button>`).join(" ");
+$("presets").querySelectorAll("button").forEach((b) => (b.onclick = () => setSpeed(+b.dataset.s)));
+$("speed").oninput = (e) => setSpeed(speedFromSlider(+e.target.value));
+function syncPlay() { $("play").textContent = S.playing ? "Pause" : "Play"; $("play").classList.toggle("on", S.playing); }
+$("play").onclick = () => { if (S.battle && S.t >= S.battle._duration - 1e-6) S.t = 0; S.playing = !S.playing; S.probe = null; syncPlay(); };
+$("restart").onclick = () => { S.t = 0; S.endedAt = null; refresh(); };
+function step(dir) {
+  if (!S.battle) return; S.playing = false; syncPlay(); S.probe = null;
+  const i = frameAt(S.t + (dir < 0 ? -1e-6 : 0)), fs = S.battle.frames;
+  const j = clamp(i + dir, 0, fs.length - 1); S.t = fs[j].time; S.endedAt = null; refresh();
+}
+$("stepBack").onclick = () => step(-1); $("stepFwd").onclick = () => step(1);
+$("scrub").oninput = (e) => { if (!S.battle) return; S.t = (+e.target.value / 1000) * S.battle._duration; S.playing = false; syncPlay(); S.probe = null; S.endedAt = null; refresh(); };
+window.addEventListener("keydown", (e) => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.type !== "range") return;
+  if (e.code === "Space") { e.preventDefault(); $("play").click(); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); step(-1); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); step(1); }
+  else if (e.key === "[") setSpeed(S.speed / 1.25);
+  else if (e.key === "]") setSpeed(S.speed * 1.25);
+  else if (e.code === "Home") $("restart").click();
+});
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (S.battle && S.playing && !S.probe && !S.loading) {
+    S.t = Math.min(S.battle._duration, S.t + dt * S.speed);
+    $("scrub").value = S.battle._duration ? (1000 * S.t) / S.battle._duration : 0;
+    refresh();
+    if (S.t >= S.battle._duration - 1e-6) {
+      if (S.endedAt == null) S.endedAt = now;
+      if (S.live && $("auto").checked && now - S.endedAt > 2500) { $("seed").value = +$("seed").value + 1; S.endedAt = null; loadLive(); }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+new ResizeObserver(() => refresh()).observe(cv);
+
+// ---------- live-mode controls and evolution status ------------------------------------
+["selScenario", "selOpponent", "selSide"].forEach((id) => ($(id).onchange = loadLive));
+$("seed").onchange = loadLive;
+$("seedPrev").onclick = () => { $("seed").value = Math.max(0, +$("seed").value - 1); loadLive(); };
+$("seedNext").onclick = () => { $("seed").value = +$("seed").value + 1; loadLive(); };
+function banner(text) {
+  const b = $("banner"); b.textContent = text; b.classList.add("flash");
+  clearTimeout(banner.t); banner.t = setTimeout(() => b.classList.remove("flash"), 9000);
+}
+function showStatus(st) {
+  const e = $("evo"); if (!st) { e.style.display = "none"; return; }
+  e.style.display = "block";
+  const pct = (x) => (x == null ? "n/a" : Math.round(x * 100) + "%");
+  e.innerHTML = `evolution · round <b>${st.round}</b> · champion from round <b>${st.champion_round}</b> · benchmark score <b>${fmt(st.score, 3)}</b>` +
+    (st.baseline_win != null ? ` · wins <b>${pct(st.baseline_win)}</b> vs baselines · underdog <b>${pct(st.underdog_win)}</b>` : "");
+}
+async function poll() {
+  try {
+    const v = await getJSON("/api/version");
+    showStatus(v.status);
+    if (S.version != null && v.version !== S.version) {
+      banner(`New champion${v.status ? " from round " + v.status.champion_round : ""} — reloading`);
+      setMeta(await getJSON("/api/meta"));
+      await loadLive();
+    }
+    S.version = v.version;
+  } catch (e) { /* server briefly busy; try again */ }
+  setTimeout(poll, 3000);
+}
+
+// Optional deep link: ?battle=3&t=12.5&pause=1&mod=1&unit=2&node=1,2&probe=0.4,1,1,1,1,0&speed=0.5
+function deepLink(q) {
+  if (q.get("speed")) setSpeed(+q.get("speed"));
+  if (q.get("mod")) { S.mod = clamp(+q.get("mod"), 0, S.meta.brain.modules.length - 1); buildGraph(); }
+  if (q.get("unit")) S.follow = +q.get("unit");
+  if (q.get("probe")) { S.probe = q.get("probe").split(",").map(Number); S.playing = false; syncPlay(); }
+  if (q.get("node")) { const [L, k] = q.get("node").split(",").map(Number); S.sel = [L, k]; }
+  if (q.get("t")) S.t = clamp(+q.get("t"), 0, S.battle._duration);
+  if (q.get("pause")) { S.playing = false; syncPlay(); }
+  refresh();
+}
+
+// ---------- start ------------------------------------------------------------------------
+let started = false;
+async function start() {
+  if (!started) { started = true; setSpeed(S.speed); syncPlay(); requestAnimationFrame(tick); }
+  if (EMBEDDED) {
+    setMeta(EMBEDDED.meta);
+    $("liveSel").style.display = "none"; $("staticSel").style.display = "";
+    $("selBattle").innerHTML = EMBEDDED.battles.map((b, i) => {
+      const sc = EMBEDDED.meta.scenarios[b.scenario].name, op = EMBEDDED.meta.opponents[b.opponent].replace(/^brain:.*[\\/]/, "brain:");
+      return `<option value="${i}">${esc(sc)} vs ${esc(op)} · seed ${b.seed} · ${b.outcome}</option>`;
+    }).join("");
+    $("selBattle").onchange = (e) => useStatic(+e.target.value);
+    const q = new URLSearchParams(location.search);
+    $("selBattle").value = q.get("battle") || 0;
+    useStatic(+$("selBattle").value);
+    deepLink(q);
+  } else {
+    try {
+      setMeta(await getJSON("/api/meta"));
+      const v = await getJSON("/api/version"); S.version = v.version; showStatus(v.status);
+      await loadLive(); deepLink(new URLSearchParams(location.search)); setTimeout(poll, 3000);
+    } catch (e) {
+      $("overlay").style.display = "flex";
+      $("overlay").innerHTML = "Waiting for a champion…<small>" + esc(e.message || "not connected") + "<br>Run scripts/watch.py, or open a standalone file written by --watch.</small>";
+      setTimeout(start, 3000);
+    }
+  }
+}
+start();
+</script>
+</body>
+</html>

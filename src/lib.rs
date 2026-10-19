@@ -6,6 +6,7 @@ pub mod economy;
 pub mod engine;
 pub mod entity;
 pub mod experiment;
+pub mod learn;
 pub mod live;
 pub mod live_server;
 pub mod map;
@@ -16,6 +17,7 @@ pub mod policy;
 pub mod routing;
 pub mod scenario_compile;
 pub mod score;
+pub mod sensors;
 mod spatial;
 pub mod strategy;
 pub mod trace;
@@ -112,6 +114,7 @@ mod tests {
 
     fn unit(name: &str, hp: f32, damage: f32, damage_duration: f32) -> UnitDef {
         UnitDef {
+            flight: None,
             name: name.into(),
             icon_type: None,
             health: hp,
@@ -296,6 +299,7 @@ mod tests {
 
     fn wall(height: f32) -> UnitDef {
         UnitDef {
+            flight: None,
             name: "wall".into(),
             icon_type: None,
             health: 1_000.0,
@@ -405,5 +409,85 @@ mod tests {
         let caught_up = Simulator::new(elevated_target_scenario(Some(30.0), 2.0))
             .run([&BuiltinPolicy::Hold, &BuiltinPolicy::Hold], 4);
         assert!(caught_up.sides[0].damage_dealt > 0.0);
+    }
+
+    #[test]
+    fn replay_preserves_weapon_yaw_and_shots_wait_for_turret_alignment() {
+        let mut shooter = unit("yaw-limited", 1000.0, 1.0, 0.0);
+        shooter.movement.max_speed = 0.0;
+        shooter.weapons[0].turret_yaw_speed = Some(90.0);
+        shooter.weapons[0].fire_tolerance = 0.01;
+        let mut target = unit("target", 1000.0, 0.0, 0.0);
+        target.weapons.clear();
+        target.movement.max_speed = 0.0;
+        let mut scenario = asymmetric_scenario(shooter, target);
+        scenario.units[0].heading = std::f32::consts::FRAC_PI_2;
+        scenario.max_time = 2.0;
+        let (_, trace) = Simulator::new(scenario).run_traced(
+            [&BuiltinPolicy::Hold, &BuiltinPolicy::Hold],
+            1,
+            crate::trace::TraceConfig {
+                sample_every_ticks: 1,
+                max_frames: 0,
+            },
+        );
+        let json = serde_json::to_value(&trace).unwrap();
+        let yaw = json["frames"][0]["units"][0]["weapon_headings"][0]
+            .as_f64()
+            .expect("replays must retain actual weapon yaw, separately from hull yaw");
+        // One 30 Hz tick at 90 degrees/s turns the turret from 90 to 87 degrees.
+        assert!((yaw - 87_f64.to_radians()).abs() < 1e-5);
+        let mut fired = 0;
+        for (frame, json_frame) in trace.frames.iter().zip(json["frames"].as_array().unwrap()) {
+            let turret = json_frame["units"][0]["weapon_headings"][0]
+                .as_f64()
+                .unwrap();
+            assert!((frame.units[0].heading - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
+            for aim in &frame.aim_attempts {
+                if aim.state == crate::trace::AimState::Fired {
+                    fired += 1;
+                    assert!(frame.time > 0.9, "shot before turret could turn");
+                    let direction = ((aim.aim_point[1] - aim.origin[1]) as f64)
+                        .atan2((aim.aim_point[0] - aim.origin[0]) as f64);
+                    assert!((turret - direction).abs() <= 0.01001);
+                }
+            }
+        }
+        assert!(fired > 0, "fixture must exercise a real shot");
+    }
+
+    #[test]
+    fn replay_fixed_guns_follow_turning_hulls_and_shields_have_no_barrel() {
+        let mut shooter = unit("fixed-gun", 1000.0, 1.0, 0.0);
+        shooter.weapons[0].turret = false;
+        shooter.weapons[0].range = 1.0;
+        shooter.weapons.push(WeaponDef {
+            is_shield: true,
+            ..Default::default()
+        });
+        let mut target = unit("target", 1000.0, 0.0, 0.0);
+        target.weapons.clear();
+        let mut scenario = asymmetric_scenario(shooter, target);
+        scenario.units[0].heading = std::f32::consts::FRAC_PI_2;
+        scenario.max_time = 0.2;
+        let (_, trace) = Simulator::new(scenario).run_traced(
+            [&BuiltinPolicy::Charge, &BuiltinPolicy::Hold],
+            1,
+            crate::trace::TraceConfig {
+                sample_every_ticks: 1,
+                max_frames: 0,
+            },
+        );
+        assert!((trace.frames[0].units[0].heading - std::f32::consts::FRAC_PI_2).abs() > 0.01);
+        let json = serde_json::to_value(&trace).unwrap();
+        for (frame, wire) in trace.frames.iter().zip(json["frames"].as_array().unwrap()) {
+            let mounts = wire["units"][0]["weapon_headings"].as_array().unwrap();
+            assert_eq!(mounts.len(), 2, "weapon indices must stay stable");
+            assert!((mounts[0].as_f64().unwrap() - frame.units[0].heading as f64).abs() < 1e-5);
+            assert!(
+                mounts[1].is_null(),
+                "shield slots must not become fictitious barrels"
+            );
+        }
     }
 }

@@ -870,6 +870,7 @@ mod tests {
                     icon_key: "armbot".into(),
                     position: [12.0, 34.0],
                     heading: 0.0,
+                    weapon_headings: vec![],
                     hp: 50.0,
                     max_hp: 100.0,
                     radius: 8.0,

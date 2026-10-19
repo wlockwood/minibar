@@ -103,6 +103,10 @@ pub enum StrategyAction {
         entities: Vec<EntityId>,
         active: bool,
     },
+    SetCloak {
+        entities: Vec<EntityId>,
+        cloaked: bool,
+    },
     Reclaim {
         entities: Vec<EntityId>,
         target: ReclaimTarget,
@@ -230,6 +234,8 @@ pub struct ActionCapabilities {
     pub repair: bool,
     pub factory_queue: bool,
     pub activation: bool,
+    #[serde(default)]
+    pub cloak: bool,
     pub reclaim: bool,
     pub cancel: bool,
 }
@@ -405,6 +411,9 @@ pub fn validate_action(
         }
         StrategyAction::SetActivation { entities, .. } => {
             validate_entities(side, entities, |capability| capability.activation, world)
+        }
+        StrategyAction::SetCloak { entities, .. } => {
+            validate_entities(side, entities, |capability| capability.cloak, world)
         }
         StrategyAction::Reclaim {
             entities, target, ..
@@ -636,6 +645,10 @@ pub enum ObservationVisibility {
     Own,
     LineOfSight,
     Radar,
+    Sonar,
+    /// An immobile seen in LOS. Position and identity are retained, never
+    /// current health; the structure may have been destroyed out of sight.
+    Ghost,
     Remembered,
 }
 
@@ -649,21 +662,26 @@ pub enum ObservationPolicy {
     Omniscient,
     Filtered {
         /// Maximum horizontal range at which an owned entity can identify an
-        /// enemy, subject to terrain and blocking collision cylinders.
+        /// enemy, subject to terrain. Units do not occlude sensor coverage.
         line_of_sight_range: f32,
-        /// Maximum horizontal range for an anonymous contact. Radar ignores
-        /// terrain and other units, but discloses less information than LOS.
+        /// Fallback horizontal radar range. Ground radar has terrain shadows;
+        /// concrete catalog radii override fallbacks.
         radar_range: f32,
-        /// World-space grid used to quantize radar positions. Zero preserves
-        /// exact position while still hiding type and health.
-        #[serde(default)]
+        /// Radar error magnitude in elmos (legacy field name). Positions drift
+        /// smoothly rather than snapping to a grid. Recoil default is96.
+        /// Zero explicitly disables positional error for a controlled fixture.
+        #[serde(default = "default_radar_error", alias = "radar_error_size")]
         radar_position_resolution: f32,
-        /// Retain the last disclosed representation of contacts after they
-        /// leave sensor coverage. Radar-only contacts remain anonymous and
-        /// quantized; LOS contacts retain their last exact disclosure.
+        /// Retain optional mobile last-seen memory after contact loss. It is
+        /// stale and cannot be targeted as a current entity contact. Building
+        /// ghosts always persist independently of this switch.
         #[serde(default)]
         remember_last_seen: bool,
     },
+}
+
+fn default_radar_error() -> f32 {
+    96.0
 }
 
 impl ObservationPolicy {
@@ -708,6 +726,16 @@ pub struct ObservedEntity {
     pub position: Vec2,
     pub health_fraction: Option<f32>,
     pub visibility: ObservationVisibility,
+    /// Simulation seconds since a sensor last detected this entity; zero for
+    /// contacts detected now.
+    #[serde(default)]
+    pub age_seconds: f32,
+    /// Elmos around `position` within which the entity is known to be: zero
+    /// for exact contacts and building ghosts, the radar error for radar and
+    /// sonar blips, and for remembered mobile contacts that error plus the
+    /// fastest the entity could have moved since (capped at the map diagonal).
+    #[serde(default)]
+    pub position_error: f32,
 }
 
 /// One issued attack intent for symbolic viewers. The endpoint is derived
@@ -1720,6 +1748,7 @@ mod tests {
                 repair: true,
                 factory_queue: true,
                 activation: true,
+                cloak: true,
                 reclaim: true,
                 cancel: true,
             },
@@ -1998,6 +2027,8 @@ mod tests {
                 position: Vec2::new(100.0, 100.0),
                 health_fraction: Some(1.0),
                 visibility: ObservationVisibility::Own,
+                age_seconds: 0.0,
+                position_error: 0.0,
             },
             // Healthy unit outside combat range
             ObservedEntity {
@@ -2008,6 +2039,8 @@ mod tests {
                 position: Vec2::new(300.0, 300.0),
                 health_fraction: Some(1.0),
                 visibility: ObservationVisibility::Own,
+                age_seconds: 0.0,
+                position_error: 0.0,
             },
             // Low health unit (should kite)
             ObservedEntity {
@@ -2018,6 +2051,8 @@ mod tests {
                 position: Vec2::new(120.0, 100.0),
                 health_fraction: Some(0.2),
                 visibility: ObservationVisibility::Own,
+                age_seconds: 0.0,
+                position_error: 0.0,
             },
             // Enemy target
             ObservedEntity {
@@ -2028,6 +2063,8 @@ mod tests {
                 position: Vec2::new(100.0, 180.0),
                 health_fraction: Some(1.0),
                 visibility: ObservationVisibility::LineOfSight,
+                age_seconds: 0.0,
+                position_error: 0.0,
             },
         ];
 
@@ -2084,6 +2121,8 @@ mod tests {
                 position: Vec2::new(80.0, 100.0),
                 health_fraction: Some(1.0),
                 visibility: ObservationVisibility::Own,
+                age_seconds: 0.0,
+                position_error: 0.0,
             },
             ObservedEntity {
                 id: combat_id,
@@ -2093,6 +2132,8 @@ mod tests {
                 position: Vec2::new(60.0, 130.0),
                 health_fraction: Some(1.0),
                 visibility: ObservationVisibility::Own,
+                age_seconds: 0.0,
+                position_error: 0.0,
             },
         ];
 
@@ -2129,6 +2170,8 @@ mod tests {
             position: Vec2::new(50.0, 50.0),
             health_fraction: Some(1.0),
             visibility: ObservationVisibility::Own,
+            age_seconds: 0.0,
+            position_error: 0.0,
         }];
         obs.resource_sites = vec![ObservedResourceSite {
             id: 1,
@@ -2173,6 +2216,8 @@ mod tests {
             position: Vec2::new(80.0, 50.0), // 30 elmos away <= 100
             health_fraction: Some(1.0),
             visibility: ObservationVisibility::LineOfSight,
+            age_seconds: 0.0,
+            position_error: 0.0,
         });
         let mut threat_emitter = ActionEmitter::new(0, 3, 3);
         strategy.update(&obs, &mut threat_emitter);

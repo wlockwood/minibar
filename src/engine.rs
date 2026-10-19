@@ -31,6 +31,9 @@ const PARALYZE_DECLINE_TIME: f32 = 40.0;
 
 #[derive(Clone, Copy, Debug)]
 struct Impact {
+    /// Terrain-relative elevation of the intended impact.
+    altitude: f32,
+    terrain_height: f32,
     shooter_id: u32,
     shooter_side: u8,
     target_id: u32,
@@ -124,6 +127,7 @@ impl FlightPath {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct DamageEvent {
     target_index: usize,
+    source_id: u32,
     source_side: u8,
     damage: f32,
     paralyzer: bool,
@@ -251,6 +255,7 @@ pub struct Simulator {
     definitions: Vec<Arc<crate::model::UnitDef>>,
     terrain_all_passable: bool,
     paralysis_enabled: bool,
+    sensing_enabled: bool,
     /// `None` keeps historical tactical runs resource-unlimited. Experiments
     /// can opt into finite per-side ammunition resources without coupling this
     /// hot loop to the strategic economy scheduler.
@@ -293,6 +298,81 @@ pub struct CombatCommand {
     pub throttle: f32,
 }
 
+/// A current contact disclosed to one observing side. A missing velocity is
+/// unknown, not permission to recover it from the physical combatant.
+#[derive(Clone, Copy, Debug)]
+pub struct TargetObservation {
+    pub target: CombatKey,
+    pub position: Vec2,
+    pub height: f32,
+    pub velocity: Option<Vec2>,
+    pub exact: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TargetEstimate {
+    position: Vec2,
+    height: f32,
+    velocity: Vec2,
+    exact: bool,
+}
+
+#[derive(Default)]
+struct TargetingState {
+    // None is the explicit legacy oracle mode. Some(empty) denies all entity acquisition.
+    contacts: [Option<Vec<Option<TargetEstimate>>>; 2],
+    ground: HashMap<u32, Vec2>,
+}
+impl TargetingState {
+    fn estimate(
+        &self,
+        side: u8,
+        target: u32,
+        units: &[UnitState],
+        terrain: &Terrain,
+    ) -> Option<TargetEstimate> {
+        if let Some(contacts) = self.contacts.get(side as usize).and_then(Option::as_ref) {
+            return contacts
+                .get(target.checked_sub(1)? as usize)
+                .copied()
+                .flatten();
+        }
+        let index = live_unit_index(units, target)?;
+        Some(TargetEstimate {
+            position: units[index].position,
+            height: unit_collision_mid_y(&units[index], terrain),
+            velocity: units[index].velocity(),
+            exact: true,
+        })
+    }
+    fn clear(&mut self) {
+        self.contacts = [None, None];
+        self.ground.clear();
+    }
+    fn remap(&mut self, remap: &[u32]) {
+        for contacts in self.contacts.iter_mut().flatten() {
+            let old = std::mem::take(contacts);
+            contacts.resize(remap.iter().copied().max().unwrap_or(0) as usize, None);
+            for (index, value) in old.into_iter().enumerate() {
+                if let Some(id) = remap.get(index).copied().filter(|id| *id > 0) {
+                    contacts[id as usize - 1] = value;
+                }
+            }
+        }
+        self.ground = self
+            .ground
+            .drain()
+            .filter_map(|(id, point)| {
+                remap
+                    .get(id as usize - 1)
+                    .copied()
+                    .filter(|id| *id > 0)
+                    .map(|id| (id, point))
+            })
+            .collect();
+    }
+}
+
 /// Sparse external synchronization patch. Changing definitions resets weapon
 /// state because reload/burst state cannot be transferred between loadouts.
 #[derive(Clone, Copy, Debug, Default)]
@@ -331,6 +411,7 @@ pub enum CombatError {
     UnknownTarget(CombatKey),
     UnknownDefinition(usize),
     InvalidSide(u8),
+    InvalidObservation,
 }
 
 /// Long-lived tactical state for integration with the strategic `World`.
@@ -349,6 +430,7 @@ pub struct CombatStepper {
     keys: Vec<Option<CombatKey>>,
     indices: HashMap<CombatKey, usize>,
     commands: Vec<Command>,
+    targeting: TargetingState,
     impacts: ImpactQueue,
     guided_projectiles: Vec<GuidedProjectile>,
     damage_events: Vec<DamageEvent>,
@@ -363,6 +445,363 @@ pub struct CombatStepper {
     time: f32,
 }
 
+/// Cached, side-limited policy snapshots for stand-alone tactical trials.
+/// Legacy fixtures without sensor declarations keep their oracle fast path;
+/// once any sensor is declared, undeclared sight falls back to map-wide range.
+struct StandaloneSensors {
+    targeting: TargetingState,
+    views: [Vec<UnitState>; 2],
+    units: Vec<crate::sensors::SensorUnit>,
+    cloaked: Vec<bool>,
+    decloak_until: Vec<u64>,
+    next_cloak_check: Vec<u64>,
+    previous_shots: Vec<u64>,
+    identified: [Vec<bool>; 2],
+    tracked: [Vec<bool>; 2],
+    known_definitions: [Vec<Option<Arc<crate::model::UnitDef>>>; 2],
+    ghosts: [Vec<Option<UnitState>>; 2],
+    ghost_targets: [Vec<Option<Vec2>>; 2],
+    unknown: Arc<crate::model::UnitDef>,
+}
+impl StandaloneSensors {
+    fn new(len: usize) -> Self {
+        let mut unknown = crate::model::UnitDef::default();
+        unknown.name = "unknown-contact".into();
+        unknown.health = 1.0;
+        Self {
+            targeting: TargetingState::default(),
+            views: [Vec::with_capacity(len), Vec::with_capacity(len)],
+            units: Vec::with_capacity(len),
+            cloaked: vec![false; len],
+            decloak_until: vec![0; len],
+            next_cloak_check: vec![0; len],
+            previous_shots: vec![0; len],
+            identified: [vec![false; len], vec![false; len]],
+            tracked: [vec![false; len], vec![false; len]],
+            known_definitions: [vec![None; len], vec![None; len]],
+            ghosts: [vec![None; len], vec![None; len]],
+            ghost_targets: [vec![None; len], vec![None; len]],
+            unknown: Arc::new(unknown),
+        }
+    }
+    fn reset(&mut self) {
+        self.targeting.clear();
+        self.cloaked.fill(false);
+        self.decloak_until.fill(0);
+        self.next_cloak_check.fill(0);
+        self.previous_shots.fill(0);
+        for identified in &mut self.identified {
+            identified.fill(false);
+        }
+        for tracked in &mut self.tracked {
+            tracked.fill(false);
+        }
+        for known in &mut self.known_definitions {
+            known.fill(None);
+        }
+        for ghosts in &mut self.ghosts {
+            ghosts.fill(None);
+        }
+        for ghosts in &mut self.ghost_targets {
+            ghosts.fill(None);
+        }
+    }
+
+    fn sanitize_command(&mut self, side: u8, shooter: u32, mut command: Command) -> Command {
+        self.targeting.ground.remove(&shooter);
+        if let Some(target) = command.target {
+            let known = self
+                .targeting
+                .contacts
+                .get(side as usize)
+                .and_then(Option::as_ref)
+                .and_then(|contacts| {
+                    target
+                        .checked_sub(1)
+                        .and_then(|id| contacts.get(id as usize))
+                })
+                .copied()
+                .flatten();
+            if known.is_none() {
+                if let Some(point) = self
+                    .ghost_targets
+                    .get(side as usize)
+                    .and_then(|ghosts| target.checked_sub(1).and_then(|id| ghosts.get(id as usize)))
+                    .copied()
+                    .flatten()
+                {
+                    self.targeting.ground.insert(shooter, point);
+                }
+                command.target = None;
+            }
+        }
+        command
+    }
+
+    fn refresh(
+        &mut self,
+        truth: &[UnitState],
+        terrain: &Terrain,
+        seed: u64,
+        tick: u64,
+        resources: &mut Option<[StartingResources; 2]>,
+    ) {
+        self.units.clear();
+        for (index, unit) in truth.iter().enumerate() {
+            let d = &unit.definition.strategic;
+            let ground = terrain.height_at(unit.position);
+            let mut sensor = crate::sensors::SensorUnit::from_definition(
+                u64::from(unit.id),
+                unit.side,
+                unit.position,
+                ground - terrain.water_level,
+                &unit.definition,
+            );
+            sensor.ground_height += terrain.water_level;
+            sensor.target_height += terrain.water_level + unit.altitude;
+            sensor.use_air_los = unit.definition.flight.is_some() || d.use_air_los;
+            sensor.active = unit.alive;
+            sensor.enabled = !unit.stunned;
+            sensor.being_built = unit.collision_height_scale < 1.0;
+            if d.sight_distance.is_none() {
+                sensor.sight = (terrain.cols as f32 + terrain.rows as f32) * terrain.cell_size;
+                sensor.air_sight = d.air_sight_distance.unwrap_or(sensor.sight * 1.5);
+            }
+            let shots = unit
+                .weapons
+                .iter()
+                .map(|mount| mount.shot_sequence)
+                .sum::<u64>();
+            if d.decloak_on_fire && shots != self.previous_shots[index] {
+                self.decloak_until[index] = tick.saturating_add(128);
+                self.cloaked[index] = false;
+            }
+            self.previous_shots[index] = shots;
+            let nearby = d.min_cloak_distance > 0.0
+                && truth.iter().any(|enemy| {
+                    enemy.alive && enemy.side < 2 && enemy.side != unit.side && {
+                        let horizontal = unit.position.distance_squared(enemy.position);
+                        let vertical = if d.decloak_spherical {
+                            let dy = unit_collision_mid_y(unit, terrain)
+                                - unit_collision_mid_y(enemy, terrain);
+                            dy * dy
+                        } else {
+                            0.0
+                        };
+                        let radius = d.min_cloak_distance
+                            + if d.decloak_spherical {
+                                enemy.definition.movement.radius.max(0.0)
+                            } else {
+                                0.0
+                            };
+                        horizontal + vertical <= radius * radius
+                    }
+                });
+            if tick >= self.next_cloak_check[index] {
+                let mut cloaked = d.can_cloak
+                    && d.start_cloaked
+                    && sensor.active
+                    && !unit.stunned
+                    && tick >= self.decloak_until[index]
+                    && !nearby;
+                if cloaked && unit.side < 2 {
+                    let cost = if unit.speed.abs() > 0.2_f32.sqrt() * crate::model::SIM_HZ {
+                        d.cloak_cost_moving.unwrap_or(d.cloak_cost)
+                    } else {
+                        d.cloak_cost
+                    };
+                    if let Some(pools) = resources {
+                        let energy = &mut pools[unit.side as usize].energy;
+                        let expense = f64::from(cost.max(0.0)) * 0.5;
+                        if *energy + 1e-12 >= expense {
+                            *energy = (*energy - expense).max(0.0);
+                        } else {
+                            cloaked = false;
+                        }
+                    }
+                }
+                self.cloaked[index] = cloaked;
+                self.next_cloak_check[index] = tick.saturating_add(15);
+            }
+            if !unit.alive {
+                self.cloaked[index] = false;
+            }
+            sensor.cloaked = self.cloaked[index];
+            self.units.push(sensor);
+        }
+        for side in 0..2 {
+            let error = crate::sensors::radar_error_size(side as u8, &self.units, 96.0);
+            let contacts = self.targeting.contacts[side].get_or_insert_with(Vec::new);
+            contacts.resize(truth.len(), None);
+            contacts.fill(None);
+            self.ghost_targets[side].fill(None);
+            let mut count = 0;
+            for (index, unit) in truth.iter().enumerate() {
+                let detected = if !unit.alive {
+                    None
+                } else if unit.side == side as u8 {
+                    Some(crate::sensors::Detection::Los)
+                } else {
+                    crate::sensors::detect(
+                        side as u8,
+                        &self.units[index],
+                        &self.units,
+                        |from, from_y, to, to_y| {
+                            terrain.has_line_of_sight_3d(from, from_y, to, to_y, 0.0)
+                        },
+                    )
+                };
+                let Some(detected) = detected else {
+                    let was_tracked = self.tracked[side][index];
+                    self.tracked[side][index] = false;
+                    if !unit.alive && was_tracked {
+                        self.ghosts[side][index] = None;
+                    }
+                    self.identified[side][index] = false;
+                    self.known_definitions[side][index] = None;
+                    if let Some(ghost) = self.ghosts[side][index].as_ref() {
+                        let ghost_ground = terrain.height_at(ghost.position);
+                        let mut location = crate::sensors::SensorUnit::from_definition(
+                            u64::from(ghost.id),
+                            ghost.side,
+                            ghost.position,
+                            ghost_ground - terrain.water_level,
+                            &ghost.definition,
+                        );
+                        location.ground_height += terrain.water_level;
+                        location.target_height += terrain.water_level + ghost.altitude;
+                        let empty_seen = !unit.alive
+                            && self.units.iter().any(|observer| {
+                                observer.side == side as u8
+                                    && crate::sensors::visual_coverage(
+                                        observer,
+                                        &location,
+                                        &|from, from_y, to, to_y| {
+                                            terrain
+                                                .has_line_of_sight_3d(from, from_y, to, to_y, 0.0)
+                                        },
+                                    )
+                            });
+                        if empty_seen {
+                            self.ghosts[side][index] = None;
+                        } else {
+                            self.ghost_targets[side][index] = Some(ghost.position);
+                            let views = &mut self.views[side];
+                            if count < views.len() {
+                                views[count].clone_from(ghost);
+                            } else {
+                                views.push(ghost.clone());
+                            }
+                            count += 1;
+                        }
+                    }
+                    continue;
+                };
+                self.tracked[side][index] = true;
+                let exact = detected == crate::sensors::Detection::Los;
+                if exact {
+                    self.identified[side][index] = true;
+                    self.known_definitions[side][index] = Some(Arc::clone(&unit.definition));
+                }
+                let remembered_static = self.ghosts[side][index]
+                    .as_ref()
+                    .map(|ghost| ghost.position);
+                let position = if exact {
+                    unit.position
+                } else if self.units[index].leaves_ghost && remembered_static.is_some() {
+                    remembered_static.unwrap()
+                } else {
+                    crate::sensors::radar_position(
+                        u64::from(unit.id) ^ seed.rotate_left(17),
+                        tick,
+                        unit.position,
+                        error,
+                    )
+                };
+                if unit.side != side as u8 {
+                    contacts[index] = Some(TargetEstimate {
+                        position,
+                        height: if exact {
+                            self.units[index].target_height
+                        } else {
+                            terrain.height_at(position) + PROJECTILE_CLEARANCE + 0.01
+                        },
+                        velocity: if exact {
+                            unit.velocity()
+                        } else {
+                            Vec2::default()
+                        },
+                        exact,
+                    });
+                }
+                let views = &mut self.views[side];
+                if count < views.len() {
+                    views[count].clone_from(unit);
+                } else {
+                    views.push(unit.clone());
+                }
+                let view = &mut views[count];
+                view.position = position;
+                if unit.side != side as u8 {
+                    // Known definitions disclose capabilities, not live enemy reload,
+                    // aim, stockpile, prediction RNG or regeneration deadlines.
+                    view.weapons.clear();
+                    if !exact {
+                        view.definition = self.known_definitions[side][index]
+                            .as_ref()
+                            .cloned()
+                            .or_else(|| {
+                                self.ghosts[side][index]
+                                    .as_ref()
+                                    .map(|ghost| Arc::clone(&ghost.definition))
+                            })
+                            .unwrap_or_else(|| Arc::clone(&self.unknown));
+                        view.definition_index = usize::MAX;
+                        view.hp = 0.0;
+                        view.speed = 0.0;
+                        view.heading = 0.0;
+                        view.forward = Vec2::new(1.0, 0.0);
+                        view.weapons.clear();
+                        view.paralyze_damage = 0.0;
+                        view.stunned = false;
+                        view.collision_height_scale = 1.0;
+                        view.flanking_direction = Vec2::default();
+                        view.flanking_mobility = 0.0;
+                    } else if self.units[index].leaves_ghost
+                        && unit.definition.movement.max_speed <= 0.0
+                    {
+                        let mut ghost = view.clone();
+                        ghost.hp = 0.0;
+                        ghost.speed = 0.0;
+                        ghost.alive = true;
+                        ghost.weapons.clear();
+                        ghost.paralyze_damage = 0.0;
+                        ghost.stunned = false;
+                        self.ghosts[side][index] = Some(ghost);
+                    }
+                }
+                count += 1;
+            }
+            self.views[side].truncate(count);
+        }
+    }
+}
+
+fn has_sensor_declaration(unit: &crate::model::UnitDef) -> bool {
+    let d = &unit.strategic;
+    d.sight_distance.is_some()
+        || d.air_sight_distance.is_some()
+        || d.radar_radius.is_some()
+        || d.sonar_radius.is_some()
+        || d.jammer_radius.is_some()
+        || d.sonar_jammer_radius.is_some()
+        || d.stealth
+        || d.sonar_stealth
+        || d.can_cloak
+        || d.use_air_los
+        || d.targeting_facility
+}
+
 /// Allocation-owning state retained across trials by each Rayon worker.
 /// Scenario and definition data are immutable; only these runtime buffers need
 /// to be reset between seeds.
@@ -374,6 +813,7 @@ struct TrialWorkspace {
     spatial_candidates: Vec<usize>,
     spatial: SpatialGrid,
     commands: Vec<Command>,
+    sensors: StandaloneSensors,
 }
 
 impl TrialWorkspace {
@@ -382,6 +822,7 @@ impl TrialWorkspace {
         let maximum_tick = (simulator.scenario.max_time / DT).ceil() as u64;
         Self {
             commands: vec![Command::default(); units.len()],
+            sensors: StandaloneSensors::new(units.len()),
             units,
             impacts: ImpactQueue::new(maximum_tick),
             guided_projectiles: Vec::new(),
@@ -400,6 +841,7 @@ impl TrialWorkspace {
         self.spatial_candidates.clear();
         self.commands.resize(self.units.len(), Command::default());
         self.commands.fill(Command::default());
+        self.sensors.reset();
     }
 }
 
@@ -437,11 +879,16 @@ impl Simulator {
                 .iter()
                 .any(|weapon| weapon.paralyzer)
         });
+        let sensing_enabled = scenario
+            .units
+            .iter()
+            .any(|spawn| has_sensor_declaration(&spawn.definition));
         Self {
             scenario,
             definitions,
             terrain_all_passable,
             paralysis_enabled,
+            sensing_enabled,
             combat_resources: None,
         }
     }
@@ -546,6 +993,7 @@ impl Simulator {
             spatial_candidates,
             spatial,
             commands,
+            sensors,
         } = workspace;
         let mut battle = BattleState {
             scores: initial_scores(units),
@@ -562,17 +1010,37 @@ impl Simulator {
                 || !impacts.is_empty()
                 || !guided_projectiles.is_empty())
         {
+            advance_flanking(units, tick);
             if self.paralysis_enabled {
                 advance_paralysis(units);
             }
-            let view = WorldView {
-                time,
-                terrain: &self.scenario.terrain,
-                units,
-            };
+            if self.sensing_enabled {
+                sensors.refresh(
+                    units,
+                    &self.scenario.terrain,
+                    seed,
+                    tick,
+                    &mut battle.combat_resources,
+                );
+            }
             for (command, unit) in commands.iter_mut().zip(units.iter()) {
                 *command = if unit.alive && unit.side < 2 {
-                    policies[unit.side as usize].command(&view, unit)
+                    let disclosed = if self.sensing_enabled {
+                        sensors.views[unit.side as usize].as_slice()
+                    } else {
+                        units.as_slice()
+                    };
+                    let view = WorldView {
+                        time,
+                        terrain: &self.scenario.terrain,
+                        units: disclosed,
+                    };
+                    let result = policies[unit.side as usize].command(&view, unit);
+                    if self.sensing_enabled {
+                        sensors.sanitize_command(unit.side, unit.id, result)
+                    } else {
+                        result
+                    }
                 } else {
                     Command::default()
                 };
@@ -609,6 +1077,7 @@ impl Simulator {
             update_weapons::<TRACE>(
                 units,
                 commands,
+                self.sensing_enabled.then_some(&sensors.targeting),
                 time,
                 tick,
                 impacts,
@@ -622,7 +1091,7 @@ impl Simulator {
                 trace_tick,
                 &mut aim_attempts,
             );
-            advance_guided_projectiles(
+            advance_guided_projectiles_observed(
                 units,
                 tick,
                 guided_projectiles,
@@ -630,8 +1099,9 @@ impl Simulator {
                 &self.scenario.terrain,
                 spatial,
                 spatial_candidates,
+                self.sensing_enabled.then_some(&sensors.targeting),
             );
-            resolve_impacts(
+            resolve_impacts_observed(
                 units,
                 tick,
                 impacts,
@@ -640,6 +1110,8 @@ impl Simulator {
                 spatial_candidates,
                 &mut battle,
                 &self.definitions,
+                self.sensing_enabled.then_some(&sensors.targeting),
+                Some(&self.scenario.terrain),
             );
             if TRACE && trace_tick {
                 let view = WorldView {
@@ -807,6 +1279,7 @@ impl CombatStepper {
             keys: Vec::new(),
             indices: HashMap::new(),
             commands: Vec::new(),
+            targeting: TargetingState::default(),
             impacts: ImpactQueue::new(u64::MAX),
             guided_projectiles: Vec::new(),
             damage_events: Vec::new(),
@@ -1000,6 +1473,7 @@ impl CombatStepper {
         self.units.truncate(write);
         self.keys.truncate(write);
         self.commands.truncate(write);
+        self.targeting.remap(&remap);
         for command in &mut self.commands {
             command.target = command
                 .target
@@ -1048,6 +1522,13 @@ impl CombatStepper {
         {
             self.units[index].weapons =
                 initial_weapon_states(&definition, self.units[index].heading);
+            self.units[index].flanking_direction = definition.strategic.flanking.direction;
+            self.units[index].flanking_mobility =
+                definition.strategic.flanking.mobility_add * 1000.0;
+            self.units[index].altitude = definition
+                .flight
+                .as_ref()
+                .map_or(0.0, |flight| flight.cruise_altitude);
             self.units[index].definition = definition;
             self.units[index].definition_index = definition_id.0;
         }
@@ -1099,6 +1580,7 @@ impl CombatStepper {
             ),
             None => None,
         };
+        self.targeting.ground.remove(&self.units[index].id);
         self.commands[index] = Command {
             target,
             destination: command.destination,
@@ -1107,9 +1589,69 @@ impl CombatStepper {
         Ok(())
     }
 
+    /// Replaces the complete current contact set for a side. Once called, a
+    /// missing contact cannot acquire or guide against the hidden true position.
+    /// Call every tactical tick, including with an empty slice after contact loss.
+    pub fn set_target_observations(
+        &mut self,
+        side: u8,
+        observations: &[TargetObservation],
+    ) -> Result<(), CombatError> {
+        if side >= 2 {
+            return Err(CombatError::InvalidSide(side));
+        }
+        let mut contacts = vec![None; self.units.len()];
+        for observation in observations {
+            let index = *self
+                .indices
+                .get(&observation.target)
+                .ok_or(CombatError::UnknownTarget(observation.target))?;
+            if !observation.position.x.is_finite()
+                || !observation.position.z.is_finite()
+                || !observation.height.is_finite()
+                || observation
+                    .velocity
+                    .is_some_and(|v| !v.x.is_finite() || !v.z.is_finite())
+                || contacts[index].is_some()
+            {
+                return Err(CombatError::InvalidObservation);
+            }
+            contacts[index] = Some(TargetEstimate {
+                position: observation.position,
+                height: observation.height,
+                velocity: observation.velocity.unwrap_or_default(),
+                exact: observation.exact,
+            });
+        }
+        self.targeting.contacts[side as usize] = Some(contacts);
+        Ok(())
+    }
+
+    /// Ground fire is explicit and never acquires a live entity at that point.
+    /// Entity commands clear this override; None clears a prior ground order.
+    pub fn set_ground_target(
+        &mut self,
+        key: CombatKey,
+        position: Option<Vec2>,
+    ) -> Result<(), CombatError> {
+        let index = *self.indices.get(&key).ok_or(CombatError::UnknownKey(key))?;
+        let id = self.units[index].id;
+        if let Some(point) = position {
+            if !point.x.is_finite() || !point.z.is_finite() {
+                return Err(CombatError::InvalidObservation);
+            }
+            self.commands[index].target = None;
+            self.targeting.ground.insert(id, point);
+        } else {
+            self.targeting.ground.remove(&id);
+        }
+        Ok(())
+    }
+
     pub fn clear_command(&mut self, key: CombatKey) -> Result<(), CombatError> {
         let index = *self.indices.get(&key).ok_or(CombatError::UnknownKey(key))?;
         self.commands[index] = Command::default();
+        self.targeting.ground.remove(&self.units[index].id);
         Ok(())
     }
 
@@ -1128,7 +1670,13 @@ impl CombatStepper {
             .weapons
             .iter()
             .zip(&unit.weapons)
-            .find_map(|(weapon, state)| weapon.turret.then_some(state.aim_heading))
+            .find_map(|(weapon, state)| {
+                (weapon.turret
+                    && !weapon.is_shield
+                    && !weapon.manual_fire
+                    && weapon.interceptor == 0)
+                    .then_some(state.aim_heading)
+            })
     }
 
     /// Current charge of a shield weapon. Returns `None` for unknown entities,
@@ -1166,6 +1714,7 @@ impl CombatStepper {
 
     pub fn step(&mut self) -> CombatStepSummary {
         self.deaths.clear();
+        advance_flanking(&mut self.units, self.tick);
         if self.paralysis_enabled {
             advance_paralysis(&mut self.units);
         }
@@ -1194,6 +1743,7 @@ impl CombatStepper {
         update_weapons::<false>(
             &mut self.units,
             &self.commands,
+            Some(&self.targeting),
             self.time,
             self.tick,
             &mut self.impacts,
@@ -1207,7 +1757,7 @@ impl CombatStepper {
             false,
             &mut self.aim_attempts,
         );
-        advance_guided_projectiles(
+        advance_guided_projectiles_observed(
             &self.units,
             self.tick,
             &mut self.guided_projectiles,
@@ -1215,12 +1765,13 @@ impl CombatStepper {
             &self.terrain,
             &self.spatial,
             &mut self.spatial_candidates,
+            Some(&self.targeting),
         );
         self.was_alive.resize(self.units.len(), false);
         for (was_alive, unit) in self.was_alive.iter_mut().zip(&self.units) {
             *was_alive = unit.alive;
         }
-        resolve_impacts(
+        resolve_impacts_observed(
             &mut self.units,
             self.tick,
             &mut self.impacts,
@@ -1229,6 +1780,8 @@ impl CombatStepper {
             &mut self.spatial_candidates,
             &mut self.battle,
             &self.definitions,
+            Some(&self.targeting),
+            Some(&self.terrain),
         );
         for (index, unit) in self.units.iter().enumerate() {
             if self.was_alive[index]
@@ -1268,9 +1821,13 @@ impl CombatStepper {
             hash_value(&mut hash, u64::from(unit.position.z.to_bits()));
             hash_value(&mut hash, u64::from(unit.heading.to_bits()));
             hash_value(&mut hash, u64::from(unit.speed.to_bits()));
+            hash_value(&mut hash, u64::from(unit.altitude.to_bits()));
             hash_value(&mut hash, u64::from(unit.hp.to_bits()));
             hash_value(&mut hash, u64::from(unit.collision_height_scale.to_bits()));
             hash_value(&mut hash, u64::from(unit.paralyze_damage.to_bits()));
+            hash_value(&mut hash, u64::from(unit.flanking_direction.x.to_bits()));
+            hash_value(&mut hash, u64::from(unit.flanking_direction.z.to_bits()));
+            hash_value(&mut hash, u64::from(unit.flanking_mobility.to_bits()));
             hash_value(&mut hash, unit.alive as u64);
             for weapon in &unit.weapons {
                 hash_value(&mut hash, u64::from(weapon.aim_heading.to_bits()));
@@ -1303,6 +1860,33 @@ impl CombatStepper {
             hash_value(&mut hash, command.destination.is_some() as u64);
             hash_value(&mut hash, u64::from(command.throttle.to_bits()));
         }
+        for contacts in &self.targeting.contacts {
+            hash_value(&mut hash, contacts.is_some() as u64);
+            if let Some(contacts) = contacts {
+                for (index, estimate) in contacts.iter().enumerate() {
+                    if let Some(estimate) = estimate {
+                        hash_value(&mut hash, index as u64 + 1);
+                        for value in [
+                            estimate.position.x,
+                            estimate.position.z,
+                            estimate.height,
+                            estimate.velocity.x,
+                            estimate.velocity.z,
+                        ] {
+                            hash_value(&mut hash, u64::from(value.to_bits()));
+                        }
+                        hash_value(&mut hash, estimate.exact as u64);
+                    }
+                }
+            }
+        }
+        for unit in &self.units {
+            if let Some(point) = self.targeting.ground.get(&unit.id) {
+                hash_value(&mut hash, u64::from(unit.id));
+                hash_value(&mut hash, u64::from(point.x.to_bits()));
+                hash_value(&mut hash, u64::from(point.z.to_bits()));
+            }
+        }
         if let Some(resources) = self.battle.combat_resources {
             hash_value(&mut hash, 1);
             for side in resources {
@@ -1324,6 +1908,8 @@ impl CombatStepper {
                 hash_value(&mut hash, u64::from(impact.point.x.to_bits()));
                 hash_value(&mut hash, u64::from(impact.point.z.to_bits()));
                 hash_value(&mut hash, u64::from(impact.damage.to_bits()));
+                hash_value(&mut hash, u64::from(impact.altitude.to_bits()));
+                hash_value(&mut hash, u64::from(impact.terrain_height.to_bits()));
                 node = impact_node.next;
             }
         }
@@ -1335,6 +1921,11 @@ impl CombatStepper {
             hash_value(&mut hash, u64::from(projectile.impact.point.x.to_bits()));
             hash_value(&mut hash, u64::from(projectile.impact.point.z.to_bits()));
             hash_value(&mut hash, u64::from(projectile.impact.damage.to_bits()));
+            hash_value(&mut hash, u64::from(projectile.impact.altitude.to_bits()));
+            hash_value(
+                &mut hash,
+                u64::from(projectile.impact.terrain_height.to_bits()),
+            );
             hash_value(&mut hash, u64::from(projectile.position.x.to_bits()));
             hash_value(&mut hash, u64::from(projectile.position.z.to_bits()));
             hash_value(&mut hash, u64::from(projectile.height.to_bits()));
@@ -1399,8 +1990,14 @@ fn new_unit_state(
         heading,
         forward: Vec2::from_heading(heading),
         speed: 0.0,
+        altitude: definition
+            .flight
+            .as_ref()
+            .map_or(0.0, |flight| flight.cruise_altitude),
         collision_height_scale: 1.0,
         paralyze_damage: 0.0,
+        flanking_direction: definition.strategic.flanking.direction,
+        flanking_mobility: definition.strategic.flanking.mobility_add * 1000.0,
         stunned: false,
         alive: hp > 0.0,
         weapons: initial_weapon_states(&definition, heading),
@@ -1450,7 +2047,14 @@ fn reset_units(units: &mut [UnitState], spawns: &[Spawn]) {
         unit.heading = spawn.heading;
         unit.forward = Vec2::from_heading(spawn.heading);
         unit.speed = 0.0;
+        unit.altitude = unit
+            .definition
+            .flight
+            .as_ref()
+            .map_or(0.0, |flight| flight.cruise_altitude);
         unit.paralyze_damage = 0.0;
+        unit.flanking_direction = unit.definition.strategic.flanking.direction;
+        unit.flanking_mobility = unit.definition.strategic.flanking.mobility_add * 1000.0;
         unit.stunned = false;
         unit.alive = true;
         unit.definition_index = index;
@@ -1493,6 +2097,8 @@ fn initial_scores(units: &[UnitState]) -> [SideScore; 2] {
     ];
     for unit in units.iter().filter(|unit| unit.side < 2) {
         scores[unit.side as usize].starting_value += unit.definition.resource_value();
+        scores[unit.side as usize].key_units_started +=
+            u32::from(unit.definition.strategic.key_unit);
     }
     scores
 }
@@ -1506,6 +2112,12 @@ fn finish_scores(units: &[UnitState], scores: &mut [SideScore; 2], duration: f32
             .filter(|unit| unit.alive && unit.side as usize == side)
             .map(|unit| unit.definition.resource_value())
             .sum();
+        score.key_units_surviving = units
+            .iter()
+            .filter(|unit| {
+                unit.alive && unit.side as usize == side && unit.definition.strategic.key_unit
+            })
+            .count() as u32;
         score.remaining_hp_value = units
             .iter()
             .filter(|unit| unit.alive && unit.side as usize == side)
@@ -1577,6 +2189,41 @@ fn update_movement(
         }
         if unit.stunned {
             unit.speed = 0.0;
+            continue;
+        }
+        if let Some(flight) = &unit.definition.flight {
+            let movement = &unit.definition.movement;
+            if let Some(destination) = command.destination {
+                let delta = destination - unit.position;
+                if delta.length_squared() > 0.25 {
+                    unit.heading = turn_toward(
+                        unit.heading,
+                        delta.heading(),
+                        movement.turn_rate.to_radians() * DT,
+                    );
+                    unit.forward = Vec2::from_heading(unit.heading);
+                }
+            }
+            let desired = (movement.max_speed * command.throttle.clamp(0.0, 1.0))
+                .max(flight.minimum_speed)
+                .min(movement.max_speed);
+            let rate = if desired > unit.speed {
+                movement.acceleration
+            } else {
+                movement.braking
+            };
+            unit.speed = approach(unit.speed, desired, rate * DT);
+            let candidate = unit.position + unit.velocity() * DT;
+            // Aircraft fly over terrain and occupants; map boundaries remain physical.
+            unit.position = Vec2::new(
+                candidate
+                    .x
+                    .clamp(0.0, terrain.cols as f32 * terrain.cell_size),
+                candidate
+                    .z
+                    .clamp(0.0, terrain.rows as f32 * terrain.cell_size),
+            );
+            unit.altitude = flight.cruise_altitude;
             continue;
         }
         let mask = movement_masks
@@ -1749,7 +2396,11 @@ fn separate_unit_pair(
     terrain_all_passable: bool,
     movement_masks: &[Option<Arc<[bool]>>],
 ) {
-    if !units[right].alive || !units[right].definition.movement.blocks_movement {
+    if units[left].definition.flight.is_some()
+        || units[right].definition.flight.is_some()
+        || !units[right].alive
+        || !units[right].definition.movement.blocks_movement
+    {
         return;
     }
     let delta = units[right].position - units[left].position;
@@ -1807,6 +2458,7 @@ fn separate_unit_pair(
 fn update_weapons<const TRACE: bool>(
     units: &mut [UnitState],
     commands: &[Command],
+    targeting: Option<&TargetingState>,
     time: f32,
     tick: u64,
     impacts: &mut ImpactQueue,
@@ -1825,15 +2477,37 @@ fn update_weapons<const TRACE: bool>(
         if !units[index].alive || units[index].stunned || units[index].side >= 2 {
             continue;
         }
-        let Some(target_id) = commands[index].target else {
+        let target_id = commands[index].target.unwrap_or(0);
+        let target_index = live_unit_index(units, target_id).unwrap_or(units.len());
+        let side = units[index].side;
+        let ground = targeting
+            .and_then(|state| state.ground.get(&units[index].id))
+            .copied();
+        let estimate = if let Some(point) = ground {
+            Some(TargetEstimate {
+                position: point,
+                height: terrain.height_at(point) + PROJECTILE_CLEARANCE + 0.01,
+                velocity: Vec2::default(),
+                exact: false,
+            })
+        } else if target_index < units.len() && units[target_index].side != side {
+            targeting.map_or_else(
+                || {
+                    Some(TargetEstimate {
+                        position: units[target_index].position,
+                        height: unit_collision_mid_y(&units[target_index], terrain),
+                        velocity: units[target_index].velocity(),
+                        exact: true,
+                    })
+                },
+                |state| state.estimate(side, target_id, units, terrain),
+            )
+        } else {
+            None
+        };
+        let Some(estimate) = estimate else {
             continue;
         };
-        let Some(target_index) = live_unit_index(units, target_id) else {
-            continue;
-        };
-        if units[target_index].side == units[index].side {
-            continue;
-        }
         let unit_position = units[index].position;
         let body_heading = units[index].heading;
         let moving = units[index].speed.abs() > 0.5;
@@ -1845,9 +2519,11 @@ fn update_weapons<const TRACE: bool>(
             if weapon.manual_fire
                 || weapon.is_shield
                 || weapon.interceptor != 0
-                || !weapon_can_target(weapon, &units[target_index].definition)
-                || weapon.damage_against(&units[target_index].definition.strategic.armor_class)
-                    <= 0.0
+                || (target_index < units.len()
+                    && (!weapon_can_target(weapon, &units[target_index].definition)
+                        || weapon
+                            .damage_against(&units[target_index].definition.strategic.armor_class)
+                            <= 0.0))
             {
                 continue;
             }
@@ -1858,10 +2534,11 @@ fn update_weapons<const TRACE: bool>(
             let forward = units[index].forward;
             let right = Vec2::new(-forward.z, forward.x);
             let origin = unit_position + right * local_origin[0] + forward * local_origin[2];
-            let origin_y = terrain.height_at(unit_position) + local_origin[1];
-            let target_position = units[target_index].position;
-            let target_y = unit_collision_mid_y(&units[target_index], terrain);
-            let target_velocity = units[target_index].velocity();
+            let origin_y =
+                terrain.height_at(unit_position) + units[index].altitude + local_origin[1];
+            let target_position = estimate.position;
+            let target_y = estimate.height;
+            let target_velocity = estimate.velocity;
             let predict_speed_mod = {
                 let state = &mut units[index].weapons[weapon_index];
                 if time + 1e-6 >= state.next_prediction_update {
@@ -1874,7 +2551,7 @@ fn update_weapons<const TRACE: bool>(
                 }
                 state.predict_speed_mod
             };
-            let aim_point = predicted_target_position_3d(
+            let mut aim_point = predicted_target_position_3d(
                 origin,
                 origin_y,
                 target_position,
@@ -1883,7 +2560,36 @@ fn update_weapons<const TRACE: bool>(
                 weapon,
                 predict_speed_mod,
             );
-            if origin.distance_squared(aim_point) > weapon.range * weapon.range {
+            if weapon.weapon_type.eq_ignore_ascii_case("AircraftBomb") {
+                if definition.flight.is_none()
+                    || target_y >= origin_y
+                    || weapon.projectile_gravity <= 0.0
+                {
+                    continue;
+                }
+                let fall_time = (2.0 * (origin_y - target_y) / weapon.projectile_gravity).sqrt();
+                aim_point = target_position + target_velocity * fall_time;
+                let landing = origin + units[index].velocity() * fall_time;
+                let release_radius = units
+                    .get(target_index)
+                    .map_or(5.0, |u| u.definition.movement.radius)
+                    + weapon.area_of_effect * 0.35;
+                if landing.distance(aim_point) > release_radius.max(5.0) {
+                    continue;
+                }
+            }
+            if origin.distance_squared(aim_point)
+                + if definition.flight.is_some()
+                    || units
+                        .get(target_index)
+                        .is_some_and(|u| u.definition.flight.is_some())
+                {
+                    (target_y - origin_y).powi(2)
+                } else {
+                    0.0
+                }
+                > weapon.range * weapon.range
+            {
                 record_aim::<TRACE>(
                     trace_tick,
                     aim_attempts,
@@ -2066,9 +2772,17 @@ fn update_weapons<const TRACE: bool>(
                     })
                     .unwrap_or(target_index)
             };
-            let effective_target_id = units[effective_target_index].id;
-            let effective_target_position = units[effective_target_index].position;
-            let effective_target_speed = units[effective_target_index].speed.abs();
+            let effective_target_id = units.get(effective_target_index).map_or(0, |unit| unit.id);
+            let effective_target_position = units
+                .get(effective_target_index)
+                .map_or(aim_point, |unit| unit.position);
+            let effective_target_speed = if effective_target_index == target_index {
+                estimate.velocity.length()
+            } else {
+                units
+                    .get(effective_target_index)
+                    .map_or(0.0, |unit| unit.speed.abs())
+            };
 
             if !weapon.stockpile
                 && !try_consume_weapon_resources(
@@ -2099,8 +2813,15 @@ fn update_weapons<const TRACE: bool>(
                 state.shot_sequence = state.shot_sequence.wrapping_add(1);
                 sequence
             };
-            let effective_target_y = unit_collision_mid_y(&units[effective_target_index], terrain);
+            let effective_target_y = if effective_target_index == target_index {
+                target_y
+            } else {
+                units
+                    .get(effective_target_index)
+                    .map_or(target_y, |unit| unit_collision_mid_y(unit, terrain))
+            };
             fire_shot(
+                terrain,
                 origin,
                 origin_y,
                 shooter_id,
@@ -2244,7 +2965,7 @@ fn unit_collision_vertical_bounds(unit: &UnitState, terrain: &Terrain) -> (f32, 
     let (bottom, full_top) = unit
         .definition
         .movement
-        .collision_vertical_bounds(terrain.height_at(unit.position));
+        .collision_vertical_bounds(terrain.height_at(unit.position) + unit.altitude);
     let top = bottom + (full_top - bottom) * unit.collision_height_scale;
     (bottom, top)
 }
@@ -2314,6 +3035,20 @@ fn weapon_flight_path(
     target_y: f32,
     weapon: &WeaponDef,
 ) -> Option<FlightPath> {
+    if weapon.weapon_type.eq_ignore_ascii_case("AircraftBomb") {
+        let drop = origin_y - target_y;
+        if drop <= 0.0 || weapon.projectile_gravity <= 0.0 {
+            return None;
+        }
+        let flight_time = (2.0 * drop / weapon.projectile_gravity).sqrt();
+        return Some(FlightPath::Ballistic {
+            origin_y,
+            flight_time,
+            horizontal_speed: origin.distance(target) / flight_time,
+            vertical_speed: 0.0,
+            gravity: weapon.projectile_gravity,
+        });
+    }
     if weapon.hitscan || weapon.projectile_speed <= 1e-5 {
         return Some(FlightPath::Linear {
             from_y: origin_y,
@@ -2491,6 +3226,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 fn fire_shot(
+    terrain: &Terrain,
     origin: Vec2,
     origin_y: f32,
     shooter_id: u32,
@@ -2514,6 +3250,10 @@ fn fire_shot(
     seed: u64,
 ) {
     let distance = origin.distance(aim_point);
+    let impact_altitude = units
+        .iter()
+        .find(|u| u.id == target_id)
+        .map_or(0.0, |u| u.altitude);
     let move_error = random_disc(
         seed,
         current_tick,
@@ -2552,7 +3292,17 @@ fn fire_shot(
             4 + projectile * 2,
             weapon.spray_angle,
         );
-        let point = origin + (base_aim - origin).rotate(error);
+        let point = if weapon.weapon_type.eq_ignore_ascii_case("AircraftBomb") {
+            let drop_time =
+                (2.0 * (origin_y - target_y).max(0.0) / weapon.projectile_gravity.max(1e-5)).sqrt();
+            let velocity = units
+                .iter()
+                .find(|u| u.id == shooter_id)
+                .map_or(Vec2::default(), UnitState::velocity);
+            origin + velocity.rotate(error) * drop_time + move_error
+        } else {
+            origin + (base_aim - origin).rotate(error)
+        };
         let Some(flight_path) = weapon_flight_path(origin, origin_y, point, target_y, weapon)
         else {
             // A spread sample can fall outside the weapon's physical
@@ -2590,6 +3340,8 @@ fn fire_shot(
             .max(DT);
             guided_projectiles.push(GuidedProjectile {
                 impact: Impact {
+                    altitude: impact_altitude,
+                    terrain_height: terrain.height_at(point),
                     shooter_id,
                     shooter_side: side,
                     target_id,
@@ -2624,6 +3376,8 @@ fn fire_shot(
             impacts.schedule(
                 due_tick,
                 Impact {
+                    altitude: impact_altitude,
+                    terrain_height: terrain.height_at(point),
                     shooter_id,
                     shooter_side: side,
                     target_id,
@@ -2775,6 +3529,7 @@ fn weapon_can_target(weapon: &WeaponDef, target: &crate::model::UnitDef) -> bool
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn advance_guided_projectiles(
     units: &[UnitState],
     tick: u64,
@@ -2784,14 +3539,54 @@ fn advance_guided_projectiles(
     spatial: &SpatialGrid,
     spatial_candidates: &mut Vec<usize>,
 ) {
+    advance_guided_projectiles_observed(
+        units,
+        tick,
+        projectiles,
+        impacts,
+        terrain,
+        spatial,
+        spatial_candidates,
+        None,
+    );
+}
+
+fn advance_guided_projectiles_observed(
+    units: &[UnitState],
+    tick: u64,
+    projectiles: &mut Vec<GuidedProjectile>,
+    impacts: &mut ImpactQueue,
+    terrain: &Terrain,
+    spatial: &SpatialGrid,
+    spatial_candidates: &mut Vec<usize>,
+    targeting: Option<&TargetingState>,
+) {
     if projectiles.is_empty() {
         return;
     }
     let mut write = 0;
     for read in 0..projectiles.len() {
         let mut projectile = projectiles[read];
-        if let Some(target_index) = live_unit_index(units, projectile.impact.target_id) {
-            let target_delta = units[target_index].position - projectile.position;
+        let estimate = targeting.map_or_else(
+            || {
+                live_unit_index(units, projectile.impact.target_id).map(|index| TargetEstimate {
+                    position: units[index].position,
+                    height: unit_collision_mid_y(&units[index], terrain),
+                    velocity: units[index].velocity(),
+                    exact: true,
+                })
+            },
+            |state| {
+                state.estimate(
+                    projectile.impact.shooter_side,
+                    projectile.impact.target_id,
+                    units,
+                    terrain,
+                )
+            },
+        );
+        if let Some(estimate) = estimate {
+            let target_delta = estimate.position - projectile.position;
             if target_delta.length_squared() > 1e-8 {
                 projectile.heading = turn_toward(
                     projectile.heading,
@@ -2799,9 +3594,8 @@ fn advance_guided_projectiles(
                     projectile.turn_rate * DT,
                 );
             }
-            let target_y = unit_collision_mid_y(&units[target_index], terrain);
             let remaining_time = (target_delta.length() / projectile.speed.max(1e-6)).max(DT);
-            projectile.vertical_speed = (target_y - projectile.height) / remaining_time;
+            projectile.vertical_speed = (estimate.height - projectile.height) / remaining_time;
         }
 
         let start = projectile.position;
@@ -2825,6 +3619,8 @@ fn advance_guided_projectiles(
         if let Some((target_index, hit_t)) = collision {
             let mut impact = projectile.impact;
             impact.target_id = units[target_index].id;
+            impact.altitude = units[target_index].altitude;
+            impact.terrain_height = terrain.height_at(units[target_index].position);
             impact.point = start + (end - start) * hit_t;
             schedule_guided_impact(tick, projectile.damage_pulses, impact, impacts);
             continue;
@@ -2832,6 +3628,8 @@ fn advance_guided_projectiles(
         if !terrain_clear {
             let mut impact = projectile.impact;
             impact.target_id = 0;
+            impact.altitude = 0.0;
+            impact.terrain_height = terrain.height_at(end);
             impact.point = end;
             schedule_guided_impact(tick, projectile.damage_pulses, impact, impacts);
             continue;
@@ -2958,7 +3756,43 @@ where
     first
 }
 
+/// Recoil adds mobility on each 15-frame SlowUpdate. MiniBAR uses a shared
+/// phase instead of Recoil's staggered per-unit SlowUpdate scheduling.
+fn advance_flanking(units: &mut [UnitState], tick: u64) {
+    if !tick.is_multiple_of(15) {
+        return;
+    }
+    for unit in units.iter_mut().filter(|unit| unit.alive) {
+        unit.flanking_mobility += unit.definition.strategic.flanking.mobility_add;
+    }
+}
+
+fn flanking_multiplier(unit: &mut UnitState, attack_direction: Vec2) -> f32 {
+    let definition = unit.definition.strategic.flanking;
+    if definition.mode == 0 {
+        return 1.0;
+    }
+    let direction = if definition.mode == 1 {
+        attack_direction
+    } else {
+        let forward = unit.forward;
+        Vec2::new(
+            -attack_direction.x * forward.z + attack_direction.z * forward.x,
+            attack_direction.x * forward.x + attack_direction.z * forward.z,
+        )
+    };
+    if definition.mode <= 2 {
+        unit.flanking_direction =
+            (unit.flanking_direction + direction * unit.flanking_mobility).normalized();
+        unit.flanking_mobility = 0.0;
+    }
+    let dot = direction.x * unit.flanking_direction.x + direction.z * unit.flanking_direction.z;
+    (definition.max_damage + definition.min_damage) * 0.5
+        - dot * (definition.max_damage - definition.min_damage) * 0.5
+}
+
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn resolve_impacts(
     units: &mut [UnitState],
     tick: u64,
@@ -2968,6 +3802,32 @@ fn resolve_impacts(
     spatial_candidates: &mut Vec<usize>,
     battle: &mut BattleState,
     definitions: &[Arc<crate::model::UnitDef>],
+) {
+    resolve_impacts_observed(
+        units,
+        tick,
+        impacts,
+        damage_events,
+        spatial,
+        spatial_candidates,
+        battle,
+        definitions,
+        None,
+        None,
+    );
+}
+
+fn resolve_impacts_observed(
+    units: &mut [UnitState],
+    tick: u64,
+    impacts: &mut ImpactQueue,
+    damage_events: &mut Vec<DamageEvent>,
+    spatial: &SpatialGrid,
+    spatial_candidates: &mut Vec<usize>,
+    battle: &mut BattleState,
+    definitions: &[Arc<crate::model::UnitDef>],
+    targeting: Option<&TargetingState>,
+    terrain: Option<&Terrain>,
 ) {
     damage_events.clear();
     let Some(head) = impacts.heads.get_mut(tick as usize) else {
@@ -2988,19 +3848,54 @@ fn resolve_impacts(
             continue;
         }
         let point = if impact.track_target {
-            live_unit_index(units, impact.target_id)
-                .map_or(impact.point, |index| units[index].position)
+            if let Some(state) = targeting {
+                if let Some(contacts) = state
+                    .contacts
+                    .get(impact.shooter_side as usize)
+                    .and_then(Option::as_ref)
+                {
+                    impact
+                        .target_id
+                        .checked_sub(1)
+                        .and_then(|id| contacts.get(id as usize))
+                        .copied()
+                        .flatten()
+                        .map_or(impact.point, |estimate| estimate.position)
+                } else {
+                    live_unit_index(units, impact.target_id)
+                        .map_or(impact.point, |index| units[index].position)
+                }
+            } else {
+                live_unit_index(units, impact.target_id)
+                    .map_or(impact.point, |index| units[index].position)
+            }
         } else {
             impact.point
         };
-        if try_absorb_impact_with_shield(units, definitions, &impact, point, tick as f32 * DT) {
+        if try_absorb_impact_with_shield(
+            units,
+            definitions,
+            &impact,
+            point,
+            tick as f32 * DT,
+            terrain,
+        ) {
             continue;
         }
         // The overwhelmingly common direct hit can resolve by dense target ID
         // without touching the spatial index or scanning the army. A miss still
         // falls through to incidental collision at the sampled impact point.
         let direct_hit = (impact.radius <= 0.0)
-            .then(|| collect_direct_target_hit(units, definitions, &impact, point, damage_events))
+            .then(|| {
+                collect_direct_target_hit(
+                    units,
+                    definitions,
+                    &impact,
+                    point,
+                    damage_events,
+                    terrain,
+                )
+            })
             .flatten();
         let landed = if let Some(landed) = direct_hit {
             landed
@@ -3019,6 +3914,7 @@ fn resolve_impacts(
                 point,
                 spatial_candidates.iter().copied(),
                 damage_events,
+                terrain,
             )
         } else {
             collect_impact_hits(
@@ -3028,6 +3924,7 @@ fn resolve_impacts(
                 point,
                 0..units.len(),
                 damage_events,
+                terrain,
             )
         };
         if landed && impact.shooter_side < 2 {
@@ -3038,13 +3935,27 @@ fn resolve_impacts(
     // removed. EMP uses its own pool and can stun immediately without
     // consuming hit points.
     for event in damage_events.iter().copied() {
+        // Recoil uses the attacker's current position, not projectile travel
+        // direction. Retained dead slots still identify airborne shot sources.
+        let attack_direction = event
+            .source_id
+            .checked_sub(1)
+            .and_then(|index| units.get(index as usize))
+            .filter(|source| source.id == event.source_id)
+            .map(|source| (source.position - units[event.target_index].position).normalized());
         let unit = &mut units[event.target_index];
+        let damage = if event.damage > 0.0 {
+            event.damage
+                * attack_direction.map_or(1.0, |direction| flanking_multiplier(unit, direction))
+        } else {
+            event.damage
+        };
         if event.paralyzer {
             let threshold = unit.definition.health.max(0.0);
             let multiplier = unit.definition.strategic.paralyze_multiplier.max(0.0);
             let maximum =
                 threshold + threshold * event.paralyze_time.max(0.0) / PARALYZE_DECLINE_TIME;
-            unit.paralyze_damage = (unit.paralyze_damage + event.damage * multiplier).min(maximum);
+            unit.paralyze_damage = (unit.paralyze_damage + damage * multiplier).min(maximum);
             unit.stunned = unit.paralyze_damage > threshold;
             if unit.stunned {
                 unit.speed = 0.0;
@@ -3052,9 +3963,9 @@ fn resolve_impacts(
             continue;
         }
 
-        let actual = event.damage.min(unit.hp.max(0.0));
-        let overkill = (event.damage - actual).max(0.0);
-        unit.hp -= event.damage;
+        let actual = damage.min(unit.hp.max(0.0));
+        let overkill = (damage - actual).max(0.0);
+        unit.hp -= damage;
         if event.source_side < 2 && event.source_side != unit.side {
             battle.scores[event.source_side as usize].damage_dealt += actual;
             battle.scores[event.source_side as usize].overkill_damage += overkill;
@@ -3083,6 +3994,9 @@ fn resolve_impacts(
                 impacts.schedule(
                     tick.saturating_add(1),
                     Impact {
+                        altitude: unit.altitude,
+                        terrain_height: terrain
+                            .map_or(0.0, |terrain| terrain.height_at(unit.position)),
                         shooter_id: unit.id,
                         shooter_side: unit.side,
                         target_id: 0,
@@ -3112,6 +4026,7 @@ fn try_absorb_impact_with_shield(
     impact: &Impact,
     point: Vec2,
     time: f32,
+    terrain: Option<&Terrain>,
 ) -> bool {
     let Some(projectile_weapon) = definitions
         .get(impact.weapon_definition_index as usize)
@@ -3141,11 +4056,12 @@ fn try_absorb_impact_with_shield(
         if !unit.alive || unit.stunned || unit.side >= 2 || unit.side == impact.shooter_side {
             continue;
         }
+        let vertical_distance_squared = impact_vertical_distance(unit, impact, terrain).powi(2);
         for (weapon, state) in unit.definition.weapons.iter().zip(&mut unit.weapons) {
             if !weapon.is_shield
                 || weapon.shield_intercept_type & shield_class == 0
                 || (!weapon.exterior_shield && unit.id != impact.target_id)
-                || unit.position.distance_squared(point)
+                || unit.position.distance_squared(point) + vertical_distance_squared
                     > weapon.shield_radius * weapon.shield_radius
                 || state.shield_charge + 1e-6 < shield_damage
             {
@@ -3165,6 +4081,7 @@ fn collect_direct_target_hit(
     impact: &Impact,
     point: Vec2,
     damage_events: &mut Vec<DamageEvent>,
+    terrain: Option<&Terrain>,
 ) -> Option<bool> {
     let index = live_unit_index(units, impact.target_id)?;
     let target = &units[index];
@@ -3172,11 +4089,15 @@ fn collect_direct_target_hit(
         return None;
     }
     let radius = target.definition.movement.radius;
-    if point.distance_squared(target.position) > radius * radius {
+    if point.distance_squared(target.position)
+        + impact_vertical_distance(target, impact, terrain).powi(2)
+        > radius * radius
+    {
         return None;
     }
     damage_events.push(DamageEvent {
         target_index: index,
+        source_id: impact.shooter_id,
         source_side: impact.shooter_side,
         damage: impact_damage_against(impact, target, definitions),
         paralyzer: impact.paralyzer,
@@ -3192,6 +4113,7 @@ fn collect_impact_hits<I>(
     point: Vec2,
     indices: I,
     damage_events: &mut Vec<DamageEvent>,
+    terrain: Option<&Terrain>,
 ) -> bool
 where
     I: IntoIterator<Item = usize>,
@@ -3205,7 +4127,8 @@ where
         {
             continue;
         }
-        let distance_squared = point.distance_squared(unit.position);
+        let distance_squared = point.distance_squared(unit.position)
+            + impact_vertical_distance(unit, impact, terrain).powi(2);
         let hit_radius = if impact.radius > 0.0 {
             impact.radius + unit.definition.movement.radius
         } else {
@@ -3224,6 +4147,7 @@ where
         };
         damage_events.push(DamageEvent {
             target_index: index,
+            source_id: impact.shooter_id,
             source_side: impact.shooter_side,
             damage: impact_damage_against(impact, unit, definitions) * factor,
             paralyzer: impact.paralyzer,
@@ -3232,6 +4156,16 @@ where
         landed = true;
     }
     landed
+}
+
+fn impact_vertical_distance(unit: &UnitState, impact: &Impact, terrain: Option<&Terrain>) -> f32 {
+    if unit.definition.flight.is_some() || impact.altitude > 0.0 {
+        unit.altitude + terrain.map_or(0.0, |terrain| terrain.height_at(unit.position))
+            - impact.altitude
+            - impact.terrain_height
+    } else {
+        0.0
+    }
 }
 
 #[inline]
@@ -3318,6 +4252,364 @@ fn mix64(mut value: u64) -> u64 {
 mod lead_tests {
     use super::*;
 
+    // Exercise the real impact resolver: omitting the flanking multiplier must
+    // make opposing fire indistinguishable from concentrated fire.
+    fn flanking_fixture() -> (Vec<UnitState>, Vec<Arc<crate::model::UnitDef>>) {
+        let mut definition = tactical_unit(
+            "flanking-target",
+            crate::model::MovementDef {
+                radius: 5.0,
+                ..Default::default()
+            },
+            Vec::new(),
+        );
+        definition.strategic.flanking = Default::default();
+        let definition = Arc::new(definition);
+        let units = vec![
+            new_unit_state(
+                1,
+                0,
+                definition.clone(),
+                0,
+                Vec2::new(200.0, 300.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(
+                2,
+                0,
+                definition.clone(),
+                0,
+                Vec2::new(200.0, 100.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(
+                3,
+                1,
+                definition.clone(),
+                0,
+                Vec2::new(200.0, 200.0),
+                0.0,
+                100.0,
+            ),
+        ];
+        (units, vec![definition])
+    }
+
+    fn flanking_hits(
+        units: &mut [UnitState],
+        definitions: &[Arc<crate::model::UnitDef>],
+        shooters: &[u32],
+        tick: u64,
+    ) -> BattleState {
+        flanking_hits_with(units, definitions, shooters, tick, |impact| impact)
+    }
+
+    fn flanking_hits_with(
+        units: &mut [UnitState],
+        definitions: &[Arc<crate::model::UnitDef>],
+        shooters: &[u32],
+        tick: u64,
+        modify: impl Fn(Impact) -> Impact,
+    ) -> BattleState {
+        let mut impacts = ImpactQueue::new(tick + 2);
+        for &shooter_id in shooters {
+            impacts.schedule(
+                tick,
+                modify(Impact {
+                    altitude: 0.0,
+                    terrain_height: 0.0,
+                    shooter_id,
+                    shooter_side: 0,
+                    target_id: 3,
+                    point: units[2].position,
+                    damage: 10.0,
+                    weapon_definition_index: u32::MAX,
+                    weapon_index: u16::MAX,
+                    damage_fraction: 1.0,
+                    radius: 0.0,
+                    edge_effectiveness: 1.0,
+                    paralyzer: false,
+                    paralyze_time: 0.0,
+                    hits_allies: false,
+                    collide_non_target: true,
+                    track_target: false,
+                    requires_source: false,
+                }),
+            );
+        }
+        let mut battle = BattleState {
+            scores: initial_scores(units),
+            alive_counts: count_live_sides(units),
+            combat_resources: None,
+        };
+        let spatial = SpatialGrid::new(&Terrain::flat(400.0, 400.0, 16.0), 64.0);
+        resolve_impacts(
+            units,
+            tick,
+            &mut impacts,
+            &mut Vec::new(),
+            &spatial,
+            &mut Vec::new(),
+            &mut battle,
+            definitions,
+        );
+        battle
+    }
+
+    #[test]
+    fn flanking_opposing_fire_deals_more_damage_than_concentrated_fire() {
+        let (units, definitions) = flanking_fixture();
+        let mut concentrated = units.clone();
+        let mut opposed = units;
+        let same = flanking_hits(&mut concentrated, &definitions, &[1, 1], 0);
+        let opposite = flanking_hits(&mut opposed, &definitions, &[1, 2], 0);
+        assert_eq!(same.scores[0].damage_dealt, 20.0);
+        assert!(opposite.scores[0].damage_dealt > 29.9);
+        assert!(opposed[2].hp < concentrated[2].hp - 9.9);
+        assert_eq!(
+            opposite.scores[0].damage_dealt,
+            opposite.scores[1].damage_received
+        );
+    }
+
+    #[test]
+    fn flanking_uses_attacker_position_at_impact_independently_of_hull_heading() {
+        let (mut units, definitions) = flanking_fixture();
+        flanking_hits(&mut units, &definitions, &[1], 0);
+        units[2].heading = PI;
+        units[2].forward = Vec2::from_heading(PI);
+        units[0].position = units[1].position;
+        let battle = flanking_hits(&mut units, &definitions, &[1], 0);
+        assert!(battle.scores[0].damage_dealt > 19.9);
+    }
+
+    #[test]
+    fn flanking_recovers_ability_to_face_a_new_attack_direction() {
+        let (mut units, definitions) = flanking_fixture();
+        flanking_hits(&mut units, &definitions, &[1], 0);
+        units[1].position = Vec2::new(300.0, 200.0);
+        let mut immediate = units.clone();
+        assert_eq!(
+            flanking_hits(&mut immediate, &definitions, &[2], 1).scores[0].damage_dealt,
+            15.0
+        );
+        // 100 slow updates add one unit of mobility: a perpendicular attack
+        // turns the remembered direction 45 degrees before damage is computed.
+        for tick in 1..=1500 {
+            advance_flanking(&mut units, tick);
+        }
+        let recovered = flanking_hits(&mut units, &definitions, &[2], 1500);
+        assert!((recovered.scores[0].damage_dealt - 11.464466).abs() < 1e-4);
+    }
+
+    #[test]
+    fn flanking_applies_to_splash_and_emp_without_inflating_hp_scores() {
+        for radius in [0.0, 10.0] {
+            for paralyzer in [false, true] {
+                let (mut units, definitions) = flanking_fixture();
+                flanking_hits(&mut units, &definitions, &[1], 0);
+                let battle =
+                    flanking_hits_with(&mut units, &definitions, &[2], 0, |impact| Impact {
+                        radius,
+                        paralyzer,
+                        paralyze_time: 10.0,
+                        ..impact
+                    });
+                if paralyzer {
+                    assert_eq!(units[2].hp, 90.0);
+                    assert_eq!(units[2].paralyze_damage, 20.0);
+                    assert_eq!(battle.scores[0].damage_dealt, 0.0);
+                } else {
+                    assert_eq!(units[2].hp, 70.0);
+                    assert_eq!(battle.scores[0].damage_dealt, 20.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flanking_disabled_and_missing_attacker_leave_damage_unmodified() {
+        let (mut units, definitions) = flanking_fixture();
+        Arc::make_mut(&mut units[2].definition)
+            .strategic
+            .flanking
+            .mode = 0;
+        assert_eq!(
+            flanking_hits(&mut units, &definitions, &[1, 2], 0).scores[0].damage_dealt,
+            20.0
+        );
+        let (mut units, definitions) = flanking_fixture();
+        assert_eq!(
+            flanking_hits(&mut units, &definitions, &[0], 0).scores[0].damage_dealt,
+            10.0
+        );
+    }
+
+    #[test]
+    fn flanking_trial_reset_restores_first_hit_behavior() {
+        let (mut units, definitions) = flanking_fixture();
+        let spawns: Vec<_> = units
+            .iter()
+            .map(|unit| Spawn {
+                side: unit.side,
+                definition: (*unit.definition).clone(),
+                position: unit.position,
+                heading: unit.heading,
+            })
+            .collect();
+        flanking_hits(&mut units, &definitions, &[2, 1], 0);
+        reset_units(&mut units, &spawns);
+        assert_eq!(
+            flanking_hits(&mut units, &definitions, &[2, 1], 0).scores[0].damage_dealt,
+            30.0
+        );
+    }
+
+    #[test]
+    fn flanking_retained_state_changes_replay_hash() {
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 400.0, 16.0),
+            vec![stepper_weapon(10.0), stepper_target()],
+            7,
+        );
+        insert_stepper_pair(&mut stepper);
+        let initial = stepper.deterministic_state_hash();
+        stepper.units[1].flanking_direction = Vec2::new(1.0, 0.0);
+        assert_ne!(stepper.deterministic_state_hash(), initial);
+        let changed = stepper.deterministic_state_hash();
+        stepper.units[1].flanking_mobility = 0.0;
+        assert_ne!(stepper.deterministic_state_hash(), changed);
+    }
+
+    #[test]
+    fn flanking_definition_replacement_initializes_new_armour_facing() {
+        let mut replacement = (*stepper_target()).clone();
+        replacement.strategic.flanking.mode = 3;
+        replacement.strategic.flanking.direction = Vec2::new(1.0, 0.0);
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 400.0, 16.0),
+            vec![
+                stepper_weapon(10.0),
+                stepper_target(),
+                Arc::new(replacement),
+            ],
+            7,
+        );
+        insert_stepper_pair(&mut stepper);
+        // A world-space +Z direction from previous mode-1 combat would be
+        // incorrectly read as local forward after changing to fixed armour.
+        stepper.units[1].flanking_direction = Vec2::new(0.0, 1.0);
+        stepper.units[1].flanking_mobility = 0.0;
+        stepper
+            .update(
+                200,
+                CombatantUpdate {
+                    definition: Some(CombatDefinitionId(2)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // New local +right armour is perpendicular to the incoming attack.
+        let damage = flanking_multiplier(&mut stepper.units[1], Vec2::new(-1.0, 0.0));
+        assert!((damage - 1.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn flanking_absorbed_shots_do_not_turn_damage_facing() {
+        let mut shooter = (*stepper_weapon(10.0)).clone();
+        shooter.weapons[0].intercepted_by_shield_type = 1;
+        let mut target = (*shielded_target()).clone();
+        target.strategic.flanking = Default::default();
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 400.0, 16.0),
+            vec![Arc::new(shooter), Arc::new(target)],
+            7,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper.step();
+        assert_eq!(stepper.shield_charge(200, 0), Some(90.0));
+        assert_eq!(stepper.units[1].hp, 100.0);
+        assert_eq!(stepper.units[1].flanking_direction, Vec2::new(0.0, 1.0));
+        assert!(stepper.units[1].flanking_mobility >= 10.0);
+    }
+
+    #[test]
+    fn flanking_dead_shooters_still_supply_airborne_damage_direction() {
+        let (mut units, definitions) = flanking_fixture();
+        flanking_hits(&mut units, &definitions, &[1], 0);
+        units[1].alive = false;
+        units[1].hp = 0.0;
+        let battle = flanking_hits(&mut units, &definitions, &[2], 1);
+        assert_eq!(battle.scores[0].damage_dealt, 20.0);
+    }
+
+    #[test]
+    fn flanking_unit_relative_modes_follow_hull_rotation() {
+        for mode in [1, 2, 3] {
+            let (mut units, definitions) = flanking_fixture();
+            Arc::make_mut(&mut units[2].definition)
+                .strategic
+                .flanking
+                .mode = mode;
+            // +X is local forward for a zero-heading MiniBAR unit.
+            units[0].position = Vec2::new(300.0, 200.0);
+            flanking_hits(&mut units, &definitions, &[1], 0);
+            units[2].heading = PI;
+            units[2].forward = Vec2::new(-1.0, 0.0);
+            let damage = flanking_hits(&mut units, &definitions, &[1], 0).scores[0].damage_dealt;
+            if mode == 1 {
+                assert!(damage < 10.03);
+            } else {
+                assert_eq!(damage, 20.0);
+            }
+        }
+    }
+
+    #[test]
+    fn flanking_simulator_pooled_trials_are_seed_stable() {
+        let mut shooter = (*stepper_weapon(10.0)).clone();
+        shooter.weapons[0].range = 500.0;
+        shooter.weapons[0].reload = 100.0;
+        let mut target = (*stepper_target()).clone();
+        target.strategic.flanking = Default::default();
+        let scenario = Scenario {
+            terrain: Terrain::flat(400.0, 400.0, 16.0),
+            units: vec![
+                Spawn {
+                    side: 0,
+                    definition: shooter.clone(),
+                    position: Vec2::new(200.0, 100.0),
+                    heading: PI * 0.5,
+                },
+                Spawn {
+                    side: 0,
+                    definition: shooter,
+                    position: Vec2::new(200.0, 300.0),
+                    heading: -PI * 0.5,
+                },
+                Spawn {
+                    side: 1,
+                    definition: target,
+                    position: Vec2::new(200.0, 200.0),
+                    heading: 0.0,
+                },
+            ],
+            max_time: 1.0,
+            trace_resources: Vec::new(),
+        };
+        let simulator = Simulator::new(scenario);
+        let hold = crate::policy::BuiltinPolicy::Hold;
+        let single = simulator.run([&hold, &hold], 7);
+        assert_eq!(single.sides[0].damage_dealt, 30.0);
+        let batch = simulator.run_parallel_results([&hold, &hold], 64, 7);
+        for result in batch {
+            assert_eq!(result.sides[0].damage_dealt, 30.0);
+            assert_eq!(result.sides[1].damage_received, 30.0);
+        }
+    }
+
     fn projectile() -> WeaponDef {
         WeaponDef {
             projectile_speed: 100.0,
@@ -3362,6 +4654,7 @@ mod lead_tests {
             metal_cost: 0.0,
             energy_cost: 0.0,
             strategic: crate::model::StrategicDef::default(),
+            flight: None,
             movement: crate::model::MovementDef::default(),
             weapons: Vec::new(),
         };
@@ -3416,6 +4709,8 @@ mod lead_tests {
 
         let mut queue = ImpactQueue::new(20);
         let impact = Impact {
+            altitude: 0.0,
+            terrain_height: 0.0,
             shooter_id: 1,
             shooter_side: 0,
             target_id: 2,
@@ -3454,6 +4749,7 @@ mod lead_tests {
             metal_cost: 1.0,
             energy_cost: 0.0,
             strategic: Default::default(),
+            flight: None,
             movement: crate::model::MovementDef {
                 radius: 10.0,
                 ..Default::default()
@@ -3469,6 +4765,8 @@ mod lead_tests {
         let definitions = vec![Arc::new(definition)];
         let units = spawn_units(&spawns, &definitions);
         let impact = Impact {
+            altitude: 0.0,
+            terrain_height: 0.0,
             shooter_id: 2,
             shooter_side: 0,
             target_id: 1,
@@ -3495,6 +4793,7 @@ mod lead_tests {
                 &impact,
                 impact.point,
                 &mut damage_events,
+                None,
             ),
             Some(true)
         );
@@ -3502,6 +4801,7 @@ mod lead_tests {
             damage_events,
             vec![DamageEvent {
                 target_index: 0,
+                source_id: 2,
                 source_side: 0,
                 damage: 7.0,
                 paralyzer: false,
@@ -3516,6 +4816,7 @@ mod lead_tests {
                 &impact,
                 Vec2::new(100.0, 100.0),
                 &mut damage_events,
+                None,
             ),
             None
         );
@@ -3533,7 +4834,16 @@ mod lead_tests {
             health: 100.0,
             metal_cost: 1.0,
             energy_cost: 0.0,
-            strategic: Default::default(),
+            // These fixtures isolate base damage, movement and weapon rules.
+            // Flanking fixtures explicitly restore BAR's enabled defaults.
+            strategic: crate::model::StrategicDef {
+                flanking: crate::model::FlankingDef {
+                    mode: 0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            flight: None,
             movement,
             weapons,
         }
@@ -3616,6 +4926,8 @@ mod lead_tests {
         let definitions = vec![Arc::new(shooter), Arc::new(target)];
         let units = spawn_units(&spawns, &definitions);
         let impact = Impact {
+            altitude: 0.0,
+            terrain_height: 0.0,
             shooter_id: 1,
             shooter_side: 0,
             target_id: 2,
@@ -3642,6 +4954,7 @@ mod lead_tests {
                 &impact,
                 impact.point,
                 &mut damage_events,
+                None,
             ),
             Some(true)
         );
@@ -3649,6 +4962,7 @@ mod lead_tests {
             damage_events,
             vec![DamageEvent {
                 target_index: 1,
+                source_id: 1,
                 source_side: 0,
                 damage: 25.0,
                 paralyzer: false,
@@ -3794,6 +5108,8 @@ mod lead_tests {
         impacts.schedule(
             0,
             Impact {
+                altitude: 0.0,
+                terrain_height: 0.0,
                 shooter_id: 1,
                 shooter_side: 0,
                 target_id: 2,
@@ -3863,6 +5179,8 @@ mod lead_tests {
         impacts.schedule(
             0,
             Impact {
+                altitude: 0.0,
+                terrain_height: 0.0,
                 shooter_id: 99,
                 shooter_side: 0,
                 target_id: 1,
@@ -4110,6 +5428,36 @@ mod lead_tests {
                 },
             )
             .unwrap();
+    }
+
+    #[test]
+    fn live_primary_turret_skips_mounts_without_modeled_aim() {
+        for excluded in [
+            WeaponDef {
+                is_shield: true,
+                ..Default::default()
+            },
+            WeaponDef {
+                manual_fire: true,
+                ..Default::default()
+            },
+            WeaponDef {
+                interceptor: 1,
+                ..Default::default()
+            },
+        ] {
+            let mut definition = (*stepper_weapon(10.0)).clone();
+            definition.weapons.insert(0, excluded);
+            let mut stepper = CombatStepper::new(
+                Terrain::flat(400.0, 200.0, 16.0),
+                vec![Arc::new(definition), stepper_target()],
+                3,
+            );
+            insert_stepper_pair(&mut stepper);
+            // Excluded mounts may retain arbitrary spawn yaw; the real gun is at zero.
+            stepper.units[0].weapons[0].aim_heading = 1.0;
+            assert_eq!(stepper.primary_turret_heading(100), Some(0.0));
+        }
     }
 
     #[test]
@@ -4527,6 +5875,8 @@ mod lead_tests {
     ) -> GuidedProjectile {
         GuidedProjectile {
             impact: Impact {
+                altitude: 0.0,
+                terrain_height: 0.0,
                 shooter_id: 1,
                 shooter_side: 0,
                 target_id: 2,
@@ -4899,5 +6249,903 @@ mod lead_tests {
         let error = Simulator::try_new(Scenario::duel(definition, 100.0))
             .expect_err("unknown defensive variants remain explicit");
         assert_eq!(error[0].capability, "projectile_portals");
+    }
+    #[test]
+    fn sensor_contacts_gate_forged_target_and_use_disclosed_aim_point() {
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 240.0, 16.0),
+            vec![stepper_weapon(20.0), stepper_target()],
+            3,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper.set_target_observations(0, &[]).unwrap();
+        for _ in 0..2 {
+            stepper.step();
+        }
+        assert_eq!(stepper.combatant(200).unwrap().hp, 100.0);
+        stepper
+            .set_target_observations(
+                0,
+                &[TargetObservation {
+                    target: 200,
+                    position: Vec2::new(200.0, 180.0),
+                    height: 5.0,
+                    velocity: None,
+                    exact: false,
+                }],
+            )
+            .unwrap();
+        for _ in 0..30 {
+            stepper.step();
+        }
+        assert_eq!(
+            stepper.combatant(200).unwrap().hp,
+            100.0,
+            "radar aiming must not snap back to truth"
+        );
+    }
+
+    #[test]
+    fn sensor_ground_fire_can_hit_without_entity_acquisition() {
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 240.0, 16.0),
+            vec![stepper_weapon(20.0), stepper_target()],
+            3,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper.set_target_observations(0, &[]).unwrap();
+        stepper.set_command(100, CombatCommand::default()).unwrap();
+        stepper
+            .set_ground_target(100, Some(Vec2::new(200.0, 100.0)))
+            .unwrap();
+        for _ in 0..3 {
+            stepper.step();
+        }
+        assert!(stepper.combatant(200).unwrap().hp < 100.0);
+    }
+
+    #[test]
+    fn sensor_guidance_does_not_track_true_hidden_position() {
+        let target = stepper_target();
+        let units = vec![
+            new_unit_state(1, 0, target.clone(), 0, Vec2::new(20.0, 20.0), 0.0, 100.0),
+            new_unit_state(2, 1, target, 0, Vec2::new(100.0, 150.0), PI, 100.0),
+        ];
+        let terrain = Terrain::flat(300.0, 300.0, 16.0);
+        let mut spatial = SpatialGrid::new(&terrain, 64.0);
+        spatial.rebuild(&units);
+        let mut contacts = TargetingState::default();
+        contacts.contacts[0] = Some(Vec::new());
+        let mut rounds = vec![guided_test_projectile(0.0, 90.0, 30)];
+        let mut impacts = ImpactQueue::new(100);
+        let mut candidates = Vec::new();
+        advance_guided_projectiles_observed(
+            &units,
+            0,
+            &mut rounds,
+            &mut impacts,
+            &terrain,
+            &spatial,
+            &mut candidates,
+            Some(&contacts),
+        );
+        assert_eq!(
+            rounds[0].heading, 0.0,
+            "lost contact retains course rather than homing on truth"
+        );
+    }
+
+    #[test]
+    fn standalone_sensor_view_hides_unseen_units_and_rejects_forged_orders() {
+        struct Forged;
+        impl Policy for Forged {
+            fn command(&self, view: &WorldView<'_>, unit: &UnitState) -> Command {
+                if unit.side == 0 {
+                    assert!(view.units.iter().all(|other| other.side == 0));
+                    Command {
+                        target: Some(2),
+                        ..Default::default()
+                    }
+                } else {
+                    Command::default()
+                }
+            }
+        }
+        let mut shooter = (*stepper_weapon(20.0)).clone();
+        shooter.strategic.sight_distance = Some(30.0);
+        let scenario = Scenario {
+            terrain: Terrain::flat(400.0, 240.0, 16.0),
+            units: vec![
+                Spawn {
+                    side: 0,
+                    definition: shooter,
+                    position: Vec2::new(100.0, 100.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    side: 1,
+                    definition: (*stepper_target()).clone(),
+                    position: Vec2::new(200.0, 100.0),
+                    heading: PI,
+                },
+            ],
+            max_time: 0.2,
+            trace_resources: vec![],
+        };
+        let result = Simulator::new(scenario).run([&Forged, &Forged], 1);
+        assert_eq!(result.sides[1].damage_received, 0.0);
+    }
+    #[test]
+    fn sensor_radar_snapshot_censors_health_velocity_and_definition() {
+        let mut shooter = (*stepper_weapon(20.0)).clone();
+        shooter.strategic.sight_distance = Some(20.0);
+        shooter.strategic.radar_radius = Some(300.0);
+        let mut enemy = (*stepper_target()).clone();
+        enemy.movement.max_speed = 100.0;
+        let truth = vec![
+            new_unit_state(
+                1,
+                0,
+                Arc::new(shooter),
+                0,
+                Vec2::new(100.0, 100.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(2, 1, Arc::new(enemy), 1, Vec2::new(200.0, 100.0), PI, 20.0),
+        ];
+        let terrain = Terrain::flat(400.0, 240.0, 16.0);
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 3, 0, &mut None);
+        let radar = sensors.views[0].iter().find(|unit| unit.id == 2).unwrap();
+        assert_eq!(radar.definition.name, "unknown-contact");
+        assert_eq!(radar.hp, 0.0);
+        assert_eq!(radar.velocity(), Vec2::default());
+        assert!(radar.weapons.is_empty());
+        assert_ne!(radar.position, truth[1].position);
+        let earlier = radar.position;
+        sensors.refresh(&truth, &terrain, 3, 64, &mut None);
+        assert_ne!(
+            sensors.views[0]
+                .iter()
+                .find(|unit| unit.id == 2)
+                .unwrap()
+                .position,
+            earlier
+        );
+    }
+
+    #[test]
+    fn sensor_start_cloak_uses_energy_and_proximity_but_damage_alone_does_not_break_it() {
+        let mut observer = (*stepper_target()).clone();
+        observer.strategic.sight_distance = Some(300.0);
+        let mut hidden = observer.clone();
+        hidden.strategic.can_cloak = true;
+        hidden.strategic.start_cloaked = true;
+        hidden.strategic.cloak_cost = 30.0;
+        hidden.strategic.min_cloak_distance = 50.0;
+        let mut truth = vec![
+            new_unit_state(
+                1,
+                0,
+                Arc::new(observer),
+                0,
+                Vec2::new(100.0, 100.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(
+                2,
+                1,
+                Arc::new(hidden),
+                1,
+                Vec2::new(200.0, 100.0),
+                PI,
+                100.0,
+            ),
+        ];
+        let terrain = Terrain::flat(400.0, 240.0, 16.0);
+        let mut sensors = StandaloneSensors::new(2);
+        let mut resources = Some([
+            StartingResources {
+                metal: 0.0,
+                energy: 0.0,
+            },
+            StartingResources {
+                metal: 0.0,
+                energy: 20.0,
+            },
+        ]);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut resources);
+        assert!(sensors.cloaked[1]);
+        truth[1].hp = 50.0;
+        sensors.refresh(&truth, &terrain, 1, 1, &mut resources);
+        assert!(sensors.cloaked[1], "damage decloak is not BAR's default");
+        sensors.refresh(&truth, &terrain, 1, 14, &mut resources);
+        assert!(sensors.cloaked[1]);
+        sensors.refresh(&truth, &terrain, 1, 15, &mut resources);
+        assert!(!sensors.cloaked[1], "finite energy must limit cloak");
+        truth[1].position = Vec2::new(120.0, 100.0);
+        sensors.refresh(&truth, &terrain, 1, 30, &mut None);
+        assert!(!sensors.cloaked[1]);
+        truth[1].position = Vec2::new(200.0, 100.0);
+        sensors.refresh(&truth, &terrain, 1, 45, &mut None);
+        assert!(
+            sensors.cloaked[1],
+            "leaving proximity allows the next ordinary check; only firing adds128frames"
+        );
+    }
+
+    #[test]
+    fn sensor_beam_pulse_holds_launch_point_after_contact_loss() {
+        let mut gun = (*stepper_weapon(30.0)).clone();
+        gun.weapons[0].damage_duration = 0.3;
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 240.0, 16.0),
+            vec![Arc::new(gun), stepper_target()],
+            3,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper
+            .set_target_observations(
+                0,
+                &[TargetObservation {
+                    target: 200,
+                    position: Vec2::new(200.0, 100.0),
+                    height: 5.0,
+                    velocity: None,
+                    exact: true,
+                }],
+            )
+            .unwrap();
+        stepper.step();
+        let damaged = stepper.combatant(200).unwrap().hp;
+        stepper
+            .update(
+                200,
+                CombatantUpdate {
+                    position: Some(Vec2::new(200.0, 170.0)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        stepper.set_target_observations(0, &[]).unwrap();
+        for _ in 0..15 {
+            stepper.step();
+        }
+        assert_eq!(
+            stepper.combatant(200).unwrap().hp,
+            damaged,
+            "old beam must not follow hidden movement"
+        );
+    }
+    fn standalone_truth_pair(building: bool) -> (Vec<UnitState>, Terrain) {
+        let mut observer = (*stepper_target()).clone();
+        observer.strategic.sight_distance = Some(100.0);
+        observer.strategic.radar_radius = Some(500.0);
+        let mut enemy = (*stepper_target()).clone();
+        enemy.name = "known-enemy".into();
+        enemy.strategic.leaves_ghost = Some(building);
+        enemy.strategic.is_building = building;
+        enemy.strategic.is_mobile = !building;
+        enemy.movement.max_speed = if building { 0.0 } else { 80.0 };
+        (
+            vec![
+                new_unit_state(
+                    1,
+                    0,
+                    Arc::new(observer),
+                    0,
+                    Vec2::new(100.0, 100.0),
+                    0.0,
+                    100.0,
+                ),
+                new_unit_state(2, 1, Arc::new(enemy), 1, Vec2::new(150.0, 100.0), PI, 100.0),
+            ],
+            Terrain::flat(900.0, 300.0, 16.0),
+        )
+    }
+
+    #[test]
+    fn standalone_emp_keeps_visual_sight_but_disables_radar() {
+        let (mut truth, terrain) = standalone_truth_pair(false);
+        truth[0].stunned = true;
+        Arc::make_mut(&mut truth[1].definition).weapons = stepper_weapon(1.0).weapons.clone();
+        truth[1].weapons = initial_weapon_states(&truth[1].definition, truth[1].heading);
+        truth[1].weapons[0].reload_until = 123.0;
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        assert!(sensors.views[0].iter().any(|unit| unit.id == 2));
+        assert!(
+            sensors.views[0]
+                .iter()
+                .find(|unit| unit.id == 2)
+                .unwrap()
+                .weapons
+                .is_empty(),
+            "LOS discloses a known weapon definition, never private live mount state"
+        );
+        assert!(sensors.units[0].active);
+        assert!(!sensors.units[0].enabled);
+        truth[1].position.x = 350.0;
+        sensors.refresh(&truth, &terrain, 1, 1, &mut None);
+        assert!(sensors.views[0].iter().all(|unit| unit.id != 2));
+    }
+
+    #[test]
+    fn standalone_mobile_identity_survives_continuous_radar_but_not_a_contact_gap() {
+        let (mut truth, terrain) = standalone_truth_pair(false);
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        truth[1].position.x = 350.0;
+        sensors.refresh(&truth, &terrain, 1, 1, &mut None);
+        let radar = sensors.views[0].iter().find(|unit| unit.id == 2).unwrap();
+        assert_eq!(radar.definition.name, "known-enemy");
+        assert_eq!(radar.hp, 0.0);
+        truth[1].position.x = 800.0;
+        sensors.refresh(&truth, &terrain, 1, 2, &mut None);
+        assert!(sensors.views[0].iter().all(|unit| unit.id != 2));
+        truth[1].position.x = 350.0;
+        sensors.refresh(&truth, &terrain, 1, 3, &mut None);
+        assert_eq!(
+            sensors.views[0]
+                .iter()
+                .find(|unit| unit.id == 2)
+                .unwrap()
+                .definition
+                .name,
+            "unknown-contact"
+        );
+    }
+
+    #[test]
+    fn standalone_cloak_half_second_charges_use_recoil_motion_threshold() {
+        let (mut truth, terrain) = standalone_truth_pair(false);
+        let d = &mut Arc::make_mut(&mut truth[1].definition).strategic;
+        d.can_cloak = true;
+        d.start_cloaked = true;
+        d.cloak_cost = 30.0;
+        d.cloak_cost_moving = Some(120.0);
+        truth[1].speed = 1.0;
+        let mut sensors = StandaloneSensors::new(2);
+        let mut pools = Some([
+            StartingResources {
+                metal: 0.0,
+                energy: 0.0,
+            },
+            StartingResources {
+                metal: 0.0,
+                energy: 100.0,
+            },
+        ]);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut pools);
+        assert_eq!(pools.unwrap()[1].energy, 85.0);
+        sensors.refresh(&truth, &terrain, 1, 14, &mut pools);
+        assert_eq!(pools.unwrap()[1].energy, 85.0);
+        truth[1].speed = 20.0;
+        sensors.refresh(&truth, &terrain, 1, 15, &mut pools);
+        assert_eq!(pools.unwrap()[1].energy, 25.0);
+    }
+
+    #[test]
+    fn standalone_building_ghost_is_frozen_and_cleared_only_by_los_of_empty_position() {
+        let (mut truth, terrain) = standalone_truth_pair(true);
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        let remembered = truth[1].position;
+        // Lose the contact first; destruction behind fog must not clear this ghost.
+        truth[0].position.x = 800.0;
+        sensors.refresh(&truth, &terrain, 1, 1, &mut None);
+        truth[1].alive = false;
+        sensors.refresh(&truth, &terrain, 1, 2, &mut None);
+        // Radar coverage of an empty location cannot confirm an already hidden death.
+        truth[0].position.x = 450.0;
+        sensors.refresh(&truth, &terrain, 1, 3, &mut None);
+        let ghost = sensors.views[0]
+            .iter()
+            .find(|unit| unit.id == 2)
+            .expect("radar cannot confirm hidden destruction");
+        assert_eq!(ghost.position, remembered);
+        assert_eq!(ghost.hp, 0.0);
+        assert!(ghost.alive);
+        assert!(sensors.targeting.contacts[0].as_ref().unwrap()[1].is_none());
+        truth[0].position.x = 100.0;
+        sensors.refresh(&truth, &terrain, 1, 4, &mut None);
+        assert!(sensors.views[0].iter().all(|unit| unit.id != 2));
+    }
+
+    #[test]
+    fn standalone_live_cloaked_building_retains_ghost_and_attack_translates_to_ground() {
+        let (mut truth, terrain) = standalone_truth_pair(true);
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        let d = &mut Arc::make_mut(&mut truth[1].definition).strategic;
+        d.can_cloak = true;
+        d.start_cloaked = true;
+        d.stealth = true;
+        sensors.refresh(&truth, &terrain, 1, 15, &mut None);
+        assert!(sensors.views[0].iter().any(|unit| unit.id == 2));
+        let command = sensors.sanitize_command(
+            0,
+            1,
+            Command {
+                target: Some(2),
+                ..Default::default()
+            },
+        );
+        assert_eq!(command.target, None);
+        assert_eq!(
+            sensors.targeting.ground.get(&1),
+            Some(&Vec2::new(150.0, 100.0))
+        );
+    }
+    #[test]
+    fn standalone_spherical_decloak_includes_enemy_radius_but_cylinder_does_not() {
+        let (mut truth, terrain) = standalone_truth_pair(false);
+        truth[0].position.x = 40.0;
+        Arc::make_mut(&mut truth[0].definition).movement.radius = 20.0;
+        let d = &mut Arc::make_mut(&mut truth[1].definition).strategic;
+        d.can_cloak = true;
+        d.start_cloaked = true;
+        d.min_cloak_distance = 100.0;
+        d.decloak_spherical = true;
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        assert!(
+            !sensors.cloaked[1],
+            "centers110 minus enemy radius20 is inside radius100"
+        );
+        Arc::make_mut(&mut truth[1].definition)
+            .strategic
+            .decloak_spherical = false;
+        sensors.refresh(&truth, &terrain, 1, 15, &mut None);
+        assert!(
+            sensors.cloaked[1],
+            "cylindrical check uses center distance only"
+        );
+    }
+
+    #[test]
+    fn standalone_radar_tracked_building_death_does_not_create_a_dead_ghost() {
+        let (mut truth, terrain) = standalone_truth_pair(true);
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        truth[0].position.x = 450.0;
+        sensors.refresh(&truth, &terrain, 1, 1, &mut None);
+        assert!(sensors.targeting.contacts[0].as_ref().unwrap()[1].is_some());
+        truth[1].alive = false;
+        sensors.refresh(&truth, &terrain, 1, 2, &mut None);
+        assert!(
+            sensors.views[0].iter().all(|unit| unit.id != 2),
+            "a currently radar-tracked death leaves no ghost"
+        );
+    }
+    #[test]
+    fn standalone_firing_alone_blocks_recloak_for128_frames() {
+        let (mut truth, terrain) = standalone_truth_pair(false);
+        let definition = Arc::make_mut(&mut truth[1].definition);
+        definition.strategic.can_cloak = true;
+        definition.strategic.start_cloaked = true;
+        definition.weapons = stepper_weapon(1.0).weapons.clone();
+        truth[1].weapons = initial_weapon_states(&truth[1].definition, truth[1].heading);
+        let mut sensors = StandaloneSensors::new(2);
+        sensors.refresh(&truth, &terrain, 1, 0, &mut None);
+        assert!(sensors.cloaked[1]);
+        truth[1].weapons[0].shot_sequence = 1;
+        for tick in 1..129 {
+            sensors.refresh(&truth, &terrain, 1, tick, &mut None);
+            assert!(!sensors.cloaked[1], "premature recloak at tick{tick}");
+        }
+        for tick in 129..=135 {
+            sensors.refresh(&truth, &terrain, 1, tick, &mut None);
+        }
+        assert!(
+            sensors.cloaked[1],
+            "next half-second admission after firing timeout must recloak"
+        );
+    }
+    fn flight_fixture() -> crate::model::UnitDef {
+        let ground = tactical_unit(
+            "air fixture",
+            crate::model::MovementDef {
+                max_speed: 120.0,
+                acceleration: 120.0,
+                braking: 120.0,
+                turn_rate: 90.0,
+                radius: 2.0,
+                ..Default::default()
+            },
+            vec![],
+        );
+        let mut json = serde_json::to_value(ground).unwrap();
+        json["flight"] =
+            serde_json::json!({"cruise_altitude":100.0,"minimum_speed":60.0,"attack_run":true});
+        serde_json::from_value(json).unwrap()
+    }
+
+    #[test]
+    fn flight_crosses_blocked_terrain_without_stopping_or_reversing() {
+        let definition = flight_fixture();
+        let mut terrain = Terrain::flat(512.0, 512.0, 32.0);
+        terrain.passable.fill(false);
+        let mut units = vec![new_unit_state(
+            1,
+            0,
+            Arc::new(definition),
+            0,
+            Vec2::new(200.0, 200.0),
+            0.0,
+            100.0,
+        )];
+        let commands = [Command {
+            destination: Some(Vec2::new(20.0, 200.0)),
+            throttle: 0.0,
+            ..Default::default()
+        }];
+        for _ in 0..15 {
+            update_movement(&mut units, &commands, &terrain, false, &[]);
+        }
+        assert!(
+            units[0].speed >= 59.9,
+            "fixed-wing flight retains cruise speed"
+        );
+        assert!(units[0].position.distance(Vec2::new(200.0, 200.0)) > 5.0);
+        assert!(
+            units[0].heading.abs() > 0.2 && units[0].heading.abs() < 1.0,
+            "turn rate is bounded"
+        );
+        assert!(unit_collision_mid_y(&units[0], &terrain) >= 100.0);
+    }
+
+    #[test]
+    fn flight_ground_occupancy_does_not_displace_aircraft() {
+        let mut units = vec![
+            new_unit_state(
+                1,
+                0,
+                Arc::new(flight_fixture()),
+                0,
+                Vec2::new(200.0, 200.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(
+                2,
+                1,
+                Arc::new(tactical_unit("ground", Default::default(), vec![])),
+                1,
+                Vec2::new(201.0, 200.0),
+                0.0,
+                100.0,
+            ),
+        ];
+        let before = units[0].position;
+        separate_unit_pair(
+            &mut units,
+            &Terrain::flat(512.0, 512.0, 32.0),
+            0,
+            1,
+            true,
+            &[],
+        );
+        assert_eq!(units[0].position, before);
+    }
+
+    #[test]
+    fn aircraft_bomb_falls_under_gravity_with_delayed_impact() {
+        let weapon = WeaponDef {
+            weapon_type: "AircraftBomb".into(),
+            projectile_gravity: 360.0,
+            ..Default::default()
+        };
+        let path = weapon_flight_path(
+            Vec2::new(0.0, 0.0),
+            180.0,
+            Vec2::new(100.0, 0.0),
+            0.0,
+            &weapon,
+        )
+        .unwrap();
+        assert!(
+            (path.flight_time() - 1.0).abs() < 1e-5,
+            "fall takes one second"
+        );
+        assert!((path.height_at_fraction(0.5) - 135.0).abs() < 1e-4);
+        assert!(
+            weapon_flight_path(
+                Vec2::new(0.0, 0.0),
+                0.0,
+                Vec2::new(100.0, 0.0),
+                180.0,
+                &weapon
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn aircraft_is_not_hit_by_ground_splash_underneath_it() {
+        let (mut units, mut definitions) = flanking_fixture();
+        let mut aircraft = flight_fixture();
+        aircraft.strategic.flanking.mode = 0;
+        definitions.push(Arc::new(aircraft));
+        units.push(new_unit_state(
+            4,
+            1,
+            Arc::clone(&definitions[1]),
+            1,
+            units[2].position,
+            0.0,
+            100.0,
+        ));
+        flanking_hits_with(&mut units, &definitions, &[1], 0, |mut impact| {
+            impact.radius = 20.0;
+            impact
+        });
+        assert!(units[2].hp < 100.0, "ground target takes splash");
+        assert_eq!(units[3].hp, 100.0, "aircraft above blast remains unharmed");
+    }
+
+    #[test]
+    fn bomber_attack_run_releases_inherited_velocity_bombs_against_ground() {
+        let mut bomber = flight_fixture();
+        bomber.weapons = vec![WeaponDef {
+            weapon_type: "AircraftBomb".into(),
+            projectile_gravity: 360.0,
+            damage: 200.0,
+            range: 500.0,
+            reload: 2.0,
+            area_of_effect: 80.0,
+            edge_effectiveness: 0.5,
+            ..Default::default()
+        }];
+        let ground = tactical_unit(
+            "ground",
+            crate::model::MovementDef {
+                radius: 10.0,
+                height: 20.0,
+                ..Default::default()
+            },
+            vec![],
+        );
+        let scenario = Scenario {
+            terrain: Terrain::flat(1500.0, 1000.0, 32.0),
+            max_time: 8.0,
+            trace_resources: vec![],
+            units: vec![
+                Spawn {
+                    side: 0,
+                    definition: bomber,
+                    position: Vec2::new(200.0, 500.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    side: 1,
+                    definition: ground,
+                    position: Vec2::new(500.0, 500.0),
+                    heading: 0.0,
+                },
+            ],
+        };
+        let sim = Simulator::new(scenario);
+        let result = sim.run(
+            [
+                &crate::policy::BuiltinPolicy::Hold,
+                &crate::policy::BuiltinPolicy::Hold,
+            ],
+            1,
+        );
+        assert!(result.sides[0].projectiles_fired > 0);
+        assert_eq!(result.winner, Some(0));
+        assert!(result.duration > 1.0, "bomb release and falling take time");
+    }
+
+    #[test]
+    fn air_domain_router_uses_frozen_ground_and_independent_air_checkpoints() {
+        use crate::learn::{air, tactical};
+        let ground = tactical::template(3).unwrap();
+        let air_brain = air::template(3).unwrap();
+        let snapshot = ground.to_json();
+        let router = air::DomainPolicy::new(air_brain.clone(), ground.clone()).unwrap();
+        assert!(air::DomainPolicy::new(ground.clone(), ground.clone()).is_err());
+        let mut plane = flight_fixture();
+        plane.weapons = stepper_weapon(10.0).weapons.clone();
+        let units = vec![
+            new_unit_state(
+                1,
+                0,
+                Arc::new(plane),
+                0,
+                Vec2::new(200.0, 200.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(
+                2,
+                0,
+                stepper_weapon(10.0),
+                1,
+                Vec2::new(200.0, 250.0),
+                0.0,
+                100.0,
+            ),
+            new_unit_state(
+                3,
+                1,
+                stepper_target(),
+                2,
+                Vec2::new(400.0, 200.0),
+                0.0,
+                100.0,
+            ),
+        ];
+        let terrain = Terrain::flat(1000.0, 1000.0, 32.0);
+        let world = WorldView {
+            time: 0.0,
+            terrain: &terrain,
+            units: &units,
+        };
+        let air_policy = air::AirPolicy::new(air_brain).unwrap();
+        let ground_policy = tactical::TacticalPolicy::new(ground.clone()).unwrap();
+        assert_eq!(
+            ground_policy.command(&world, &units[0]).target,
+            None,
+            "ground checkpoint cannot command an aircraft"
+        );
+        for index in 0..2 {
+            let expected = if index == 0 {
+                air_policy.command(&world, &units[index])
+            } else {
+                ground_policy.command(&world, &units[index])
+            };
+            let actual = router.command(&world, &units[index]);
+            assert_eq!(actual.target, expected.target);
+            assert_eq!(actual.destination, expected.destination);
+            assert_eq!(actual.throttle, expected.throttle);
+        }
+        let wrapper = tactical::TacticalPolicy::new(air_policy.brain().clone()).unwrap();
+        let (_, explanation) = wrapper.explain(&world, &units[0]);
+        let explanation = explanation.expect("air decisions expose named module observations");
+        assert!(explanation.modules.iter().any(|m| m.module == "air_flight"));
+        assert!(explanation.modules.iter().any(|m| {
+            m.inputs
+                .iter()
+                .any(|(name, _)| name == "altitude_difference")
+        }));
+        assert_eq!(ground.to_json(), snapshot);
+    }
+
+    #[test]
+    fn aa_uses_altitude_range_and_target_categories() {
+        let mut plane = flight_fixture();
+        plane.flight.as_mut().unwrap().cruise_altitude = 200.0;
+        plane.strategic.target_categories = vec!["VTOL".into()];
+        let mut aa = (*stepper_weapon(200.0)).clone();
+        aa.weapons[0].only_target_categories = vec!["VTOL".into()];
+        aa.weapons[0].range = 150.0;
+        let make = |aa: crate::model::UnitDef| {
+            Simulator::new(Scenario {
+                terrain: Terrain::flat(1000.0, 1000.0, 32.0),
+                max_time: 2.0,
+                trace_resources: vec![],
+                units: vec![
+                    Spawn {
+                        side: 0,
+                        definition: aa,
+                        position: Vec2::new(400.0, 500.0),
+                        heading: 0.0,
+                    },
+                    Spawn {
+                        side: 1,
+                        definition: plane.clone(),
+                        position: Vec2::new(500.0, 500.0),
+                        heading: 0.0,
+                    },
+                ],
+            })
+        };
+        let policies: [&dyn Policy; 2] = [
+            &crate::policy::BuiltinPolicy::Hold,
+            &crate::policy::BuiltinPolicy::Hold,
+        ];
+        assert_eq!(
+            make(aa.clone()).run(policies, 1).sides[0].projectiles_fired,
+            0,
+            "horizontal range alone cannot authorize AA fire"
+        );
+        aa.weapons[0].range = 400.0;
+        assert_eq!(make(aa.clone()).run(policies, 1).winner, Some(0));
+        aa.weapons[0].only_target_categories = vec!["SURFACE".into()];
+        assert_eq!(make(aa).run(policies, 1).sides[0].projectiles_fired, 0);
+    }
+    #[test]
+    fn guided_collateral_air_hit_records_collision_altitude() {
+        let plane = Arc::new(flight_fixture());
+        let units = vec![new_unit_state(
+            3,
+            1,
+            plane,
+            0,
+            Vec2::new(110.0, 50.0),
+            0.0,
+            100.0,
+        )];
+        let terrain = Terrain::flat(400.0, 400.0, 16.0);
+        let mut spatial = SpatialGrid::new(&terrain, 64.0);
+        spatial.rebuild(&units);
+        let mut projectile = guided_test_projectile(0.0, 0.0, 30);
+        projectile.impact.target_id = 99;
+        projectile.height = 102.0;
+        projectile.speed = 300.0;
+        let mut projectiles = vec![projectile];
+        let mut impacts = ImpactQueue::new(30);
+        advance_guided_projectiles(
+            &units,
+            0,
+            &mut projectiles,
+            &mut impacts,
+            &terrain,
+            &spatial,
+            &mut vec![],
+        );
+        assert_eq!(impacts.pending, 1);
+        assert_eq!(impacts.nodes[0].impact.target_id, 3);
+        assert_eq!(impacts.nodes[0].impact.altitude, 100.0);
+    }
+
+    #[test]
+    fn ground_blast_on_cliff_does_not_hit_aircraft_below_cliff() {
+        let mut shooter = (*stepper_weapon(200.0)).clone();
+        shooter.weapons[0].area_of_effect = 150.0;
+        shooter.weapons[0].edge_effectiveness = 1.0;
+        shooter.weapons[0].only_target_categories = vec!["SURFACE".into()];
+        let mut target = (*stepper_target()).clone();
+        target.strategic.target_categories = vec!["SURFACE".into()];
+        let mut plane = flight_fixture();
+        plane.strategic.target_categories = vec!["VTOL".into()];
+        let mut terrain = Terrain::flat(1000.0, 1000.0, 32.0);
+        for row in 0..terrain.rows {
+            for col in 0..13 {
+                terrain.heights[row * terrain.cols + col] = 300.0;
+            }
+        }
+        terrain.refresh_derived();
+        let scenario = Scenario {
+            terrain,
+            max_time: 0.5,
+            trace_resources: vec![],
+            units: vec![
+                Spawn {
+                    side: 0,
+                    definition: shooter,
+                    position: Vec2::new(200.0, 500.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    side: 1,
+                    definition: target,
+                    position: Vec2::new(400.0, 500.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    side: 1,
+                    definition: plane,
+                    position: Vec2::new(440.0, 500.0),
+                    heading: 0.0,
+                },
+            ],
+        };
+        let result = Simulator::new(scenario).run(
+            [
+                &crate::policy::BuiltinPolicy::Hold,
+                &crate::policy::BuiltinPolicy::Hold,
+            ],
+            1,
+        );
+        assert_eq!(
+            result.sides[0].damage_dealt, 100.0,
+            "blast at elevation 300 misses aircraft at elevation 100"
+        );
+        assert_eq!(result.winner, None);
     }
 }

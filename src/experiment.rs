@@ -567,6 +567,7 @@ mod tests {
 
     fn catalog() -> Arc<WorldCatalog> {
         let unit = UnitDef {
+            flight: None,
             name: "marker".into(),
             icon_type: None,
             health: 100.0,

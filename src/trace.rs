@@ -55,6 +55,11 @@ pub struct TraceUnit {
     pub icon_key: String,
     pub position: [f32; 2],
     pub heading: f32,
+    /// World-space yaw indexed like `AimAttempt::weapon`. Fixed guns follow
+    /// the hull; null slots have no modeled barrel (shield/manual/interceptor).
+    /// Absent in older traces; never infer an unknown turret yaw from the hull.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub weapon_headings: Vec<Option<f32>>,
     pub hp: f32,
     pub max_hp: f32,
     pub radius: f32,
@@ -180,6 +185,21 @@ impl TraceRecorder {
                     .unwrap_or_else(|| unit.definition.name.clone()),
                 position: [unit.position.x, unit.position.z],
                 heading: unit.heading,
+                weapon_headings: unit
+                    .definition
+                    .weapons
+                    .iter()
+                    .zip(&unit.weapons)
+                    .map(|(mount, state)| {
+                        if mount.is_shield || mount.manual_fire || mount.interceptor != 0 {
+                            None
+                        } else if mount.turret {
+                            Some(state.aim_heading)
+                        } else {
+                            Some(unit.heading)
+                        }
+                    })
+                    .collect(),
                 hp: unit.hp.max(0.0),
                 max_hp: unit.definition.health,
                 radius: unit.definition.movement.radius,
@@ -372,6 +392,7 @@ mod tests {
             icon_key: "bot".into(),
             position,
             heading: 0.0,
+            weapon_headings: vec![],
             hp: if alive { 100.0 } else { 0.0 },
             max_hp: 100.0,
             radius: 5.0,

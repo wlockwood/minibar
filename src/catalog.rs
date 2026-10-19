@@ -31,6 +31,7 @@ pub const CAPABILITY_INTERCEPTORS: &str = "interceptors";
 pub const CAPABILITY_SONAR: &str = "sonar";
 pub const CAPABILITY_JAMMER: &str = "jammer";
 pub const CAPABILITY_CLOAK: &str = "cloak";
+pub const CAPABILITY_FLIGHT: &str = "flight";
 
 /// Mechanics implemented by the current tactical and strategic kernels.
 /// Entry points should validate a catalog against this list before running a
@@ -55,6 +56,7 @@ pub const IMPLEMENTED_CAPABILITIES: &[&str] = &[
     CAPABILITY_SONAR,
     CAPABILITY_JAMMER,
     CAPABILITY_CLOAK,
+    CAPABILITY_FLIGHT,
 ];
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -128,6 +130,9 @@ impl UnitCatalog {
 
         for (name, unit) in &self.units {
             let strategic = &unit.strategic;
+            if unit.flight.is_some() {
+                insert_requirement(&mut requirements, CAPABILITY_FLIGHT, Some(name), None);
+            }
             for capability in &strategic.required_capabilities {
                 insert_requirement(&mut requirements, capability, Some(name), None);
             }
@@ -179,7 +184,9 @@ impl UnitCatalog {
             if strategic.sonar_radius.is_some_and(|r| r > 0.0) {
                 insert_requirement(&mut requirements, CAPABILITY_SONAR, Some(name), None);
             }
-            if strategic.jammer_radius.is_some_and(|r| r > 0.0) {
+            if strategic.jammer_radius.is_some_and(|r| r > 0.0)
+                || strategic.sonar_jammer_radius.is_some_and(|r| r > 0.0)
+            {
                 insert_requirement(&mut requirements, CAPABILITY_JAMMER, Some(name), None);
             }
             if strategic.can_cloak {
@@ -351,6 +358,28 @@ fn insert_requirement(
 
 fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &UnitDef) {
     let prefix = format!("units.{name}");
+    if let Some(flight) = &unit.flight {
+        validate_nonnegative_f32(
+            issues,
+            &format!("{prefix}.flight.cruise_altitude"),
+            flight.cruise_altitude,
+        );
+        validate_nonnegative_f32(
+            issues,
+            &format!("{prefix}.flight.minimum_speed"),
+            flight.minimum_speed,
+        );
+        if flight.cruise_altitude <= 0.0
+            || flight.minimum_speed <= 0.0
+            || flight.minimum_speed > unit.movement.max_speed
+        {
+            push_issue(
+                issues,
+                format!("{prefix}.flight"),
+                "flight requires positive altitude and 0 < minimum_speed <= max_speed",
+            );
+        }
+    }
     let constraints = &unit.strategic.build_constraints;
     if constraints
         .yardmap
@@ -394,6 +423,42 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
         &format!("{prefix}.paralyze_multiplier"),
         unit.strategic.paralyze_multiplier,
     );
+    let flanking = &unit.strategic.flanking;
+    if flanking.mode > 3 {
+        push_issue(
+            issues,
+            format!("{prefix}.flanking.mode"),
+            "must be between 0 and 3",
+        );
+    }
+    for (field, value) in [
+        ("min_damage", flanking.min_damage),
+        ("max_damage", flanking.max_damage),
+        ("mobility_add", flanking.mobility_add),
+    ] {
+        validate_nonnegative_f32(issues, &format!("{prefix}.flanking.{field}"), value);
+    }
+    if flanking.min_damage > flanking.max_damage {
+        push_issue(
+            issues,
+            format!("{prefix}.flanking"),
+            "minimum damage exceeds maximum",
+        );
+    }
+    for (axis, value) in [("x", flanking.direction.x), ("z", flanking.direction.z)] {
+        validate_optional_finite(
+            issues,
+            &format!("{prefix}.flanking.direction.{axis}"),
+            Some(value),
+        );
+    }
+    if flanking.direction.length_squared() > 1.0 + 1e-5 {
+        push_issue(
+            issues,
+            format!("{prefix}.flanking.direction"),
+            "length must not exceed one",
+        );
+    }
     if let Some(explosion) = &unit.strategic.death_explosion {
         validate_nonnegative_f32(
             issues,
@@ -440,6 +505,31 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
         issues,
         &format!("{prefix}.radar_radius"),
         unit.strategic.radar_radius,
+    );
+    for (field, value) in [
+        ("sonar_radius", unit.strategic.sonar_radius),
+        ("jammer_radius", unit.strategic.jammer_radius),
+        ("sonar_jammer_radius", unit.strategic.sonar_jammer_radius),
+        ("air_sight_distance", unit.strategic.air_sight_distance),
+        ("cloak_cost_moving", unit.strategic.cloak_cost_moving),
+    ] {
+        validate_optional_nonnegative(issues, &format!("{prefix}.{field}"), value);
+    }
+    for (field, value) in [
+        ("cloak_cost", unit.strategic.cloak_cost),
+        ("min_cloak_distance", unit.strategic.min_cloak_distance),
+    ] {
+        validate_nonnegative_f32(issues, &format!("{prefix}.{field}"), value);
+    }
+    validate_optional_finite(
+        issues,
+        &format!("{prefix}.sight_emit_height"),
+        Some(unit.strategic.sight_emit_height),
+    );
+    validate_optional_finite(
+        issues,
+        &format!("{prefix}.radar_emit_height"),
+        unit.strategic.radar_emit_height,
     );
 
     for (index, weapon) in unit.weapons.iter().enumerate() {
@@ -660,6 +750,8 @@ struct Document {
 #[derive(Debug, Deserialize)]
 struct CatalogUnit {
     #[serde(default)]
+    flight: Option<crate::model::FlightDef>,
+    #[serde(default)]
     icon_type: Option<String>,
     #[serde(default)]
     model_name: Option<String>,
@@ -742,6 +834,8 @@ struct CatalogUnit {
     #[serde(default = "default_one")]
     paralyze_multiplier: f32,
     #[serde(default)]
+    flanking: crate::model::FlankingDef,
+    #[serde(default)]
     death_explosion_radius: f32,
     #[serde(default)]
     death_explosion_damage: f32,
@@ -765,21 +859,85 @@ struct CatalogUnit {
     corpse_energy: f32,
     #[serde(default)]
     corpse_heap: Option<String>,
-    #[serde(default, alias = "sight_radius", alias = "sight_range")]
+    #[serde(
+        default,
+        alias = "sight_radius",
+        alias = "sight_range",
+        alias = "sightdistance",
+        alias = "sightDistance"
+    )]
     sight_distance: Option<f32>,
-    #[serde(default, alias = "radar_distance", alias = "radar_range")]
+    #[serde(
+        default,
+        alias = "radar_distance",
+        alias = "radar_range",
+        alias = "radardistance",
+        alias = "radarDistance"
+    )]
     radar_radius: Option<f32>,
-    #[serde(default, alias = "sonar_distance", alias = "sonar_range")]
+    #[serde(
+        default,
+        alias = "sonar_distance",
+        alias = "sonar_range",
+        alias = "sonardistance",
+        alias = "sonarDistance"
+    )]
     sonar_radius: Option<f32>,
     #[serde(
         default,
         alias = "jammer_distance",
         alias = "jammer_range",
-        alias = "radar_jammer_radius"
+        alias = "radar_jammer_radius",
+        alias = "radardistancejam",
+        alias = "radarDistanceJam"
     )]
     jammer_radius: Option<f32>,
-    #[serde(default, alias = "cloak")]
-    can_cloak: bool,
+    #[serde(default, alias = "cloak", alias = "cancloak", alias = "canCloak")]
+    can_cloak: Option<bool>,
+    #[serde(default)]
+    stealth: bool,
+    #[serde(default, alias = "sonarstealth", alias = "sonarStealth")]
+    sonar_stealth: bool,
+    #[serde(default, alias = "sonardistancejam", alias = "sonarDistanceJam")]
+    sonar_jammer_radius: Option<f32>,
+    #[serde(
+        default = "default_sight_emit_height",
+        alias = "sightemitheight",
+        alias = "sightEmitHeight",
+        alias = "losemitheight",
+        alias = "losEmitHeight"
+    )]
+    sight_emit_height: f32,
+    #[serde(default, alias = "radaremitheight", alias = "radarEmitHeight")]
+    radar_emit_height: Option<f32>,
+    #[serde(default, alias = "airsightdistance", alias = "airSightDistance")]
+    air_sight_distance: Option<f32>,
+    #[serde(default, alias = "useairlos", alias = "useAirLos")]
+    use_air_los: bool,
+    #[serde(default, alias = "leavesghost", alias = "leavesGhost")]
+    leaves_ghost: Option<bool>,
+    #[serde(default, alias = "initcloaked", alias = "initCloaked")]
+    start_cloaked: bool,
+    #[serde(default, alias = "cloakcost", alias = "cloakCost")]
+    cloak_cost: f32,
+    #[serde(default, alias = "cloakcostmoving", alias = "cloakCostMoving")]
+    cloak_cost_moving: Option<f32>,
+    #[serde(default, alias = "mincloakdistance", alias = "minCloakDistance")]
+    min_cloak_distance: f32,
+    #[serde(
+        default = "default_true",
+        alias = "decloakspherical",
+        alias = "decloakSpherical"
+    )]
+    decloak_spherical: bool,
+    #[serde(
+        default = "default_true",
+        alias = "decloakonfire",
+        alias = "decloakOnFire"
+    )]
+    decloak_on_fire: bool,
+    #[serde(default, alias = "istargetingupgrade", alias = "isTargetingUpgrade")]
+    targeting_facility: bool,
     #[serde(default)]
     required_capabilities: Vec<String>,
     simulation: Option<SimulationProfile>,
@@ -791,6 +949,10 @@ struct SimulationProfile {
     movement: MovementDef,
     #[serde(default)]
     weapons: Vec<WeaponDef>,
+}
+
+fn default_sight_emit_height() -> f32 {
+    20.0
 }
 
 pub fn load_unit(path: &Path, name: &str) -> Result<UnitDef, String> {
@@ -946,20 +1108,89 @@ pub fn export_catalog_json(
                         }
                     }
                 }
-                if let Some(sight) = unit.strategic.sight_distance {
-                    unit_val["sight_distance"] = serde_json::json!(sight);
+                // Remove accepted source aliases before writing canonical names,
+                // otherwise reloading an enriched catalog sees duplicate fields.
+                if let Some(object) = unit_val.as_object_mut() {
+                    for alias in [
+                        "sightdistance",
+                        "sightDistance",
+                        "radardistance",
+                        "radarDistance",
+                        "sonardistance",
+                        "sonarDistance",
+                        "radardistancejam",
+                        "radarDistanceJam",
+                        "sight_radius",
+                        "sight_range",
+                        "radar_distance",
+                        "radar_range",
+                        "sonar_distance",
+                        "sonar_range",
+                        "jammer_distance",
+                        "jammer_range",
+                        "radar_jammer_radius",
+                        "cloak",
+                        "cancloak",
+                        "canCloak",
+                        "sonarstealth",
+                        "sonarStealth",
+                        "sonardistancejam",
+                        "sonarDistanceJam",
+                        "sightemitheight",
+                        "sightEmitHeight",
+                        "losemitheight",
+                        "losEmitHeight",
+                        "radaremitheight",
+                        "radarEmitHeight",
+                        "airsightdistance",
+                        "airSightDistance",
+                        "useairlos",
+                        "useAirLos",
+                        "leavesghost",
+                        "leavesGhost",
+                        "initcloaked",
+                        "initCloaked",
+                        "cloakcost",
+                        "cloakCost",
+                        "cloakcostmoving",
+                        "cloakCostMoving",
+                        "mincloakdistance",
+                        "minCloakDistance",
+                        "decloakspherical",
+                        "decloakSpherical",
+                        "decloakonfire",
+                        "decloakOnFire",
+                        "istargetingupgrade",
+                        "isTargetingUpgrade",
+                    ] {
+                        object.remove(alias);
+                    }
                 }
-                if let Some(radar) = unit.strategic.radar_radius {
-                    unit_val["radar_radius"] = serde_json::json!(radar);
-                }
-                if let Some(sonar) = unit.strategic.sonar_radius {
-                    unit_val["sonar_radius"] = serde_json::json!(sonar);
-                }
-                if let Some(jammer) = unit.strategic.jammer_radius {
-                    unit_val["jammer_radius"] = serde_json::json!(jammer);
-                }
-                if unit.strategic.can_cloak {
-                    unit_val["can_cloak"] = serde_json::json!(true);
+                let sensor_values = serde_json::to_value(&unit.strategic)
+                    .map_err(|error| format!("serializing sensors for {name}: {error}"))?;
+                for field in [
+                    "sight_distance",
+                    "radar_radius",
+                    "sonar_radius",
+                    "jammer_radius",
+                    "can_cloak",
+                    "stealth",
+                    "sonar_stealth",
+                    "sonar_jammer_radius",
+                    "sight_emit_height",
+                    "radar_emit_height",
+                    "air_sight_distance",
+                    "use_air_los",
+                    "leaves_ghost",
+                    "start_cloaked",
+                    "cloak_cost",
+                    "cloak_cost_moving",
+                    "min_cloak_distance",
+                    "decloak_spherical",
+                    "decloak_on_fire",
+                    "targeting_facility",
+                ] {
+                    unit_val[field] = sensor_values[field].clone();
                 }
             }
         }
@@ -1011,6 +1242,7 @@ fn unit_from_entry(entry: &CatalogUnit, name: &str) -> Result<UnitDef, String> {
         "unit {name:?} has no detailed simulation profile; regenerate the catalog with the current bridge"
     ))?;
     let unit = UnitDef {
+        flight: entry.flight.clone(),
         name: name.to_owned(),
         icon_type: entry.icon_type.clone(),
         health: entry.health,
@@ -1060,6 +1292,7 @@ fn unit_from_entry(entry: &CatalogUnit, name: &str) -> Result<UnitDef, String> {
             armor_class: entry.armour_class.clone(),
             target_categories: entry.target_categories.clone(),
             paralyze_multiplier: entry.paralyze_multiplier,
+            flanking: entry.flanking,
             death_explosion: (entry.death_explosion_damage > 0.0
                 && entry.death_explosion_radius > 0.0)
                 .then_some(DeathExplosionDef {
@@ -1067,6 +1300,8 @@ fn unit_from_entry(entry: &CatalogUnit, name: &str) -> Result<UnitDef, String> {
                     radius: entry.death_explosion_radius,
                     edge_effectiveness: 0.0,
                 }),
+            // Set by experiments (see `TrainConfig::key_units`), never by the catalog.
+            key_unit: false,
             reclaim: ReclaimDef {
                 reclaimable: entry.reclaimable,
                 reclaim_time: entry.reclaim_time,
@@ -1087,7 +1322,22 @@ fn unit_from_entry(entry: &CatalogUnit, name: &str) -> Result<UnitDef, String> {
             radar_radius: entry.radar_radius,
             sonar_radius: entry.sonar_radius,
             jammer_radius: entry.jammer_radius,
-            can_cloak: entry.can_cloak,
+            can_cloak: entry.can_cloak.unwrap_or(entry.cloak_cost != 0.0),
+            stealth: entry.stealth,
+            sonar_stealth: entry.sonar_stealth,
+            sonar_jammer_radius: entry.sonar_jammer_radius,
+            sight_emit_height: entry.sight_emit_height,
+            radar_emit_height: entry.radar_emit_height,
+            air_sight_distance: entry.air_sight_distance,
+            use_air_los: entry.use_air_los,
+            leaves_ghost: entry.leaves_ghost,
+            start_cloaked: entry.start_cloaked,
+            cloak_cost: entry.cloak_cost,
+            cloak_cost_moving: entry.cloak_cost_moving,
+            min_cloak_distance: entry.min_cloak_distance,
+            decloak_spherical: entry.decloak_spherical,
+            decloak_on_fire: entry.decloak_on_fire,
+            targeting_facility: entry.targeting_facility,
             required_capabilities: entry.required_capabilities.clone(),
         },
         movement: profile.movement.clone(),
@@ -1157,6 +1407,120 @@ fn resolve_vfs_asset(root: &Path, directory: &str, vfs_name: &str) -> Result<Pat
 mod tests {
     use super::*;
 
+    #[test]
+    fn sensor_catalog_fields_load_flattened_and_round_trip_native() {
+        let (_, unit) = parse(
+            r#"{"unit_catalog":{"test":{"health":100,"simulation":{},
+            "stealth":true,"sonar_stealth":true,"sonar_jammer_radius":250,
+            "sight_emit_height":32,"radar_emit_height":80,"air_sight_distance":700,
+            "use_air_los":true,"leaves_ghost":false,"start_cloaked":true,
+            "cloak_cost":15,"cloak_cost_moving":40,"min_cloak_distance":75,
+            "decloak_spherical":false,"decloak_on_fire":false,"targeting_facility":true}}}"#,
+        );
+        let s = &unit.strategic;
+        assert!(
+            s.stealth
+                && s.sonar_stealth
+                && s.use_air_los
+                && s.start_cloaked
+                && s.targeting_facility
+        );
+        assert_eq!(s.sonar_jammer_radius, Some(250.0));
+        assert_eq!(s.sight_emit_height, 32.0);
+        assert_eq!(s.radar_emit_height, Some(80.0));
+        assert_eq!(s.air_sight_distance, Some(700.0));
+        assert_eq!(s.leaves_ghost, Some(false));
+        assert_eq!(s.cloak_cost, 15.0);
+        assert_eq!(s.cloak_cost_moving, Some(40.0));
+        assert_eq!(s.min_cloak_distance, 75.0);
+        assert!(!s.decloak_spherical && !s.decloak_on_fire);
+        let native = serde_json::to_value(&unit).unwrap();
+        let restored: UnitDef = serde_json::from_value(native.clone()).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap(), native);
+    }
+
+    #[test]
+    fn sensor_catalog_defaults_and_source_aliases_match_recoil() {
+        let (_, unit) = parse(r#"{"unit_catalog":{"test":{"health":100,"simulation":{}}}}"#);
+        let s = &unit.strategic;
+        assert_eq!(s.sight_emit_height, 20.0);
+        assert!(
+            s.radar_emit_height.is_none()
+                && s.air_sight_distance.is_none()
+                && s.leaves_ghost.is_none()
+        );
+        assert!(s.decloak_spherical && s.decloak_on_fire);
+        let (_, unit) = parse(
+            r#"{"unit_catalog":{"test":{"health":100,"simulation":{},
+            "cloakcost":15,"cloakcostmoving":40,"initcloaked":true,
+            "sightemitheight":30,"sonarstealth":true,"istargetingupgrade":true}}}"#,
+        );
+        assert!(
+            unit.strategic.can_cloak
+                && unit.strategic.start_cloaked
+                && unit.strategic.sonar_stealth
+        );
+        assert!(unit.strategic.targeting_facility);
+        assert_eq!(unit.strategic.sight_emit_height, 30.0);
+        assert_eq!(unit.strategic.cloak_cost_moving, Some(40.0));
+    }
+
+    #[test]
+    fn sensor_catalog_rejects_negative_ranges_costs_and_nonfinite_heights() {
+        for (field, value) in [
+            ("air_sight_distance", -1.0),
+            ("sonar_jammer_radius", -2.0),
+            ("cloak_cost", -1.0),
+            ("cloak_cost_moving", -2.0),
+            ("min_cloak_distance", -1.0),
+        ] {
+            let text = format!(
+                r#"{{"unit_catalog":{{"test":{{"health":100,"simulation":{{}},"{field}":{value}}}}}}}"#
+            );
+            let document: Document = serde_json::from_str(&text).unwrap();
+            assert!(
+                unit_from_entry(&document.unit_catalog["test"], "test").is_err(),
+                "{field}"
+            );
+        }
+        let mut unit = UnitDef::default();
+        unit.strategic.sight_emit_height = f32::NAN;
+        unit.strategic.radar_emit_height = Some(f32::INFINITY);
+        let mut issues = vec![];
+        validate_unit_data(&mut issues, "test", &unit);
+        assert!(issues.iter().any(|i| i.path.ends_with("sight_emit_height")));
+        assert!(issues.iter().any(|i| i.path.ends_with("radar_emit_height")));
+    }
+
+    #[test]
+    fn sensor_catalog_export_persists_mutations_and_removes_source_aliases() {
+        let directory =
+            std::env::temp_dir().join(format!("minibar-sensor-catalog-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("source.json");
+        let out = directory.join("out.json");
+        fs::write(&source, r#"{"unit_catalog":{"test":{"health":100,"cloakcost":15,"sonarstealth":true,"simulation":{}}}}"#).unwrap();
+        let mut catalog = load_catalog(&source).unwrap();
+        let unit = catalog.units.get_mut("test").unwrap();
+        unit.strategic.sonar_stealth = false;
+        unit.strategic.sonar_jammer_radius = Some(275.0);
+        unit.strategic.targeting_facility = true;
+        unit.strategic.decloak_on_fire = false;
+        export_catalog_json(&catalog, &out, &source).unwrap();
+        let restored = load_catalog(&out).unwrap();
+        let s = &restored.units["test"].strategic;
+        assert!(!s.sonar_stealth && !s.decloak_on_fire && s.targeting_facility);
+        assert_eq!(s.sonar_jammer_radius, Some(275.0));
+        assert_eq!(s.cloak_cost, 15.0);
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
+        assert!(value["unit_catalog"]["test"].get("cloakcost").is_none());
+        assert!(value["unit_catalog"]["test"].get("sonarstealth").is_none());
+        fs::remove_file(source).unwrap();
+        fs::remove_file(out).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
     fn parse(text: &str) -> (Document, UnitDef) {
         let document: Document = serde_json::from_str(text).expect("catalog JSON parses");
         let entry = document.unit_catalog.get("test").expect("test unit exists");
@@ -1193,6 +1557,43 @@ mod tests {
         assert_eq!(unit.strategic.paralyze_multiplier, 1.0);
         assert!(unit.strategic.death_explosion.is_none());
         assert!(!unit.strategic.onoffable);
+    }
+
+    #[test]
+    fn flanking_catalog_defaults_and_explicit_overrides_are_loaded() {
+        let (_, unit) = parse(r#"{"unit_catalog":{"test":{"health":100,"simulation":{}}}}"#);
+        assert_eq!(
+            unit.strategic.flanking,
+            crate::model::FlankingDef::default()
+        );
+        let (_, unit) = parse(
+            r#"{"unit_catalog":{"test":{"health":100,"flanking":{"mode":0,"min_damage":0.5,"max_damage":1.5,"mobility_add":0.02,"direction":{"x":1,"z":0}},"simulation":{}}}}"#,
+        );
+        assert_eq!(unit.strategic.flanking.mode, 0);
+        assert_eq!(unit.strategic.flanking.min_damage, 0.5);
+        assert_eq!(unit.strategic.flanking.max_damage, 1.5);
+        assert_eq!(unit.strategic.flanking.mobility_add, 0.02);
+        assert_eq!(
+            unit.strategic.flanking.direction,
+            crate::model::Vec2::new(1.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn flanking_catalog_rejects_invalid_rules() {
+        for flanking in [
+            r#"{"mode":4}"#,
+            r#"{"mobility_add":-1}"#,
+            r#"{"min_damage":2,"max_damage":1}"#,
+            r#"{"max_damage":-1}"#,
+        ] {
+            let text = format!(
+                r#"{{"unit_catalog":{{"test":{{"health":100,"flanking":{flanking},"simulation":{{}}}}}}}}"#
+            );
+            let document: Document = serde_json::from_str(&text).unwrap();
+            let result = unit_from_entry(&document.unit_catalog["test"], "test");
+            assert!(result.is_err(), "accepted invalid flanking: {flanking}");
+        }
     }
 
     #[test]
@@ -1376,6 +1777,7 @@ mod tests {
             metal_cost: 0.0,
             energy_cost: 0.0,
             strategic: StrategicDef::default(),
+            flight: None,
             movement: MovementDef::default(),
             weapons: vec![WeaponDef {
                 name: "a".into(),
@@ -1458,6 +1860,7 @@ mod tests {
             metal_cost: 10.0,
             energy_cost: 0.0,
             strategic: StrategicDef::default(),
+            flight: None,
             movement: MovementDef::default(),
             weapons: vec![WeaponDef {
                 name: "guided-emp".into(),
@@ -1494,5 +1897,16 @@ mod tests {
         let unsupported =
             catalog.unsupported_capabilities(IMPLEMENTED_CAPABILITIES.iter().copied());
         assert!(unsupported.is_empty());
+    }
+    #[test]
+    fn flight_catalog_contract_is_preserved() {
+        let entry: CatalogUnit = serde_json::from_value(serde_json::json!({
+            "health":100,"metal_cost":10,
+            "flight":{"cruise_altitude":120,"minimum_speed":90,"attack_run":true},
+            "simulation":{"max_speed":120,"weapons":[]}
+        }))
+        .unwrap();
+        let unit = unit_from_entry(&entry, "bomber").unwrap();
+        assert!(serde_json::to_value(unit).unwrap()["flight"].is_object());
     }
 }
