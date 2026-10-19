@@ -1,1 +1,23 @@
+# Build output
 target/
+
+# Generated data: training runs, brains, replays, catalogs, packages, dashboards.
+# Everything here is reproducible from scripts/ and examples/ (see README).
+data/
+
+# Scratch space for quality / regression experiments
+.quality-work/
+
+# Generated viewer pages and logs written to the repo root
+/duel.html
+/AI.html
+/watch-objectives.html
+/debug.log
+*.log
+
+# Local agent coordination notes (transient)
+/handoff.md
+
+# Python caches
+__pycache__/
+.pytest_cache/
