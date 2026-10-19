@@ -38,6 +38,8 @@ pub struct SideScore {
     pub won: bool,
     pub starting_value: f32,
     pub surviving_value: f32,
+    /// Reclaimable metal still on the field from this army; not credited income.
+    pub wreck_metal_left: f32,
     /// Resource value weighted by each survivor's remaining HP fraction.
     pub remaining_hp_value: f32,
     pub enemy_value_destroyed: f32,
@@ -71,8 +73,34 @@ impl SideScore {
     }
 }
 
+/// Unclaimed wreck metal. Winner access is a potential, not a territory or
+/// reclaim simulation; draws/timeouts make no ownership claim.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WreckageReport {
+    pub metal_by_source_side: [f32; 2],
+    pub total_metal: f32,
+    pub winner_reclaim_potential: Option<f32>,
+    pub loser_metal_conceded: Option<f32>,
+}
+
+impl WreckageReport {
+    pub fn new(metal_by_source_side: [f32; 2], winner: Option<u8>) -> Self {
+        let total_metal = metal_by_source_side.iter().sum::<f32>().max(0.0);
+        Self {
+            metal_by_source_side,
+            total_metal,
+            winner_reclaim_potential: winner.filter(|side| *side < 2).map(|_| total_metal),
+            loser_metal_conceded: winner
+                .filter(|side| *side < 2)
+                .map(|side| metal_by_source_side[1 - side as usize]),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct BattleResult {
+    pub wreckage: WreckageReport,
     pub winner: Option<u8>,
     pub timed_out: bool,
     pub duration: f32,
@@ -99,6 +127,7 @@ pub struct MeanSideScore {
     pub side: u8,
     pub starting_value: f64,
     pub surviving_value: f64,
+    pub wreck_metal_left: f64,
     pub remaining_hp_value: f64,
     pub enemy_value_destroyed: f64,
     pub damage_dealt: f64,
@@ -132,6 +161,7 @@ impl BatchSummary {
                 firing_totals[source.side as usize].merge(&source.firing);
                 total.starting_value += source.starting_value as f64;
                 total.surviving_value += source.surviving_value as f64;
+                total.wreck_metal_left += source.wreck_metal_left as f64;
                 total.remaining_hp_value += source.remaining_hp_value as f64;
                 total.enemy_value_destroyed += source.enemy_value_destroyed as f64;
                 total.damage_dealt += source.damage_dealt as f64;
@@ -146,6 +176,7 @@ impl BatchSummary {
             for score in &mut scores {
                 score.starting_value /= count;
                 score.surviving_value /= count;
+                score.wreck_metal_left /= count;
                 score.remaining_hp_value /= count;
                 score.enemy_value_destroyed /= count;
                 score.damage_dealt /= count;

@@ -260,7 +260,9 @@ pub struct Simulator {
     /// can opt into finite per-side ammunition resources without coupling this
     /// hot loop to the strategic economy scheduler.
     combat_resources: Option<[StartingResources; 2]>,
+    starting_speeds: Vec<f32>,
     auxiliary_units: BTreeSet<u32>,
+    corpse_links: Vec<Option<usize>>,
 }
 
 /// Opaque identity supplied by a strategic world. Tactical IDs remain an
@@ -323,6 +325,8 @@ struct TargetingState {
     // None is the explicit legacy oracle mode. Some(empty) denies all entity acquisition.
     contacts: [Option<Vec<Option<TargetEstimate>>>; 2],
     ground: HashMap<u32, Vec2>,
+    /// Explicit one-salvo manual order: mount and exclusive ending shot sequence.
+    manual: HashMap<u32, (usize, u64)>,
 }
 impl TargetingState {
     fn estimate(
@@ -349,6 +353,7 @@ impl TargetingState {
     fn clear(&mut self) {
         self.contacts = [None, None];
         self.ground.clear();
+        self.manual.clear();
     }
     fn remap(&mut self, remap: &[u32]) {
         for contacts in self.contacts.iter_mut().flatten() {
@@ -369,6 +374,17 @@ impl TargetingState {
                     .copied()
                     .filter(|id| *id > 0)
                     .map(|id| (id, point))
+            })
+            .collect();
+        self.manual = self
+            .manual
+            .drain()
+            .filter_map(|(id, order)| {
+                remap
+                    .get(id as usize - 1)
+                    .copied()
+                    .filter(|id| *id > 0)
+                    .map(|id| (id, order))
             })
             .collect();
     }
@@ -548,6 +564,18 @@ impl StandaloneSensors {
         resources: &mut Option<[StartingResources; 2]>,
     ) {
         self.units.clear();
+        let len = truth.len();
+        self.cloaked.resize(len, false);
+        self.decloak_until.resize(len, 0);
+        self.next_cloak_check.resize(len, 0);
+        self.previous_shots.resize(len, 0);
+        for side in 0..2 {
+            self.identified[side].resize(len, false);
+            self.tracked[side].resize(len, false);
+            self.known_definitions[side].resize(len, None);
+            self.ghosts[side].resize(len, None);
+            self.ghost_targets[side].resize(len, None);
+        }
         for (index, unit) in truth.iter().enumerate() {
             let d = &unit.definition.strategic;
             let ground = terrain.height_at(unit.position);
@@ -640,7 +668,7 @@ impl StandaloneSensors {
             for (index, unit) in truth.iter().enumerate() {
                 let detected = if !unit.alive {
                     None
-                } else if unit.side == side as u8 {
+                } else if unit.side == side as u8 || unit.side >= 2 {
                     Some(crate::sensors::Detection::Los)
                 } else {
                     crate::sensors::detect(
@@ -815,15 +843,24 @@ struct TrialWorkspace {
     spatial: SpatialGrid,
     commands: Vec<Command>,
     sensors: StandaloneSensors,
+    wreck_processed: Vec<bool>,
+    wreck_origins: Vec<Option<u8>>,
+    wreck_navigator: crate::wrecks::WreckNavigator,
 }
 
 impl TrialWorkspace {
     fn new(simulator: &Simulator) -> Self {
-        let units = spawn_units(&simulator.scenario.units, &simulator.definitions);
+        let mut units = spawn_units(&simulator.scenario.units, &simulator.definitions);
+        for (unit, speed) in units.iter_mut().zip(&simulator.starting_speeds) {
+            unit.speed = *speed;
+        }
         let maximum_tick = (simulator.scenario.max_time / DT).ceil() as u64;
         Self {
             commands: vec![Command::default(); units.len()],
             sensors: StandaloneSensors::new(units.len()),
+            wreck_processed: vec![false; units.len()],
+            wreck_origins: vec![None; units.len()],
+            wreck_navigator: Default::default(),
             units,
             impacts: ImpactQueue::new(maximum_tick),
             guided_projectiles: Vec::new(),
@@ -834,7 +871,16 @@ impl TrialWorkspace {
     }
 
     fn reset(&mut self, simulator: &Simulator) {
+        self.units.truncate(simulator.scenario.units.len());
         reset_units(&mut self.units, &simulator.scenario.units);
+        for (unit, speed) in self.units.iter_mut().zip(&simulator.starting_speeds) {
+            unit.speed = *speed;
+        }
+        self.wreck_processed.resize(self.units.len(), false);
+        self.wreck_processed.fill(false);
+        self.wreck_origins.resize(self.units.len(), None);
+        self.wreck_origins.fill(None);
+        self.wreck_navigator.clear();
         self.impacts
             .reset((simulator.scenario.max_time / DT).ceil() as u64);
         self.guided_projectiles.clear();
@@ -870,11 +916,22 @@ impl Simulator {
     pub fn new(mut scenario: Scenario) -> Self {
         scenario.terrain.refresh_derived();
         let terrain_all_passable = scenario.terrain.passable.iter().all(|passable| *passable);
-        let definitions = scenario
+        let mut definitions: Vec<Arc<crate::model::UnitDef>> = scenario
             .units
             .iter()
             .map(|spawn| Arc::new(spawn.definition.clone()))
             .collect();
+        let mut corpse_links = vec![None; definitions.len()];
+        let mut index = 0;
+        while index < definitions.len() {
+            if let Some(corpse) = &definitions[index].strategic.corpse {
+                let feature = corpse.unit_definition(&definitions[index]);
+                corpse_links[index] = Some(definitions.len());
+                definitions.push(Arc::new(feature));
+                corpse_links.push(None);
+            }
+            index += 1;
+        }
         let paralysis_enabled = scenario.units.iter().any(|spawn| {
             spawn
                 .definition
@@ -893,7 +950,9 @@ impl Simulator {
             paralysis_enabled,
             sensing_enabled,
             combat_resources: None,
+            starting_speeds: Vec::new(),
             auxiliary_units: BTreeSet::new(),
+            corpse_links,
         }
     }
 
@@ -903,6 +962,28 @@ impl Simulator {
     pub fn with_starting_resources(mut self, resources: [StartingResources; 2]) -> Self {
         self.combat_resources = Some(resources);
         self
+    }
+
+    /// Sets forward speeds in scenario spawn order, restored before every run.
+    /// Omitting this configuration preserves the historical stationary start.
+    pub fn with_starting_speeds(mut self, speeds: Vec<f32>) -> Result<Self, String> {
+        if speeds.len() != self.scenario.units.len() {
+            return Err(format!(
+                "starting speed count {} must match spawn count {}",
+                speeds.len(),
+                self.scenario.units.len()
+            ));
+        }
+        for (index, (speed, spawn)) in speeds.iter().zip(&self.scenario.units).enumerate() {
+            if !speed.is_finite() || *speed < 0.0 || *speed > spawn.definition.movement.max_speed {
+                return Err(format!(
+                    "starting speed for spawn {index} must be finite and between zero and maximum speed {}",
+                    spawn.definition.movement.max_speed
+                ));
+            }
+        }
+        self.starting_speeds = speeds;
+        Ok(self)
     }
 
     /// Reconnaissance assets remain destructible and fully resource-scored,
@@ -1023,6 +1104,9 @@ impl Simulator {
             spatial,
             commands,
             sensors,
+            wreck_processed,
+            wreck_origins,
+            wreck_navigator,
         } = workspace;
         let mut battle = BattleState {
             fired_units: Default::default(),
@@ -1084,6 +1168,7 @@ impl Simulator {
                 };
             }
 
+            wreck_navigator.steer(units, commands, &self.scenario.terrain);
             update_movement(
                 units,
                 commands,
@@ -1155,6 +1240,29 @@ impl Simulator {
                 self.sensing_enabled.then_some(&sensors.targeting),
                 Some(&self.scenario.terrain),
             );
+            for index in 0..units.len() {
+                if units[index].alive || wreck_processed[index] {
+                    continue;
+                }
+                wreck_processed[index] = true;
+                if let Some(definition_index) = self.corpse_links[units[index].definition_index] {
+                    let source_side = wreck_origins[index]
+                        .or((units[index].side < 2).then_some(units[index].side));
+                    let feature = new_unit_state(
+                        units.len() as u32 + 1,
+                        NEUTRAL_COMBAT_SIDE,
+                        Arc::clone(&self.definitions[definition_index]),
+                        definition_index,
+                        units[index].position,
+                        units[index].heading,
+                        self.definitions[definition_index].health,
+                    );
+                    units.push(feature);
+                    wreck_processed.push(false);
+                    wreck_origins.push(source_side);
+                }
+            }
+            commands.resize(units.len(), Command::default());
             if TRACE && trace_tick {
                 let view = WorldView {
                     time,
@@ -1175,7 +1283,29 @@ impl Simulator {
         for (side, score) in battle.scores.iter_mut().enumerate() {
             score.won = alive[side] && !alive[1 - side];
         }
+        let metal_by_source_side: [f32; 2] = std::array::from_fn(|side| {
+            units
+                .iter()
+                .zip(wreck_origins.iter())
+                .filter(|(unit, origin)| {
+                    unit.alive
+                        && **origin == Some(side as u8)
+                        && unit.definition.strategic.reclaim.reclaimable
+                })
+                .map(|(unit, _)| unit.definition.strategic.reclaim.metal)
+                .sum::<f32>()
+                .max(0.0)
+        });
+        for (side, score) in battle.scores.iter_mut().enumerate() {
+            score.wreck_metal_left = metal_by_source_side[side];
+        }
+        let winner = match alive {
+            [true, false] => Some(0),
+            [false, true] => Some(1),
+            _ => None,
+        };
         let result = BattleResult {
+            wreckage: crate::score::WreckageReport::new(metal_by_source_side, winner),
             winner: match alive {
                 [true, false] => Some(0),
                 [false, true] => Some(1),
@@ -1187,6 +1317,7 @@ impl Simulator {
         };
         let trace = recorder.map(|recorder| {
             recorder.finish(TraceOutcome {
+                wreckage: result.wreckage.clone(),
                 winner: result.winner,
                 duration: result.duration,
             })
@@ -1493,6 +1624,8 @@ impl CombatStepper {
         }
         unit.alive = false;
         unit.speed = 0.0;
+        self.targeting.manual.remove(&unit.id);
+        self.targeting.ground.remove(&unit.id);
         self.keys[index] = None;
         self.commands[index] = Command::default();
         Ok(())
@@ -1569,6 +1702,10 @@ impl CombatStepper {
         let old_side = self.units[index].side;
         let old_alive = self.units[index].alive;
         if let Some(side) = update.side {
+            if side != old_side {
+                self.targeting.manual.remove(&self.units[index].id);
+                self.targeting.ground.remove(&self.units[index].id);
+            }
             self.units[index].side = side;
         }
         if let Some(position) = update.position {
@@ -1580,6 +1717,8 @@ impl CombatStepper {
         }
         if let (Some(definition_id), Some(definition)) = (update.definition, replacement_definition)
         {
+            self.targeting.manual.remove(&self.units[index].id);
+            self.targeting.ground.remove(&self.units[index].id);
             self.units[index].weapons =
                 initial_weapon_states(&definition, self.units[index].heading);
             self.units[index].flanking_direction = definition.strategic.flanking.direction;
@@ -1646,6 +1785,7 @@ impl CombatStepper {
             None => None,
         };
         self.targeting.ground.remove(&self.units[index].id);
+        self.targeting.manual.remove(&self.units[index].id);
         self.commands[index] = Command {
             target,
             destination: command.destination,
@@ -1710,6 +1850,41 @@ impl CombatStepper {
         } else {
             self.targeting.ground.remove(&id);
         }
+        self.targeting.manual.remove(&id);
+        Ok(())
+    }
+
+    /// Queue one manual salvo at a disclosed/map position, without entity acquisition.
+    /// The order waits for aim, resources and a stockpiled round. It fires once;
+    /// callers must issue a new order for another launch. Ordinary orders cancel it.
+    pub fn set_manual_ground_target(
+        &mut self,
+        key: CombatKey,
+        weapon_index: usize,
+        position: Vec2,
+    ) -> Result<(), CombatError> {
+        let index = *self.indices.get(&key).ok_or(CombatError::UnknownKey(key))?;
+        let unit = &self.units[index];
+        if !unit
+            .definition
+            .weapons
+            .get(weapon_index)
+            .is_some_and(|weapon| {
+                weapon.manual_fire && !weapon.is_shield && weapon.interceptor == 0
+            })
+            || !position.x.is_finite()
+            || !position.z.is_finite()
+        {
+            return Err(CombatError::InvalidObservation);
+        }
+        let id = unit.id;
+        let sequence = unit.weapons[weapon_index]
+            .shot_sequence
+            .saturating_add(u64::from(
+                unit.definition.weapons[weapon_index].burst.max(1),
+            ));
+        self.set_ground_target(key, Some(position))?;
+        self.targeting.manual.insert(id, (weapon_index, sequence));
         Ok(())
     }
 
@@ -1717,6 +1892,7 @@ impl CombatStepper {
         let index = *self.indices.get(&key).ok_or(CombatError::UnknownKey(key))?;
         self.commands[index] = Command::default();
         self.targeting.ground.remove(&self.units[index].id);
+        self.targeting.manual.remove(&self.units[index].id);
         Ok(())
     }
 
@@ -1822,6 +1998,19 @@ impl CombatStepper {
             false,
             &mut self.aim_attempts,
         );
+        if !self.targeting.manual.is_empty() {
+            for unit in &self.units {
+                if self
+                    .targeting
+                    .manual
+                    .get(&unit.id)
+                    .is_some_and(|&(mount, sequence)| unit.weapons[mount].shot_sequence >= sequence)
+                {
+                    self.targeting.manual.remove(&unit.id);
+                    self.targeting.ground.remove(&unit.id);
+                }
+            }
+        }
         advance_guided_projectiles_observed(
             &self.units,
             self.tick,
@@ -1951,6 +2140,11 @@ impl CombatStepper {
                 hash_value(&mut hash, u64::from(point.x.to_bits()));
                 hash_value(&mut hash, u64::from(point.z.to_bits()));
             }
+            if let Some((mount, sequence)) = self.targeting.manual.get(&unit.id) {
+                hash_value(&mut hash, u64::from(unit.id));
+                hash_value(&mut hash, *mount as u64);
+                hash_value(&mut hash, *sequence);
+            }
         }
         if let Some(resources) = self.battle.combat_resources {
             hash_value(&mut hash, 1);
@@ -2014,6 +2208,7 @@ fn hash_value(hash: &mut u64, value: u64) {
 fn normalize_swapped_result(mut result: BattleResult) -> BattleResult {
     result.winner = result.winner.map(|side| 1 - side);
     result.sides.swap(0, 1);
+    result.wreckage.metal_by_source_side.swap(0, 1);
     result.sides[0].side = 0;
     result.sides[1].side = 1;
     result
@@ -2438,26 +2633,39 @@ fn update_movement(
         }
         if let Some(flight) = &unit.definition.flight {
             let movement = &unit.definition.movement;
-            if let Some(destination) = command.destination {
-                let delta = destination - unit.position;
-                if delta.length_squared() > 0.25 {
-                    unit.heading = turn_toward(
-                        unit.heading,
-                        delta.heading(),
-                        movement.turn_rate.to_radians() * DT,
-                    );
-                    unit.forward = Vec2::from_heading(unit.heading);
-                }
-            }
-            let desired = (movement.max_speed * command.throttle.clamp(0.0, 1.0))
-                .max(flight.minimum_speed)
-                .min(movement.max_speed);
+            let desired = if flight.hover
+                && command
+                    .destination
+                    .is_none_or(|destination| destination.distance(unit.position) < 0.5)
+            {
+                0.0
+            } else {
+                (movement.max_speed * command.throttle.clamp(0.0, 1.0))
+                    .max(flight.minimum_speed)
+                    .min(movement.max_speed)
+            };
             let rate = if desired > unit.speed {
                 movement.acceleration
             } else {
                 movement.braking
             };
             unit.speed = approach(unit.speed, desired, rate * DT);
+            let angular_speed = if flight.hover {
+                movement.turn_rate.to_radians()
+            } else {
+                flight
+                    .turn_radius
+                    .map_or(movement.turn_rate.to_radians(), |radius| {
+                        unit.speed.max(0.0) / radius
+                    })
+            };
+            if let Some(destination) = command.destination {
+                let delta = destination - unit.position;
+                if delta.length_squared() > 0.25 {
+                    unit.heading = turn_toward(unit.heading, delta.heading(), angular_speed * DT);
+                    unit.forward = Vec2::from_heading(unit.heading);
+                }
+            }
             let candidate = unit.position + unit.velocity() * DT;
             // Aircraft fly over terrain and occupants; map boundaries remain physical.
             unit.position = Vec2::new(
@@ -2761,7 +2969,12 @@ fn update_weapons<const TRACE: bool>(
         let definition = &definitions[units[index].definition_index];
 
         for (weapon_index, weapon) in definition.weapons.iter().enumerate() {
-            if weapon.manual_fire
+            let manual = targeting.and_then(|state| state.manual.get(&shooter_id));
+            let explicit_manual = manual.is_some_and(|&(mount, sequence)| {
+                mount == weapon_index && units[index].weapons[weapon_index].shot_sequence < sequence
+            });
+            if (weapon.manual_fire && !explicit_manual)
+                || (manual.is_some() && !weapon.manual_fire)
                 || weapon.is_shield
                 || weapon.interceptor != 0
                 || (target_index < units.len()
@@ -2863,7 +3076,14 @@ fn update_weapons<const TRACE: bool>(
                 continue;
             };
             let desired_aim = (aim_point - origin).heading();
-            let aim_rate = if weapon.turret {
+            // Vertical launchers and gravity bomb releases do not require
+            // the hull to face the map target. Bomb release is gated above
+            // by the inherited-velocity landing point instead.
+            let independent_hull_aim = weapon.weapon_type.eq_ignore_ascii_case("StarburstLauncher")
+                || weapon.weapon_type.eq_ignore_ascii_case("AircraftBomb");
+            let aim_rate = if independent_hull_aim {
+                f32::INFINITY
+            } else if weapon.turret {
                 weapon
                     .turret_yaw_speed
                     .map_or(f32::INFINITY, f32::to_radians)
@@ -2889,7 +3109,7 @@ fn update_weapons<const TRACE: bool>(
                 } else {
                     turn_toward(state.aim_heading, desired_aim, aim_rate * DT)
                 };
-                if !weapon.turret {
+                if !weapon.turret && !independent_hull_aim {
                     state.aim_heading = body_heading;
                 }
                 let yaw_ready = angle_delta(state.aim_heading, desired_aim).abs() <= tolerance;
@@ -2904,7 +3124,25 @@ fn update_weapons<const TRACE: bool>(
                     state.aim_pitch += delta.clamp(-maximum_delta, maximum_delta);
                     (desired_pitch - state.aim_pitch).abs() <= tolerance
                 });
-                let aim_ready = yaw_ready && pitch_ready;
+                let cone_ready = weapon_mount_allows_target(
+                    weapon,
+                    body_heading,
+                    aim_point - origin,
+                    // Recoil hover aircraft pitch their hull toward attacks.
+                    // Approximate that unmodeled attitude instantly for fixed
+                    // hover guns; range and projectile heights remain 3D.
+                    if !weapon.turret
+                        && definition
+                            .flight
+                            .as_ref()
+                            .is_some_and(|flight| flight.hover)
+                    {
+                        0.0
+                    } else {
+                        target_y - origin_y
+                    },
+                );
+                let aim_ready = yaw_ready && pitch_ready && cone_ready;
                 let ammunition_ready = !weapon.stockpile || state.stockpiled_rounds > 0;
                 if aim_ready
                     && ammunition_ready
@@ -3021,7 +3259,7 @@ fn update_weapons<const TRACE: bool>(
                 blocker
                     .filter(|&blocker_index| {
                         units[blocker_index].side != side
-                            && weapon.collide_enemy
+                            && (units[blocker_index].side >= 2 || weapon.collide_enemy)
                             && weapon.collide_non_target
                     })
                     .unwrap_or(target_index)
@@ -3154,9 +3392,9 @@ fn advance_stockpiles(
             }
             if state.stockpile_in_progress && time + 1e-6 >= state.stockpile_ready_at {
                 state.stockpile_in_progress = false;
-                state.stockpiled_rounds = 1;
+                state.stockpiled_rounds = state.stockpiled_rounds.saturating_add(1);
             }
-            if state.stockpiled_rounds == 0
+            if state.stockpiled_rounds < weapon.stockpile_limit
                 && !state.stockpile_in_progress
                 && try_consume_weapon_resources(
                     resources,
@@ -3285,6 +3523,51 @@ fn ballistic_flight_path(
             gravity,
         },
     )
+}
+
+fn weapon_mount_allows_target(
+    weapon: &WeaponDef,
+    heading: f32,
+    delta: Vec2,
+    vertical_delta: f32,
+) -> bool {
+    // Recoil CheckTargetAngleConstraint uses the body-forward constraint for
+    // fixed weapons and the mount mainDir cone for turrets. Body pitch/roll
+    // are absent from this kernel; elevation still participates in the cone.
+    let (axis, half_angle) = if weapon.turret {
+        let Some(angle) = weapon.max_angle_difference else {
+            return true;
+        };
+        (
+            weapon.main_direction.unwrap_or([0.0, 0.0, 1.0]),
+            angle.to_radians() * 0.5,
+        )
+    } else {
+        // Recoil's StarburstLauncher is never onlyForward. BombDropper
+        // explicitly disables maxForwardAngleDif during initialization.
+        if weapon.weapon_type.eq_ignore_ascii_case("StarburstLauncher")
+            || weapon.weapon_type.eq_ignore_ascii_case("AircraftBomb")
+        {
+            return true;
+        }
+        let tolerance = if weapon.fire_tolerance > 0.0 {
+            weapon.fire_tolerance
+        } else {
+            5_f32.to_radians()
+        };
+        ([0.0, 0.0, 1.0], tolerance)
+    };
+    let [right, up, forward] = axis;
+    let axis_length = (right * right + up * up + forward * forward).sqrt();
+    let target_length = (delta.length_squared() + vertical_delta * vertical_delta).sqrt();
+    if target_length <= f32::EPSILON {
+        return true;
+    }
+    let body_forward = Vec2::from_heading(heading);
+    let body_right = Vec2::new(-body_forward.z, body_forward.x);
+    let horizontal_axis = body_right * right + body_forward * forward;
+    let dot = horizontal_axis.x * delta.x + horizontal_axis.z * delta.z + up * vertical_delta;
+    dot / (axis_length * target_length) + 1e-6 >= half_angle.cos()
 }
 
 fn weapon_flight_path(
@@ -3597,6 +3880,18 @@ fn fire_shot(
                 DT
             }
             .max(DT);
+            // CMissileLauncher::FireImpl launches onlyForward weapons along
+            // owner.frontdir before applying spread. Body pitch and roll are
+            // not modeled, so the initial vertical component is zero here.
+            let fixed_missile_heading = (!weapon.turret
+                && weapon.weapon_type.eq_ignore_ascii_case("MissileLauncher"))
+            .then(|| {
+                units
+                    .iter()
+                    .find(|unit| unit.id == shooter_id)
+                    .map(|unit| unit.heading + error)
+            })
+            .flatten();
             guided_projectiles.push(GuidedProjectile {
                 impact: Impact {
                     altitude: impact_altitude,
@@ -3620,8 +3915,12 @@ fn fire_shot(
                 },
                 position: origin,
                 height: origin_y,
-                heading: (point - origin).heading(),
-                vertical_speed: (target_y - origin_y) / nominal_flight_time.max(DT),
+                heading: fixed_missile_heading.unwrap_or_else(|| (point - origin).heading()),
+                vertical_speed: if fixed_missile_heading.is_some() {
+                    0.0
+                } else {
+                    (target_y - origin_y) / nominal_flight_time.max(DT)
+                },
                 speed: projectile_speed,
                 turn_rate: weapon.projectile_turn_rate.max(0.0).to_radians(),
                 remaining_ticks: (lifetime * crate::model::SIM_HZ).ceil().max(1.0) as u32,
@@ -3674,6 +3973,7 @@ fn try_intercept_projectile(
         }
         for (weapon, state) in unit.definition.weapons.iter().zip(&mut unit.weapons) {
             if weapon.interceptor & targetable == 0
+                || time + 1e-6 < state.reload_until
                 || unit.position.distance_squared(impact_point)
                     > weapon.coverage_range * weapon.coverage_range
             {
@@ -3684,6 +3984,7 @@ fn try_intercept_projectile(
                     continue;
                 }
                 state.stockpiled_rounds -= 1;
+                state.reload_until = time + weapon.reload.max(DT);
                 return true;
             }
             if time + 1e-6 < state.reload_until
@@ -3988,6 +4289,7 @@ where
             || unit.id == projectile.impact.shooter_id
             || (unit.side == projectile.impact.shooter_side && !projectile.impact.hits_allies)
             || (!designated_target && !projectile.impact.collide_non_target)
+            || (!designated_target && unit.side >= 2 && !unit.definition.movement.blocks_fire)
         {
             continue;
         }
@@ -4225,7 +4527,7 @@ fn resolve_impacts_observed(
         let actual = damage.min(unit.hp.max(0.0));
         let overkill = (damage - actual).max(0.0);
         unit.hp -= damage;
-        if event.source_side < 2 && event.source_side != unit.side {
+        if event.source_side < 2 && unit.side < 2 && event.source_side != unit.side {
             battle.scores[event.source_side as usize].damage_dealt += actual;
             battle.scores[event.source_side as usize].overkill_damage += overkill;
         }
@@ -5151,6 +5453,438 @@ mod lead_tests {
         assert!(units[0].speed < 0.0);
         assert!(units[0].position.x < 100.0);
         assert!(angle_delta(0.0, units[0].heading).abs() < 1e-5);
+    }
+
+    #[test]
+    fn ground_motion_obeys_elapsed_time_speed_cap_braking_and_heading_rate() {
+        let definition = tactical_unit(
+            "motion-fixture",
+            crate::model::MovementDef {
+                max_speed: 90.0,
+                acceleration: 60.0,
+                braking: 30.0,
+                turn_rate: 45.0,
+                turn_in_place: false,
+                radius: 1.0,
+                ..Default::default()
+            },
+            Vec::new(),
+        );
+        let definitions = vec![Arc::new(definition.clone())];
+        let mut units = spawn_units(
+            &[Spawn {
+                side: 0,
+                definition,
+                position: Vec2::new(500.0, 500.0),
+                heading: 0.0,
+            }],
+            &definitions,
+        );
+        let terrain = Terrain::flat(4000.0, 4000.0, 32.0);
+        let mut command = Command {
+            destination: Some(Vec2::new(3500.0, 500.0)),
+            throttle: 1.0,
+            ..Default::default()
+        };
+        for tick in 1..=60 {
+            update_movement(&mut units, &[command], &terrain, true, &[]);
+            let expected = (60.0 * tick as f32 * DT).min(90.0);
+            assert!((units[0].speed - expected).abs() < 1e-3);
+        }
+        command.destination = None;
+        for _ in 0..15 {
+            update_movement(&mut units, &[command], &terrain, true, &[]);
+        }
+        assert!((units[0].speed - 75.0).abs() < 1e-3);
+        command.destination = Some(units[0].position + Vec2::new(0.0, 1000.0));
+        command.throttle = 0.0;
+        for _ in 0..15 {
+            update_movement(&mut units, &[command], &terrain, true, &[]);
+        }
+        assert!((units[0].heading.to_degrees() - 22.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn directional_starting_speeds_are_checked_and_restored_on_reset() {
+        let mut definition = (*stepper_weapon(10.0)).clone();
+        definition.movement.max_speed = 60.0;
+        let simulator = Simulator::new(Scenario::duel(definition, 100.0));
+        for invalid in [
+            vec![1.0],
+            vec![f32::NAN, 0.0],
+            vec![-1.0, 0.0],
+            vec![61.0, 0.0],
+            vec![f32::INFINITY, 0.0],
+        ] {
+            assert!(simulator.clone().with_starting_speeds(invalid).is_err());
+        }
+        let mut default_workspace = TrialWorkspace::new(&simulator);
+        assert!(default_workspace.units.iter().all(|unit| unit.speed == 0.0));
+        default_workspace.units[0].speed = 20.0;
+        default_workspace.reset(&simulator);
+        assert!(default_workspace.units.iter().all(|unit| unit.speed == 0.0));
+        let simulator = simulator.with_starting_speeds(vec![30.0, 60.0]).unwrap();
+        let mut workspace = TrialWorkspace::new(&simulator);
+        for _ in 0..3 {
+            assert_eq!(
+                workspace
+                    .units
+                    .iter()
+                    .map(|unit| unit.speed)
+                    .collect::<Vec<_>>(),
+                vec![30.0, 60.0]
+            );
+            workspace.units[0].speed = 0.0;
+            workspace.units[1].speed = -10.0;
+            workspace.reset(&simulator);
+        }
+    }
+
+    #[test]
+    fn directional_cone_uses_full_angle_body_rotation_and_elevation() {
+        let mut weapon = WeaponDef {
+            main_direction: Some([2.0, 0.0, 0.0]),
+            max_angle_difference: Some(60.0),
+            ..Default::default()
+        };
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(0.0, 100.0),
+            0.0
+        ));
+        assert!(!weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(100.0, 0.0),
+            0.0
+        ));
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            -PI * 0.5,
+            Vec2::new(100.0, 0.0),
+            0.0
+        ));
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(0.0, 100.0),
+            50.0
+        ));
+        assert!(!weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(0.0, 100.0),
+            60.0
+        ));
+        weapon.main_direction = Some([0.0, 1.0, 0.0]);
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            PI,
+            Vec2::new(10.0, 0.0),
+            100.0
+        ));
+        assert!(!weapon_mount_allows_target(
+            &weapon,
+            PI,
+            Vec2::new(100.0, 0.0),
+            10.0
+        ));
+        weapon.max_angle_difference = None;
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            PI,
+            Vec2::new(100.0, 0.0),
+            10.0
+        ));
+        weapon.max_angle_difference = Some(360.0);
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            PI,
+            Vec2::new(0.0, 0.0),
+            -100.0
+        ));
+    }
+
+    #[test]
+    fn directional_fixed_cone_checks_elevation_and_preserves_vertical_launch() {
+        let mut weapon = WeaponDef {
+            turret: false,
+            fire_tolerance: 30_f32.to_radians(),
+            ..Default::default()
+        };
+        assert!(weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(100.0, 0.0),
+            50.0
+        ));
+        assert!(!weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(100.0, 0.0),
+            60.0
+        ));
+        assert!(!weapon_mount_allows_target(
+            &weapon,
+            0.0,
+            Vec2::new(-100.0, 0.0),
+            0.0
+        ));
+        for kind in ["StarburstLauncher", "AircraftBomb"] {
+            weapon.weapon_type = kind.into();
+            assert!(weapon_mount_allows_target(
+                &weapon,
+                0.0,
+                Vec2::new(-100.0, 0.0),
+                100.0
+            ));
+        }
+    }
+
+    #[test]
+    fn directional_fixed_missile_launches_along_nose_before_homing() {
+        let mut shooter = (*stepper_weapon(10.0)).clone();
+        shooter.weapons[0].turret = false;
+        shooter.weapons[0].hitscan = false;
+        shooter.weapons[0].tracks = true;
+        shooter.weapons[0].weapon_type = "MissileLauncher".into();
+        shooter.weapons[0].fire_tolerance = 70_f32.to_radians();
+        shooter.weapons[0].projectile_speed = 100.0;
+        shooter.weapons[0].projectile_turn_rate = 30.0;
+        let mut target = (*stepper_target()).clone();
+        target.flight = Some(crate::model::FlightDef {
+            cruise_altitude: 20.0,
+            minimum_speed: 0.0,
+            attack_run: false,
+            hover: true,
+            turn_radius: None,
+        });
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 300.0, 16.0),
+            vec![Arc::new(shooter), Arc::new(target)],
+            1,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper
+            .update(
+                200,
+                CombatantUpdate {
+                    position: Some(Vec2::new(200.0, 200.0)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        stepper.step();
+        assert_eq!(stepper.guided_projectiles.len(), 1);
+        let projectile = &stepper.guided_projectiles[0];
+        // The first steering tick may run during launch, but it cannot skip
+        // the 30-degree-per-second yaw limit to face the off-axis target.
+        assert!(projectile.heading >= 0.0 && projectile.heading <= 30_f32.to_radians() * DT + 1e-6);
+        assert!(angle_delta(projectile.heading, PI * 0.25).abs() > 40_f32.to_radians());
+        let first_heading = projectile.heading;
+        stepper.step();
+        assert!(stepper.guided_projectiles[0].heading > first_heading);
+    }
+
+    #[test]
+    fn directional_aircraft_bombs_release_below_side_and_rear_without_hull_alignment() {
+        for (offset, heading) in [
+            (Vec2::new(0.0, 0.0), PI),
+            (Vec2::new(0.0, 2.0), 0.0),
+            (Vec2::new(-2.0, 0.0), 0.0),
+        ] {
+            let mut bomber = (*stepper_weapon(10.0)).clone();
+            bomber.flight = Some(crate::model::FlightDef {
+                cruise_altitude: 60.0,
+                minimum_speed: 0.0,
+                attack_run: false,
+                hover: true,
+                turn_radius: None,
+            });
+            bomber.weapons[0].turret = false;
+            bomber.weapons[0].hitscan = false;
+            bomber.weapons[0].weapon_type = "AircraftBomb".into();
+            bomber.weapons[0].projectile_gravity = 120.0;
+            bomber.weapons[0].projectile_speed = 100.0;
+            bomber.weapons[0].area_of_effect = 20.0;
+            let mut stepper = CombatStepper::new(
+                Terrain::flat(400.0, 300.0, 16.0),
+                vec![Arc::new(bomber), stepper_target()],
+                1,
+            );
+            insert_stepper_pair(&mut stepper);
+            stepper
+                .update(
+                    100,
+                    CombatantUpdate {
+                        heading: Some(heading),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            stepper
+                .update(
+                    200,
+                    CombatantUpdate {
+                        position: Some(Vec2::new(100.0, 100.0) + offset),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert!(
+                stepper.step().pending_impacts > 0,
+                "offset={offset:?}, heading={heading}"
+            );
+            for _ in 0..40 {
+                stepper.step();
+            }
+            assert!(
+                stepper.combatant(200).unwrap().hp < 100.0,
+                "released bomb must reach ground target"
+            );
+        }
+    }
+
+    #[test]
+    fn directional_fixed_hover_gun_can_pitch_to_close_ground_target() {
+        for (hover, heading, fires) in [(true, 0.0, true), (true, PI, false), (false, 0.0, false)] {
+            let mut aircraft = (*stepper_weapon(10.0)).clone();
+            aircraft.flight = Some(crate::model::FlightDef {
+                cruise_altitude: 100.0,
+                minimum_speed: 0.0,
+                attack_run: false,
+                hover,
+                turn_radius: None,
+            });
+            aircraft.weapons[0].turret = false;
+            aircraft.weapons[0].fire_tolerance = 10_f32.to_radians();
+            let mut stepper = CombatStepper::new(
+                Terrain::flat(400.0, 300.0, 16.0),
+                vec![Arc::new(aircraft), stepper_target()],
+                1,
+            );
+            insert_stepper_pair(&mut stepper);
+            stepper
+                .update(
+                    100,
+                    CombatantUpdate {
+                        heading: Some(heading),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            stepper
+                .update(
+                    200,
+                    CombatantUpdate {
+                        position: Some(Vec2::new(120.0, 100.0)),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            stepper.step();
+            assert_eq!(
+                stepper.combatant(200).unwrap().hp < 100.0,
+                fires,
+                "hover={hover}, heading={heading}"
+            );
+        }
+    }
+
+    #[test]
+    fn directional_fixed_ground_and_air_weapons_require_body_alignment() {
+        for airborne in [false, true] {
+            for (heading, fires) in [(0.0, true), (PI, false), (PI * 0.5, false)] {
+                let mut shooter = (*stepper_weapon(10.0)).clone();
+                shooter.weapons[0].turret = false;
+                if airborne {
+                    shooter.flight = Some(crate::model::FlightDef {
+                        cruise_altitude: 20.0,
+                        minimum_speed: 0.0,
+                        attack_run: false,
+                        hover: true,
+                        turn_radius: None,
+                    });
+                }
+                let mut target = (*stepper_target()).clone();
+                target.flight = shooter.flight.clone();
+                let mut stepper = CombatStepper::new(
+                    Terrain::flat(400.0, 200.0, 16.0),
+                    vec![Arc::new(shooter), Arc::new(target)],
+                    1,
+                );
+                insert_stepper_pair(&mut stepper);
+                stepper.units[0].heading = heading;
+                stepper.units[0].forward = Vec2::from_heading(heading);
+                stepper.step();
+                assert_eq!(
+                    stepper.combatant(200).unwrap().hp < 100.0,
+                    fires,
+                    "airborne={airborne}, heading={heading}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn directional_mount_cone_restricts_ground_and_air_targets() {
+        for airborne in [false, true] {
+            for (heading, fires) in [(0.0, true), (PI, false), (PI * 0.5, false)] {
+                let mut shooter = (*stepper_weapon(10.0)).clone();
+                shooter.weapons[0].main_direction = Some([0.0, 0.0, 1.0]);
+                shooter.weapons[0].max_angle_difference = Some(60.0);
+                let mut target = (*stepper_target()).clone();
+                if airborne {
+                    target.flight = Some(crate::model::FlightDef {
+                        cruise_altitude: 20.0,
+                        minimum_speed: 0.0,
+                        attack_run: false,
+                        hover: true,
+                        turn_radius: None,
+                    });
+                }
+                let mut stepper = CombatStepper::new(
+                    Terrain::flat(400.0, 200.0, 16.0),
+                    vec![Arc::new(shooter), Arc::new(target)],
+                    1,
+                );
+                insert_stepper_pair(&mut stepper);
+                stepper.units[0].heading = heading;
+                stepper.units[0].forward = Vec2::from_heading(heading);
+                stepper.step();
+                assert_eq!(
+                    stepper.combatant(200).unwrap().hp < 100.0,
+                    fires,
+                    "airborne={airborne}, heading={heading}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn independent_turret_yaw_delays_fire_without_rotating_the_hull() {
+        let mut shooter = (*stepper_weapon(10.0)).clone();
+        shooter.weapons[0].turret = true;
+        shooter.weapons[0].turret_yaw_speed = Some(30.0);
+        shooter.weapons[0].fire_tolerance = 0.001;
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 200.0, 16.0),
+            vec![Arc::new(shooter), stepper_target()],
+            1,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper.units[0].weapons[0].aim_heading = std::f32::consts::FRAC_PI_2;
+        for _ in 0..30 {
+            stepper.step();
+        }
+        assert!((stepper.primary_turret_heading(100).unwrap().to_degrees() - 60.0).abs() < 0.001);
+        assert_eq!(stepper.combatant(100).unwrap().heading, 0.0);
+        assert_eq!(stepper.combatant(200).unwrap().hp, 100.0);
+        for _ in 0..61 {
+            stepper.step();
+        }
+        assert!(stepper.combatant(200).unwrap().hp < 100.0);
     }
 
     #[test]
@@ -6385,6 +7119,165 @@ mod lead_tests {
     }
 
     #[test]
+    fn manual_nuke_waits_for_stockpile_and_requires_a_new_launch_order() {
+        let mut silo = (*targetable_shooter(false)).clone();
+        let weapon = &mut silo.weapons[0];
+        weapon.manual_fire = true;
+        weapon.stockpile = true;
+        weapon.stockpile_time = DT;
+        weapon.weapon_type = "StarburstLauncher".into();
+        weapon.damage = 10.0;
+        weapon.area_of_effect = 20.0;
+        weapon.reload = DT;
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 200.0, 16.0),
+            vec![Arc::new(silo), stepper_target()],
+            1,
+        );
+        insert_stepper_pair(&mut stepper);
+        // A static silo need not face east, and ordinary target orders never launch it.
+        stepper.units[0].heading = PI;
+        for _ in 0..4 {
+            stepper.step();
+        }
+        assert_eq!(stepper.units[0].weapons[0].shot_sequence, 0);
+        stepper
+            .set_manual_ground_target(100, 0, Vec2::new(200.0, 100.0))
+            .unwrap();
+        for _ in 0..60 {
+            stepper.step();
+        }
+        assert_eq!(stepper.units[0].weapons[0].shot_sequence, 1);
+        assert!(stepper.combatant(200).unwrap().hp < 100.0);
+        assert_eq!(stepper.stockpiled_rounds(100, 0), Some(1));
+        stepper
+            .set_manual_ground_target(100, 0, Vec2::new(200.0, 100.0))
+            .unwrap();
+        stepper.step();
+        assert_eq!(stepper.units[0].weapons[0].shot_sequence, 2);
+    }
+
+    #[test]
+    fn stockpile_inventory_accumulates_to_limit_and_interceptor_respects_reload() {
+        let mut defender = (*interceptor_target(0.0)).clone();
+        defender.weapons[0].stockpile = true;
+        defender.weapons[0].stockpile_time = DT;
+        defender.weapons[0].stockpile_limit = 3;
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 200.0, 16.0),
+            vec![targetable_shooter(false), Arc::new(defender)],
+            1,
+        );
+        insert_stepper_pair(&mut stepper);
+        stepper.clear_command(100).unwrap();
+        for _ in 0..8 {
+            stepper.step();
+        }
+        assert_eq!(stepper.stockpiled_rounds(200, 0), Some(3));
+        let mut resources = None;
+        let now = stepper.time;
+        assert!(try_intercept_projectile(
+            &mut stepper.units,
+            0,
+            1,
+            Vec2::new(200.0, 100.0),
+            now,
+            &mut resources
+        ));
+        assert!(!try_intercept_projectile(
+            &mut stepper.units,
+            0,
+            1,
+            Vec2::new(200.0, 100.0),
+            now,
+            &mut resources
+        ));
+        assert_eq!(stepper.stockpiled_rounds(200, 0), Some(2));
+        assert!(try_intercept_projectile(
+            &mut stepper.units,
+            0,
+            1,
+            Vec2::new(200.0, 100.0),
+            now + 10.0,
+            &mut resources
+        ));
+        // A matching missile mask outside coverage and an unmatched mask pass through.
+        assert!(!try_intercept_projectile(
+            &mut stepper.units,
+            0,
+            2,
+            Vec2::new(200.0, 100.0),
+            now + 20.0,
+            &mut resources
+        ));
+        assert!(!try_intercept_projectile(
+            &mut stepper.units,
+            0,
+            1,
+            Vec2::new(390.0, 100.0),
+            now + 20.0,
+            &mut resources
+        ));
+    }
+
+    #[test]
+    fn manual_salvo_completes_and_survives_compaction_but_not_loadout_replacement() {
+        let mut launcher = (*targetable_shooter(false)).clone();
+        launcher.weapons[0].manual_fire = true;
+        launcher.weapons[0].weapon_type = "StarburstLauncher".into();
+        launcher.weapons[0].burst = 3;
+        launcher.weapons[0].burst_rate = DT;
+        let mut stepper = CombatStepper::new(
+            Terrain::flat(400.0, 200.0, 16.0),
+            vec![Arc::new(launcher), stepper_target()],
+            1,
+        );
+        // Removing the first inserted unit forces IDs of surviving units to change.
+        stepper
+            .insert(CombatSpawn {
+                key: 99,
+                side: 0,
+                definition: CombatDefinitionId(1),
+                position: Vec2::new(300.0, 100.0),
+                heading: 0.0,
+                hp: None,
+            })
+            .unwrap();
+        insert_stepper_pair(&mut stepper);
+        stepper
+            .set_manual_ground_target(100, 0, Vec2::new(200.0, 100.0))
+            .unwrap();
+        stepper.remove(99).unwrap();
+        assert!(stepper.compact_removed());
+        assert!(
+            stepper
+                .targeting
+                .manual
+                .contains_key(&stepper.combatant(100).unwrap().id)
+        );
+        for _ in 0..4 {
+            stepper.step();
+        }
+        assert_eq!(stepper.combatant(100).unwrap().weapons[0].shot_sequence, 3);
+        assert!(stepper.targeting.manual.is_empty());
+        assert!(stepper.targeting.ground.is_empty());
+        stepper
+            .set_manual_ground_target(100, 0, Vec2::new(200.0, 100.0))
+            .unwrap();
+        stepper
+            .update(
+                100,
+                CombatantUpdate {
+                    definition: Some(CombatDefinitionId(1)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(stepper.targeting.manual.is_empty());
+        stepper.step(); // A shorter replacement loadout must not index the old mount.
+    }
+
+    #[test]
     fn interceptor_resource_gate_allows_unopposed_projectile() {
         let definitions = vec![targetable_shooter(false), interceptor_target(5.0)];
         let mut stepper = CombatStepper::new(Terrain::flat(400.0, 200.0, 16.0), definitions, 22);
@@ -7029,6 +7922,103 @@ mod lead_tests {
     }
 
     #[test]
+    fn fixed_wing_turn_radius_limits_turn_at_current_speed() {
+        let mut encoded = serde_json::to_value(flight_fixture()).unwrap();
+        encoded["flight"]["turn_radius"] = serde_json::json!(100.0);
+        let definition = Arc::new(serde_json::from_value(encoded).unwrap());
+        let terrain = Terrain::flat(1000.0, 1000.0, 32.0);
+        let mut units = vec![new_unit_state(
+            1,
+            0,
+            definition,
+            0,
+            Vec2::new(400.0, 400.0),
+            0.0,
+            100.0,
+        )];
+        units[0].speed = 60.0;
+        update_movement(
+            &mut units,
+            &[Command {
+                destination: Some(Vec2::new(400.0, 800.0)),
+                throttle: 0.5,
+                ..Default::default()
+            }],
+            &terrain,
+            true,
+            &[],
+        );
+        assert!(
+            (units[0].heading - 0.6 * DT).abs() < 1e-5,
+            "turn angle must use current speed divided by radius"
+        );
+        units[0].speed = 120.0;
+        units[0].heading = 0.0;
+        update_movement(
+            &mut units,
+            &[Command {
+                destination: Some(Vec2::new(400.0, 800.0)),
+                throttle: 0.5,
+                ..Default::default()
+            }],
+            &terrain,
+            true,
+            &[],
+        );
+        assert!((units[0].speed - 116.0).abs() < 1e-5);
+        assert!(
+            (units[0].heading - 1.16 * DT).abs() < 1e-5,
+            "braking must retain the radius bound at the resulting movement speed"
+        );
+    }
+
+    #[test]
+    fn hovering_aircraft_stops_without_destination_and_turns_at_rest() {
+        let mut encoded = serde_json::to_value(flight_fixture()).unwrap();
+        encoded["flight"]["hover"] = serde_json::json!(true);
+        encoded["flight"]["minimum_speed"] = serde_json::json!(0.0);
+        let definition = Arc::new(serde_json::from_value(encoded).unwrap());
+        let terrain = Terrain::flat(1000.0, 1000.0, 32.0);
+        let mut units = vec![new_unit_state(
+            1,
+            0,
+            definition,
+            0,
+            Vec2::new(400.0, 400.0),
+            0.0,
+            100.0,
+        )];
+        units[0].speed = 4.0;
+        update_movement(
+            &mut units,
+            &[Command {
+                throttle: 1.0,
+                ..Default::default()
+            }],
+            &terrain,
+            true,
+            &[],
+        );
+        assert_eq!(
+            units[0].speed, 0.0,
+            "hovering aircraft with no destination must brake"
+        );
+        update_movement(
+            &mut units,
+            &[Command {
+                destination: Some(Vec2::new(400.0, 800.0)),
+                throttle: 0.0,
+                ..Default::default()
+            }],
+            &terrain,
+            true,
+            &[],
+        );
+        assert!((units[0].heading - 90_f32.to_radians() * DT).abs() < 1e-5);
+        assert_eq!(units[0].speed, 0.0);
+    }
+
+    #[test]
     fn flight_crosses_blocked_terrain_without_stopping_or_reversing() {
         let definition = flight_fixture();
         let mut terrain = Terrain::flat(512.0, 512.0, 32.0);
@@ -7517,6 +8507,229 @@ mod auxiliary_tests {
             repeated
                 .iter()
                 .all(|r| r.winner == Some(0) && r.sides[1].surviving_value == 25.0)
+        );
+    }
+}
+
+#[cfg(test)]
+mod wreck_tests {
+    use super::*;
+    use crate::learn::tactical::tests::skirmisher;
+    use crate::policy::BuiltinPolicy;
+
+    fn wreck_duel() -> Scenario {
+        let mut attacker = skirmisher("attacker");
+        attacker.weapons[0].damage = 10000.0;
+        let mut victim = skirmisher("victim");
+        victim.weapons.clear();
+        victim.strategic.corpse=Some(serde_json::from_value(serde_json::json!({
+            "name":"victim_dead","health":200.0,"radius":30.0,"height":25.0,
+            "reclaim":{"reclaimable":true,"reclaim_time":60.0,"metal":10.0,"energy":0.0},
+            "heap":"victim_heap","heap_definition":{"name":"victim_heap","health":100.0,"radius":20.0,"height":5.0,"blocks_movement":false,"blocks_fire":false,
+              "reclaim":{"reclaimable":true,"reclaim_time":30.0,"metal":4.0}}
+        })).unwrap());
+        Scenario {
+            terrain: Terrain::flat(2000.0, 1000.0, 32.0),
+            max_time: 1.0,
+            trace_resources: vec![],
+            units: vec![
+                Spawn {
+                    definition: attacker,
+                    side: 0,
+                    position: Vec2::new(100.0, 500.0),
+                    heading: 0.0,
+                },
+                Spawn {
+                    definition: victim,
+                    side: 1,
+                    position: Vec2::new(180.0, 500.0),
+                    heading: PI,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn wreck_damage_leaves_a_smaller_heap_and_cannot_score_as_unit_damage() {
+        let mut scenario = wreck_duel();
+        scenario.max_time = 0.6;
+        scenario.units[0].definition.weapons[0].damage = 10.0;
+        scenario.units[0].definition.weapons[0].reload = 0.1;
+        scenario.units[0].definition.weapons[0].range = 500.0;
+        scenario.units[1].definition.health = 1.0;
+        scenario.units[1]
+            .definition
+            .strategic
+            .corpse
+            .as_mut()
+            .unwrap()
+            .health = 20.0;
+        let mut keeper = skirmisher("keeper");
+        keeper.weapons.clear();
+        keeper.movement.max_speed = 0.0;
+        scenario.units.push(Spawn {
+            definition: keeper,
+            side: 1,
+            position: Vec2::new(300.0, 500.0),
+            heading: PI,
+        });
+        let (result, trace) = Simulator::new(scenario).run_traced(
+            [&BuiltinPolicy::Hold, &BuiltinPolicy::Hold],
+            1,
+            TraceConfig {
+                sample_every_ticks: 1,
+                max_frames: 0,
+            },
+        );
+        assert_eq!(result.winner, None);
+        assert!(result.timed_out);
+        assert_eq!(result.wreckage.metal_by_source_side, [0.0, 4.0]);
+        assert_eq!(result.wreckage.winner_reclaim_potential, None);
+        let last = trace.frames.last().unwrap();
+        assert!(
+            last.units
+                .iter()
+                .any(|u| u.definition == "victim_dead" && !u.alive)
+        );
+        assert!(
+            last.units
+                .iter()
+                .any(|u| u.definition == "victim_heap" && u.alive)
+        );
+        let keeper = last
+            .units
+            .iter()
+            .find(|u| u.definition == "keeper")
+            .unwrap();
+        assert!(keeper.hp < keeper.max_hp);
+        assert!((result.sides[0].damage_dealt - (1.0 + keeper.max_hp - keeper.hp)).abs() < 0.01);
+    }
+
+    #[test]
+    fn pooled_wreck_trials_reset_dynamic_units_and_keep_source_sides() {
+        let simulator = Simulator::new(wreck_duel());
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        let results = pool.install(|| {
+            simulator.run_parallel_results([&BuiltinPolicy::Hold, &BuiltinPolicy::Hold], 8, 1)
+        });
+        assert_eq!(results.len(), 8);
+        for result in results {
+            assert_eq!(result.winner, Some(0));
+            assert_eq!(result.wreckage.metal_by_source_side, [0.0, 10.0]);
+            assert_eq!(result.sides[1].wreck_metal_left, 10.0);
+        }
+    }
+
+    #[test]
+    fn tactical_units_detour_around_a_new_wreck() {
+        struct MoveRunner;
+        impl Policy for MoveRunner {
+            fn command(&self, world: &WorldView<'_>, unit: &UnitState) -> Command {
+                if unit.definition.name == "runner" {
+                    Command {
+                        destination: Some(Vec2::new(850.0, 500.0)),
+                        throttle: 1.0,
+                        target: None,
+                    }
+                } else {
+                    BuiltinPolicy::Hold.command(world, unit)
+                }
+            }
+        }
+        let mut scenario = wreck_duel();
+        scenario.max_time = 10.0;
+        scenario.units[0].position = Vec2::new(100.0, 450.0);
+        scenario.units[0].definition.movement.max_speed = 0.0;
+        scenario.units[1].position = Vec2::new(250.0, 500.0);
+        scenario.units[1].definition.movement.max_speed = 0.0;
+        scenario.units[1]
+            .definition
+            .strategic
+            .corpse
+            .as_mut()
+            .unwrap()
+            .radius = Some(70.0);
+        let mut runner = skirmisher("runner");
+        runner.weapons.clear();
+        let mut keeper = skirmisher("keeper");
+        keeper.weapons.clear();
+        keeper.movement.max_speed = 0.0;
+        scenario.units.push(Spawn {
+            definition: runner,
+            side: 0,
+            position: Vec2::new(50.0, 500.0),
+            heading: 0.0,
+        });
+        scenario.units.push(Spawn {
+            definition: keeper,
+            side: 1,
+            position: Vec2::new(1700.0, 800.0),
+            heading: PI,
+        });
+        let (_, trace) = Simulator::new(scenario).run_traced(
+            [&MoveRunner, &BuiltinPolicy::Hold],
+            1,
+            TraceConfig {
+                sample_every_ticks: 3,
+                max_frames: 0,
+            },
+        );
+        let runner_positions: Vec<_> = trace
+            .frames
+            .iter()
+            .filter_map(|f| {
+                f.units
+                    .iter()
+                    .find(|u| u.definition == "runner")
+                    .map(|u| u.position)
+            })
+            .collect();
+        assert!(
+            runner_positions.last().unwrap()[0] > 600.0,
+            "{:?}",
+            runner_positions.last()
+        );
+        assert!(runner_positions.iter().any(|p| (p[1] - 500.0).abs() > 50.0));
+    }
+
+    #[test]
+    fn wrecks_persist_neutrally_and_report_loser_metal_without_crediting_reclaim() {
+        let sim = Simulator::new(wreck_duel());
+        let (result, trace) = sim.run_traced(
+            [&BuiltinPolicy::Hold, &BuiltinPolicy::Hold],
+            1,
+            TraceConfig {
+                sample_every_ticks: 1,
+                max_frames: 0,
+            },
+        );
+        assert_eq!(result.winner, Some(0));
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(
+            json["wreckage"]["metal_by_source_side"],
+            serde_json::json!([0.0, 10.0])
+        );
+        assert_eq!(json["wreckage"]["loser_metal_conceded"], 10.0);
+        assert_eq!(json["wreckage"]["winner_reclaim_potential"], 10.0);
+        let wreck = trace
+            .frames
+            .last()
+            .unwrap()
+            .units
+            .iter()
+            .find(|u| u.definition == "victim_dead")
+            .expect("persistent wreck");
+        assert_eq!(wreck.side, NEUTRAL_COMBAT_SIDE);
+        assert!(wreck.alive);
+        assert_eq!(wreck.hp, 200.0);
+        assert_eq!(result.sides[1].surviving_value, 0.0);
+        assert_eq!(
+            sim.run([&BuiltinPolicy::Hold, &BuiltinPolicy::Hold], 1)
+                .winner,
+            Some(0)
         );
     }
 }

@@ -1,0 +1,30 @@
+{
+  "name": "Air approach comparison: 3 vs 5",
+  "brain_kind": "tactical-air-v1",
+  "max_time": 60,
+  "layout_jitter": 0,
+  "opponents": ["charge"],
+  "scenarios": [
+    {
+      "name": "Air: moving head-on",
+      "learner": [{"unit": "armfig", "count": 3}],
+      "enemy": [{"unit": "armfig", "count": 5}],
+      "separation": 900,
+      "approach": {"name": "head_on", "learner_speed_fraction": 1, "enemy_speed_fraction": 1}
+    },
+    {
+      "name": "Air: learner crosses opponent",
+      "learner": [{"unit": "armfig", "count": 3}],
+      "enemy": [{"unit": "armfig", "count": 5}],
+      "separation": 900,
+      "approach": {"name": "crossing", "enemy_heading_offset_deg": 90, "learner_speed_fraction": 1, "enemy_speed_fraction": 1}
+    },
+    {
+      "name": "Air: opponent crosses learner",
+      "learner": [{"unit": "armfig", "count": 3}],
+      "enemy": [{"unit": "armfig", "count": 5}],
+      "separation": 900,
+      "approach": {"name": "crossing_reversed", "learner_heading_offset_deg": 90, "learner_speed_fraction": 1, "enemy_speed_fraction": 1}
+    }
+  ]
+}

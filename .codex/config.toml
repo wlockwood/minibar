@@ -1,0 +1,7 @@
+# Project-scoped Codex settings (loaded because d:\code\bar\minibar is a trusted project).
+# BAR unit database MCP server; see docs/UNIT_DB.md.
+[mcp_servers.bar-units]
+command = "python"
+args = ["scripts/unit_db_mcp.py"]
+cwd = "D:/code/BAR/minibar"
+startup_timeout_sec = 20

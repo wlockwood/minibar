@@ -113,9 +113,14 @@ class _Parser:
 def parse_unit_file(path):
     """Return {unit_name: table} with every string key lower-cased."""
     with open(path, encoding="utf-8") as handle:
-        tokens = _tokens(handle.read())
+        return parse_unit_text(handle.read(), path)
+
+
+def parse_unit_text(text, label="<text>"):
+    """parse_unit_file for text already in memory (e.g. after substituting mod-option defaults)."""
+    tokens = _tokens(text)
     if tokens[0] != ("name", "return"):
-        raise ValueError("%s does not start with return" % path)
+        raise ValueError("%s does not start with return" % label)
     parser = _Parser(tokens[1:])
     parser.take()  # {
     return parser.table()

@@ -139,6 +139,7 @@ explanation commands use the brain created by the short training run.
 | Evaluate a trained brain on fresh seeds | `& $sim --catalog $cat --evaluate data/brains/demo/brain.best.json --train-config data/brains/demo/train_config.json` |
 | Write a readable explanation of a brain | `& $sim --catalog $cat --explain data/brains/demo/brain.best.json --train-config data/brains/demo/train_config.json --explain-out demo.md` |
 | Check the build | `cargo test --release` and `python scripts/test_evolve.py` |
+| Look up or validate BAR unit stats | `python scripts/unit_db.py show cordoom`, or the `bar-units` MCP server ([unit database](docs/UNIT_DB.md)) |
 
 For maps, heatmaps, interactive two-player scenarios, exact replay, calibration
 and benchmarks, see the [reference guide](docs/REFERENCE.md).

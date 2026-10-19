@@ -97,7 +97,7 @@ impl AirPolicy {
         for enemy in world
             .units
             .iter()
-            .filter(|u| u.alive && u.side != unit.side && can_damage(unit, u))
+            .filter(|u| u.alive && u.side < 2 && u.side != unit.side && can_damage(unit, u))
         {
             record(self.target, enemy);
         }
@@ -178,7 +178,7 @@ impl Policy for AirPolicy {
         for enemy in world
             .units
             .iter()
-            .filter(|u| u.alive && u.side != unit.side && can_damage(unit, u))
+            .filter(|u| u.alive && u.side < 2 && u.side != unit.side && can_damage(unit, u))
         {
             let input = self.inputs(unit, enemy, world);
             let mut score = [0.0];

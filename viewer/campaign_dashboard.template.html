@@ -536,6 +536,14 @@ function chartElites(t) {
   return {el,draw(){}};
 }
 
+function chartWrecks(t) {
+  const el = card('Metal left in wrecks', 'Champion validation, by fight family. Mean remaining neutral metal per battle, attributed to the army that lost it. Potential reclaim is not collected income and does not change fitness. Older reports show unavailable.');
+  const rows = (t.best?.stages || []).map(stage => [stage.name,
+    ...(stage.wreck_metal_left_mean || [null, null]).map(v => v == null ? 'Unavailable' : num(v))]);
+  el.append(h('div', {class:'scroll'}, tableView(['Fight family', 'Learner metal left / battle', 'Opponent metal left / battle'], rows, true)));
+  return {el, draw() {}};
+}
+
 function chartFiring(t) {
   const el = card('Are units able to fire?', 'Champion validation, by fight family. Participation counts armed units that fired at least once in each battle; repeated battles count the same unit again. Blocked percentages count aimed, ready weapon checks each simulation tick, so sustained obstruction weighs more. These are diagnostics and do not add a training reward.');
   const rows = [];
@@ -887,7 +895,7 @@ function render() {
   view.append(renderTiles(t));
   const coverage = chartCoverage(t);
   view.append(coverage.el);
-  if (t.kind === 'tactical') view.append(chartFiring(t).el);
+  if (t.kind === 'tactical') view.append(chartFiring(t).el, chartWrecks(t).el);
   view.append(chartElites(t).el);
   const search = (t.search_islands || []).map(i => i.structural_search
     ? `${i.name}: tries one change to an activation function, input or connection, then trains its weights for ${i.structural_search.every || 10} generations`

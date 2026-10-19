@@ -434,6 +434,11 @@ pub struct WeaponDef {
     /// this weapon's projectiles cannot be targeted by an interceptor.
     pub targetable: u32,
     pub turret: bool,
+    /// Mount cone axis in unit space [right, up, forward]. None uses forward.
+    pub main_direction: Option<[f32; 3]>,
+    /// Full opening angle in degrees, matching Recoil mount `maxAngleDif`.
+    /// None leaves turret targeting unrestricted. Fixed guns use body aiming.
+    pub max_angle_difference: Option<f32>,
     /// Degrees per second. None means instant aim, an explicit scenario assumption.
     pub turret_yaw_speed: Option<f32>,
     /// Degrees per second for vertical aim. None means instant pitch.
@@ -466,6 +471,9 @@ pub struct WeaponDef {
     /// Stockpiled weapons must first manufacture a round over `stockpile_time`.
     pub stockpile: bool,
     pub stockpile_time: f32,
+    /// Automatic manufacturing stops at this ready-round inventory.
+    /// Legacy catalogs retain the historical single-round queue.
+    pub stockpile_limit: u16,
     /// Recoil shield weapon. Shield weapons never enter the ordinary aiming
     /// and firing loop; their runtime state is charge plus a regen deadline.
     pub is_shield: bool,
@@ -520,6 +528,8 @@ impl Default for WeaponDef {
             intercepted_by_shield_type: 0,
             targetable: 0,
             turret: true,
+            main_direction: None,
+            max_angle_difference: None,
             turret_yaw_speed: None,
             turret_pitch_speed: None,
             accuracy: 0.0,
@@ -543,6 +553,7 @@ impl Default for WeaponDef {
             metal_cost: 0.0,
             stockpile: false,
             stockpile_time: 0.0,
+            stockpile_limit: 1,
             is_shield: false,
             shield_radius: 0.0,
             shield_power: 0.0,
@@ -585,14 +596,73 @@ pub struct ReclaimDef {
     pub energy: f32,
 }
 
-/// Wreck created when a unit dies. A follow-on heap can be named explicitly;
-/// its own definition remains catalog data rather than being synthesized.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// Source-defined wreck and optional next destruction stage. Missing geometry
+/// in legacy catalogs falls back to the destroyed unit's collision dimensions.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CorpseDef {
     pub name: String,
     pub reclaim: ReclaimDef,
     pub heap: Option<String>,
+    pub health: f32,
+    pub radius: Option<f32>,
+    pub height: Option<f32>,
+    pub collision_mid_y: Option<f32>,
+    pub blocks_movement: bool,
+    pub blocks_fire: bool,
+    pub heap_definition: Option<Box<CorpseDef>>,
+}
+
+impl Default for CorpseDef {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            reclaim: ReclaimDef::default(),
+            heap: None,
+            health: 1.0,
+            radius: None,
+            height: None,
+            collision_mid_y: None,
+            blocks_movement: true,
+            blocks_fire: true,
+            heap_definition: None,
+        }
+    }
+}
+
+impl CorpseDef {
+    /// Features carry reclaim value but no army value, weapons, economy or sensors.
+    pub fn unit_definition(&self, source: &UnitDef) -> UnitDef {
+        UnitDef {
+            name: self.name.clone(),
+            health: self.health,
+            movement: MovementDef {
+                radius: self.radius.unwrap_or(source.movement.radius),
+                height: self
+                    .height
+                    .unwrap_or_else(|| source.movement.collision_height()),
+                collision_mid_y: self.collision_mid_y.or_else(|| {
+                    self.height
+                        .is_none()
+                        .then(|| source.movement.collision_mid_y())
+                }),
+                blocks_movement: self.blocks_movement,
+                blocks_fire: self.blocks_fire,
+                ..MovementDef::default()
+            },
+            strategic: StrategicDef {
+                reclaim: self.reclaim.clone(),
+                corpse: self.heap_definition.as_deref().cloned(),
+                flanking: FlankingDef {
+                    mode: 0,
+                    ..FlankingDef::default()
+                },
+                sight_distance: Some(0.0),
+                ..StrategicDef::default()
+            },
+            ..UnitDef::default()
+        }
+    }
 }
 
 /// Simplified normal-death blast. It is intentionally an instantaneous AOE:
@@ -797,13 +867,20 @@ impl Default for StrategicDef {
     }
 }
 
-/// Bounded fixed-wing flight contract. Altitude is terrain-relative; takeoff,
+/// Bounded aircraft flight contract. Altitude is terrain-relative; takeoff,
 /// landing and terrain-following climb dynamics are outside this kernel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FlightDef {
     pub cruise_altitude: f32,
     pub minimum_speed: f32,
     pub attack_run: bool,
+    /// Hovering aircraft can stop and turn in place using movement.turn_rate.
+    #[serde(default)]
+    pub hover: bool,
+    /// Fixed-wing kinematic turn radius in elmos. Absent in legacy catalogs,
+    /// which continue to use movement.turn_rate as a constant angular limit.
+    #[serde(default)]
+    pub turn_radius: Option<f32>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -940,7 +1017,7 @@ impl WorldView<'_> {
     pub fn nearest_enemy(&self, unit: &UnitState) -> Option<&UnitState> {
         self.units
             .iter()
-            .filter(|other| other.alive && other.side != unit.side)
+            .filter(|other| other.alive && other.side < 2 && other.side != unit.side)
             .min_by(|left, right| {
                 unit.position
                     .distance_squared(left.position)

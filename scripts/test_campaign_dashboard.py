@@ -105,6 +105,17 @@ class ExtractionTest(unittest.TestCase):
         self.assertNotIn('brain',model['tracks'][0]['elite_pool'][0])
         self.assertEqual(model['tracks'][0]['last_elite_retest']['generation'],2)
 
+    def test_wreck_metal_means_and_legacy_unavailable(self):
+        def stage(sums=None):
+            tally = dict(battles=2)
+            if sums is not None:
+                tally['wreck_metal_left_sum'] = sums
+            return dict(name='wrecks', details=dict(total=tally))
+        report = cd.summarize_report({'stages': [stage([12, 36])]})
+        self.assertEqual(report['stages'][0]['wreck_metal_left_mean'], [6, 18])
+        old = cd.summarize_report({'stages': [stage()]})
+        self.assertIsNone(old['stages'][0]['wreck_metal_left_mean'])
+
     def test_firing_rates_use_pooled_counts_and_legacy_data_is_unavailable(self):
         def stage(name, fired, armed, blocked, ready):
             stats = dict(units_fired=fired, armed_units=armed, blocked_friendly=blocked,

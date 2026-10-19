@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bar-units": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["scripts/unit_db_mcp.py"]
+    }
+  }
+}

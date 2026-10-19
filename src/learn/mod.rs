@@ -10,6 +10,7 @@
 //! explicitly declared objective ([`objective`]); see [`train`].
 
 pub mod air;
+pub mod approach;
 pub mod baselines;
 pub mod brain;
 pub mod campaign;

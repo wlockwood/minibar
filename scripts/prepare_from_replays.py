@@ -243,7 +243,8 @@ def unit_entry(name, raw, historical, supported):
         entry[output] = float(raw.get(source, 0))
     entry["extract_range"] = float(raw.get("extractrange", 500 if entry["extracts_metal"] > 0 else 0))
     entry.update(make_catalog.sensor_fields(raw))
-    return entry
+    entry.update(make_catalog.corpse_fields(name, raw))
+    return make_catalog.apply_canonical_fields(name, raw, entry)
 
 
 def read_replay(path):

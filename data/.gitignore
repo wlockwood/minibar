@@ -17,3 +17,4 @@
 !brains/from_replays/tactical/large_scale_512.json
 !brains/from_replays/strategic/baseline.json
 !brains/from_replays/strategic/train_config.json
+!units/bar_units.json

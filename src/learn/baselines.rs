@@ -53,7 +53,7 @@ impl Policy for Baseline {
         match self {
             Self::Strike => {
                 let goal = nearest(world, unit.position, |u| {
-                    u.side != unit.side && u.definition.strategic.key_unit
+                    u.side < 2 && u.side != unit.side && u.definition.strategic.key_unit
                 })
                 .or_else(|| world.nearest_enemy(unit));
                 let Some(goal) = goal else {
@@ -78,7 +78,7 @@ impl Policy for Baseline {
                     };
                 };
                 let leash = (range * LEASH_RANGES).max(120.0);
-                let intruder = nearest(world, home.position, |u| u.side != unit.side)
+                let intruder = nearest(world, home.position, |u| u.side < 2 && u.side != unit.side)
                     .filter(|e| e.position.distance(home.position) <= leash + range);
                 match intruder {
                     Some(enemy) => {

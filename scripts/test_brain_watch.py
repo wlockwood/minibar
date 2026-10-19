@@ -7,6 +7,43 @@ import unittest
 
 
 class BrainWatchTest(unittest.TestCase):
+    def test_late_wreck_metadata_renders_neutral_and_cannot_be_followed(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        template = (Path(__file__).resolve().parents[1] / "viewer" / "brain_watch.html").read_text(encoding="utf-8")
+        functions = "function setBattle" + template.split("function setBattle", 1)[1].split("async function loadLive", 1)[0]
+        functions += "function selectedUnit" + template.split("function selectedUnit", 1)[1].split("// Outputs", 1)[0]
+        functions += "function drawField" + template.split("function drawField", 1)[1].split("cv.onclick", 1)[0]
+        source = r'''
+const assert = require('node:assert/strict');
+const nodes = new Map();
+const $ = id => {if(!nodes.has(id))nodes.set(id,{value:0,style:{},innerHTML:'',append(){}});return nodes.get(id);};
+const S={meta:{scenarios:[{name:'Test',learner:'A',enemy:'B'}],opponents:['charge']},playing:false};
+const refresh=()=>{},fit=()=>[400,300],updateCam=()=>{},proj=()=>({s:1,p:(x,z)=>[x,z]});
+const clamp=(x,a,b)=>Math.max(a,Math.min(x,b)),lerp=(a,b,t)=>a+(b-a)*t,lerpAngle=lerp,fmt=x=>x.toFixed(2);
+const fills=[],labels=[];
+const cx=new Proxy({}, {get(target,key){if(key==='fill')return()=>fills.push(target.fillStyle);if(key==='fillText')return text=>labels.push(text);return target[key]??(()=>{});},set(target,key,value){target[key]=value;return true;}});
+const document={createElement:()=>({})};
+''' + functions + r'''
+const b={learner_side:0,scenario:0,opponent:0,seed:1,range:0,outcome:'win',fitness:1,exchange:0,
+ units:[{id:1,side:0,max_hp:10,radius:4},{id:9,side:255,max_hp:20,radius:5,reclaim_metal:25}],
+ frames:[{time:0,u:[[1,0,0,0,10]],f:[],d:[]},{time:1,u:[[1,0,0,0,0],[9,20,0,0,20]],f:[],d:[]}]};
+setBattle(b);
+assert.equal(b.frames[1]._by.get(9).reclaim_metal,25);
+S.follow=9;
+assert.equal(selectedUnit(1),null,'Neutral wreck must not become a followed learner');
+S.t=0.5;drawField(1,null,null);
+assert.ok(fills.includes('rgba(150,133,120,0.9)'),'Wreck body must use neutral brown');
+assert.ok(!fills.includes('rgba(255,93,93,0.9)'),'No enemy-red wreck');
+assert.ok(labels.includes('25.00 M'));
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "wreck-watch-test.js"
+            path.write_text(source, encoding="utf-8")
+            result = subprocess.run([node, str(path)], capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_air_signals_and_target_selection_preserve_ground_decisions(self):
         node = shutil.which("node")
         if not node:

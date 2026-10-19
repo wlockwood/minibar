@@ -248,6 +248,7 @@ fn surround_target<'a>(world: &'a WorldView<'_>, unit: &UnitState) -> Option<&'a
         .filter(|enemy| {
             enemy.alive
                 && enemy.side < 2
+                && enemy.side < 2
                 && enemy.side != unit.side
                 && surround_can_attack(unit, enemy)
         })

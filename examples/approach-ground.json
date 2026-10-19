@@ -1,0 +1,30 @@
+{
+  "name": "Ground approach comparison: 3 vs 5",
+  "brain_kind": "tactical_v4",
+  "max_time": 60,
+  "layout_jitter": 0,
+  "opponents": ["charge"],
+  "scenarios": [
+    {
+      "name": "Ground: moving head-on",
+      "learner": [{"unit": "armpw", "count": 3}],
+      "enemy": [{"unit": "armpw", "count": 5}],
+      "separation": 300,
+      "approach": {"name": "head_on", "learner_speed_fraction": 1, "enemy_speed_fraction": 1}
+    },
+    {
+      "name": "Ground: learner crosses opponent",
+      "learner": [{"unit": "armpw", "count": 3}],
+      "enemy": [{"unit": "armpw", "count": 5}],
+      "separation": 300,
+      "approach": {"name": "crossing", "enemy_heading_offset_deg": 90, "learner_speed_fraction": 1, "enemy_speed_fraction": 1}
+    },
+    {
+      "name": "Ground: opponent crosses learner",
+      "learner": [{"unit": "armpw", "count": 3}],
+      "enemy": [{"unit": "armpw", "count": 5}],
+      "separation": 300,
+      "approach": {"name": "crossing_reversed", "learner_heading_offset_deg": 90, "learner_speed_fraction": 1, "enemy_speed_fraction": 1}
+    }
+  ]
+}

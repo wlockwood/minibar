@@ -211,10 +211,14 @@ def summarize_report(report, with_rows=False):
     for stage in report.get("stages", []):
         details = stage.get("details") or {}
         entry = {"name": stage.get("name"), "weight": stage.get("weight"), "fitness": stage.get("fitness")}
+        entry['wreck_metal_left_mean'] = None
         entry['combat_budget'] = details.get('combat_budget')
         entry.update(resource_coverage(details, with_rows))
         tally = details.get("total")
         if tally:
+            wrecks = tally.get('wreck_metal_left_sum')
+            if isinstance(wrecks, list) and len(wrecks) == 2 and tally.get('battles', 0) > 0:
+                entry['wreck_metal_left_mean'] = [value / tally['battles'] for value in wrecks]
             entry['firing'] = firing_summary(tally.get('firing'))
             if entry['firing'] is not None:
                 have_firing = True

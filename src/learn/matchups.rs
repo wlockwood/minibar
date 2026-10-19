@@ -13,6 +13,7 @@
 //! * Fights come in three investment classes by metal + energy / 60: **underdog** (the learner
 //!   has less), **even**, and **overdog** (the learner has more).
 
+use super::approach::ApproachStart;
 use super::objective::ObjectiveKind;
 use super::rng::Rng;
 use super::train::{ObjectiveSpec, RosterEntry, ScenarioSpec, TrainError};
@@ -295,6 +296,9 @@ pub fn symmetric_gap(a: f32, b: f32) -> f32 {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MatchupConfig {
+    /// Empty preserves stationary head-on starts. Otherwise sample one per fight.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub approaches: Vec<ApproachStart>,
     /// Fights per batch (a multiple of 3 keeps the three classes balanced).
     pub count: usize,
     pub anchors: Vec<AnchoredMatchup>,
@@ -330,6 +334,7 @@ pub struct MatchupConfig {
 impl Default for MatchupConfig {
     fn default() -> Self {
         Self {
+            approaches: Vec::new(),
             count: 12,
             anchors: Vec::new(),
             unit_names: std::collections::BTreeMap::new(),
@@ -355,6 +360,9 @@ impl Default for MatchupConfig {
 
 impl MatchupConfig {
     pub fn validate(&self, catalog: &UnitCatalog) -> Result<(), TrainError> {
+        for approach in &self.approaches {
+            approach.validate().map_err(TrainError)?;
+        }
         let err = |m: String| Err(TrainError(format!("matchups: {m}")));
         if let Some(support) = &self.sensor_support {
             support.validate(catalog)?;
@@ -776,6 +784,7 @@ pub fn generate_records(
             ];
             (
                 ScenarioSpec {
+                    approach: ApproachStart::default(),
                     faction: None,
                     name: format!(
                         "m{index:02} [{} {:.2}x] {}",
@@ -878,6 +887,7 @@ pub fn generate_records(
                 .unwrap_or_default();
             let (ours, theirs) = (value_of(&learner, catalog), value_of(&enemy, catalog));
             let fight = ScenarioSpec {
+                approach: ApproachStart::default(),
                 faction: None,
                 name: format!(
                     "m{index:02} [{} {:.2}x{tag}] {} {} vs {}",
@@ -987,6 +997,21 @@ pub fn generate_records(
                     army.iter().map(|e| e.count).sum::<usize>() >= config.max_units
                         && combat_value[side] < requested_budget[side]
                 });
+        if !config.approaches.is_empty() {
+            // A separate stream keeps composition, resource and range draws
+            // independent of changes to approach choices.
+            let mut approach_rng = Rng::for_stream(seed ^ 0x6170_7072_6f61_6368, index as u64);
+            let selected = (approach_rng.uniform() * config.approaches.len() as f32) as usize;
+            scenario.approach = config.approaches[selected].clone();
+            scenario.name.push_str(&format!(
+                " [approach {} headings {:.0}/{:.0}deg speeds {:.2}/{:.2}]",
+                scenario.approach.name,
+                scenario.approach.learner_heading_offset_deg,
+                scenario.approach.enemy_heading_offset_deg,
+                scenario.approach.learner_speed_fraction,
+                scenario.approach.enemy_speed_fraction
+            ));
+        }
         records.push(MatchupRecord {
             scenario,
             starting_distance,
@@ -1026,6 +1051,44 @@ pub fn generate(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn approach_sampling_is_seeded_and_independent_of_composition_and_range() {
+        let catalog = catalog();
+        let original = config();
+        let baseline = generate_records(&original, &catalog, 17).unwrap();
+        let mut varied = original.clone();
+        varied.approaches = vec![
+            ApproachStart {
+                name: "crossing".into(),
+                enemy_heading_offset_deg: 90.0,
+                learner_speed_fraction: 1.0,
+                enemy_speed_fraction: 1.0,
+                ..Default::default()
+            },
+            ApproachStart {
+                name: "rear".into(),
+                enemy_heading_offset_deg: 180.0,
+                ..Default::default()
+            },
+        ];
+        let sampled = generate_records(&varied, &catalog, 17).unwrap();
+        assert_eq!(sampled, generate_records(&varied, &catalog, 17).unwrap());
+        assert_ne!(sampled, generate_records(&varied, &catalog, 18).unwrap());
+        for (before, after) in baseline.iter().zip(&sampled) {
+            assert_eq!(before.scenario.learner, after.scenario.learner);
+            assert_eq!(before.scenario.enemy, after.scenario.enemy);
+            assert_eq!(before.starting_distance, after.starting_distance);
+            assert_eq!(before.combat_value, after.combat_value);
+            assert!(after.scenario.name.contains("approach"));
+            assert!(!after.scenario.approach.is_default());
+        }
+        assert!(
+            sampled
+                .iter()
+                .any(|r| r.scenario.approach.name == "crossing")
+        );
+        assert!(sampled.iter().any(|r| r.scenario.approach.name == "rear"));
+    }
     use super::*;
     use crate::learn::tactical::tests::skirmisher;
 
@@ -1044,6 +1107,8 @@ mod tests {
         scout.strategic.radar_radius = Some(2000.0);
         scout.strategic.sight_distance = Some(300.0);
         scout.flight = Some(crate::model::FlightDef {
+            hover: false,
+            turn_radius: None,
             cruise_altitude: 100.0,
             minimum_speed: 200.0,
             attack_run: false,
@@ -1146,6 +1211,7 @@ mod tests {
         catalog.units.get_mut("b1").unwrap().weapons[0].range = 100.0;
         catalog.units.get_mut("b2").unwrap().weapons[0].range = 120.0;
         let scenario = ScenarioSpec {
+            approach: ApproachStart::default(),
             faction: None,
             name: "ranges".into(),
             learner: vec![RosterEntry {
@@ -1179,6 +1245,8 @@ mod tests {
         let mut catalog = catalog();
         let aircraft = catalog.units.get_mut("b1").unwrap();
         aircraft.flight = Some(crate::model::FlightDef {
+            hover: false,
+            turn_radius: None,
             cruise_altitude: 100.0,
             minimum_speed: 30.0,
             attack_run: true,
@@ -1188,6 +1256,7 @@ mod tests {
         aircraft.movement.turn_rate = 90.0;
         aircraft.strategic.sight_distance = Some(100.0);
         let scenario = ScenarioSpec {
+            approach: ApproachStart::default(),
             faction: None,
             name: "air".into(),
             learner: vec![RosterEntry {
@@ -1232,6 +1301,7 @@ mod tests {
         unit.movement.max_speed = 20.0;
         unit.movement.acceleration = 2.0;
         let scenario = ScenarioSpec {
+            approach: ApproachStart::default(),
             faction: None,
             name: "travel".into(),
             learner: vec![RosterEntry {
@@ -1652,6 +1722,8 @@ mod tests {
         catalog.units.insert("tower".into(), tower);
         let mut plane = skirmisher("plane");
         plane.flight = Some(crate::model::FlightDef {
+            hover: false,
+            turn_radius: None,
             cruise_altitude: 100.0,
             minimum_speed: 40.0,
             attack_run: true,

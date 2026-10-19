@@ -347,4 +347,91 @@ mod tests {
         assert!(!shallow.under_water);
         assert!(SensorUnit::from_definition(1, 1, Vec2::default(), -40.0, &def).under_water);
     }
+
+    #[test]
+    fn surface_contacts_can_fall_back_between_independent_radar_and_sonar() {
+        let observer = unit(1, 0, 0.0);
+        let mut target = unit(2, 1, 200.0);
+        target.in_water = true;
+        target.stealth = true;
+        let mut jammer = unit(3, 1, 200.0);
+        jammer.jammer = 80.0;
+        // Radar stealth/jamming do not suppress sonar, even behind terrain.
+        assert_eq!(
+            detect(0, &target, &[observer, jammer], |_, _, _, _| false),
+            Some(Detection::Sonar)
+        );
+        target.stealth = false;
+        target.sonar_stealth = true;
+        jammer.jammer = 0.0;
+        jammer.sonar_jammer = 80.0;
+        assert_eq!(
+            detect(0, &target, &[observer, jammer], |_, _, _, _| true),
+            Some(Detection::Radar)
+        );
+        target.under_water = true;
+        assert_eq!(
+            detect(0, &target, &[observer, jammer], |_, _, _, _| true),
+            None
+        );
+        // Nanoframes lose sonar stealth, but never bypass sonar jamming.
+        target.being_built = true;
+        assert_eq!(
+            detect(0, &target, &[observer, jammer], |_, _, _, _| true),
+            None
+        );
+        jammer.enabled = false;
+        assert_eq!(
+            detect(0, &target, &[observer, jammer], |_, _, _, _| true),
+            Some(Detection::Sonar)
+        );
+    }
+
+    #[test]
+    fn electronic_shutdown_preserves_visual_sight_and_construction_emits_nothing() {
+        let mut observer = unit(1, 0, 0.0);
+        let mut target = unit(2, 1, 50.0);
+        // `enabled` combines activation and stun in both runtime adapters.
+        observer.enabled = false;
+        assert_eq!(
+            detect(0, &target, &[observer], |_, _, _, _| true),
+            Some(Detection::Los)
+        );
+        target.cloaked = true;
+        assert_eq!(detect(0, &target, &[observer], |_, _, _, _| true), None);
+        target.in_water = true;
+        target.under_water = true;
+        assert_eq!(detect(0, &target, &[observer], |_, _, _, _| true), None);
+        observer.enabled = true;
+        observer.being_built = true;
+        target.cloaked = false;
+        assert_eq!(detect(0, &target, &[observer], |_, _, _, _| true), None);
+    }
+
+    #[test]
+    fn targeting_facilities_stack_only_while_completed_and_operational() {
+        let mut facility = unit(1, 0, 0.0);
+        facility.targeting_facility = true;
+        let mut second = facility;
+        second.key = 2;
+        assert_eq!(radar_error_size(0, &[facility, second], 96.0), 24.0);
+        for ineligible in [
+            SensorUnit { side: 1, ..second },
+            SensorUnit {
+                active: false,
+                ..second
+            },
+            SensorUnit {
+                enabled: false,
+                ..second
+            },
+            SensorUnit {
+                being_built: true,
+                ..second
+            },
+        ] {
+            assert_eq!(radar_error_size(0, &[facility, ineligible], 96.0), 48.0);
+        }
+        assert_eq!(radar_error_size(0, &[], 96.0), 96.0);
+    }
 }

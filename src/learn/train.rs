@@ -10,6 +10,7 @@
 //!   coordinates; validation uses one fixed, un-jittered layout and a fixed
 //!   seed range, and decides which checkpoint is "best".
 
+use super::approach::ApproachStart;
 use super::brain::{Brain, BrainError};
 use super::es::{EsConfig, EvolutionStrategy, GenerationStats};
 use super::matchups::{self, MatchupConfig};
@@ -91,6 +92,8 @@ pub struct ObjectiveSpec {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScenarioSpec {
+    #[serde(default, skip_serializing_if = "ApproachStart::is_default")]
+    pub approach: ApproachStart,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub faction: Option<String>,
     pub name: String,
@@ -243,6 +246,7 @@ impl TrainConfig {
             }]
         };
         let scenario = |name: &str, ours, theirs| ScenarioSpec {
+            approach: ApproachStart::default(),
             faction: None,
             name: name.into(),
             learner: roster(ours),
@@ -352,6 +356,7 @@ impl TrainConfig {
             ));
         }
         for scenario in &self.scenarios {
+            scenario.approach.validate().map_err(TrainError)?;
             for side in [&scenario.learner, &scenario.enemy] {
                 if side.is_empty() || side.iter().any(|entry| entry.count == 0) {
                     return Err(TrainError(format!(
@@ -535,6 +540,7 @@ fn build_simulator_prepared(
     prepared: Option<&PreparedArena>,
 ) -> Result<Simulator, TrainError> {
     let spec = &config.scenarios[index];
+    spec.approach.validate().map_err(TrainError)?;
     let mut rng = Rng::for_stream(layout_seed, (index as u64) << 1 | learner_side as u64);
     let width = (spec.separation + 1_000.0).max(2_000.0);
     let centre = width * 0.5;
@@ -577,13 +583,31 @@ fn build_simulator_prepared(
         target_for(1),
         &mut rng,
     )?);
+    // Rotate the formation and its heading together about the original front
+    // centre. Settings follow the learner/opponent, not the physical map side.
+    if !spec.approach.is_default() {
+        for spawn in &mut units {
+            let (angle, _) = spec.approach.for_side(spawn.side as usize, learner_side);
+            let anchor = Vec2::new(
+                centre
+                    + if spawn.side == 0 {
+                        -spec.separation * 0.5
+                    } else {
+                        spec.separation * 0.5
+                    },
+                500.0,
+            );
+            spawn.position = anchor + (spawn.position - anchor).rotate(angle);
+            spawn.heading += angle;
+        }
+    }
     let distance = config
         .matchup_records
         .iter()
         .find(|record| record.scenario.name == spec.name)
         .map(|record| &record.starting_distance)
         .filter(|distance| distance.mode == matchups::StartingDistanceMode::UnitRanges);
-    if distance.is_some() {
+    if distance.is_some() || !spec.approach.is_default() {
         // Preserve each formation's jitter, then rigidly align its nearest
         // actual front. A random front-rank offset cannot violate the sampled
         // distance bounds, including a degenerate LOS-dominated interval.
@@ -655,7 +679,7 @@ fn build_simulator_prepared(
                 )));
             }
             let radius = spawn.definition.movement.radius;
-            if distance.is_some()
+            if (distance.is_some() || !spec.approach.is_default())
                 && (spawn.position.x < radius
                     || spawn.position.z < radius
                     || spawn.position.x + radius
@@ -680,7 +704,7 @@ fn build_simulator_prepared(
             }
         }
         arena.terrain.clone()
-    } else if distance.is_none() && support.is_none() {
+    } else if distance.is_none() && support.is_none() && spec.approach.is_default() {
         // Fixed and explicit scenarios preserve historical terrain and spawn
         // coordinates, including formations extending beyond those bounds.
         Terrain::flat(width, 1_000.0, 32.0)
@@ -689,11 +713,18 @@ fn build_simulator_prepared(
         // Long-range/air fights also need maneuvering room behind and beside
         // formations; growing separation alone would leave aircraft clamped
         // against the narrow historical 1000-unit north/south boundaries.
-        let margin = distance.map_or(32.0, |d| {
-            500.0_f32
-                .max(d.max_weapon_range)
-                .max(d.air_runway_floor * 0.5)
-        });
+        let margin = distance.map_or(
+            if spec.approach.is_default() {
+                32.0
+            } else {
+                500.0
+            },
+            |d| {
+                500.0_f32
+                    .max(d.max_weapon_range)
+                    .max(d.air_runway_floor * 0.5)
+            },
+        );
         let min_x = units
             .iter()
             .map(|s| s.position.x - s.definition.movement.radius)
@@ -720,13 +751,25 @@ fn build_simulator_prepared(
             32.0,
         )
     };
+    let initial_speeds: Vec<_> = units
+        .iter()
+        .enumerate()
+        .map(|(index, spawn)| {
+            if auxiliary_ids.contains(&(index as u32 + 1)) {
+                0.0
+            } else {
+                let (_, fraction) = spec.approach.for_side(spawn.side as usize, learner_side);
+                spawn.definition.movement.max_speed * fraction
+            }
+        })
+        .collect();
     let scenario = Scenario {
         terrain,
         units,
         max_time: config.max_time + distance.map_or(0.0, |d| d.approach_time),
         trace_resources: Vec::new(),
     };
-    Simulator::try_new(scenario)
+    let simulator = Simulator::try_new(scenario)
         .map(|sim| {
             let sim = sim.with_auxiliary_units(auxiliary_ids);
             if let Some(supply) = config.resource_supply {
@@ -740,7 +783,10 @@ fn build_simulator_prepared(
                 "scenario {:?} needs unsupported mechanics: {missing:?}",
                 spec.name
             ))
-        })
+        })?;
+    simulator
+        .with_starting_speeds(initial_speeds)
+        .map_err(TrainError)
 }
 
 fn build_arena(
@@ -1293,6 +1339,135 @@ mod tests {
     use super::*;
     use crate::learn::tactical::tests::skirmisher;
 
+    #[test]
+    fn approach_headings_and_initial_motion_follow_armies_on_both_sides_and_domains() {
+        struct Capture(std::sync::Mutex<Vec<(u8, f32, f32, Vec2)>>);
+        impl Policy for Capture {
+            fn command(
+                &self,
+                world: &crate::model::WorldView<'_>,
+                unit: &crate::model::UnitState,
+            ) -> crate::model::Command {
+                if world.time == 0.0 {
+                    self.0.lock().unwrap().push((
+                        unit.side,
+                        unit.heading,
+                        unit.speed,
+                        unit.velocity(),
+                    ));
+                }
+                crate::model::Command::default()
+            }
+        }
+        let mut catalog = catalog();
+        let mut air = catalog.get("skirm").unwrap().clone();
+        air.name = "air".into();
+        air.flight = Some(crate::model::FlightDef {
+            cruise_altitude: 100.0,
+            minimum_speed: 10.0,
+            attack_run: false,
+            hover: false,
+            turn_radius: Some(100.0),
+        });
+        catalog.units.insert("air".into(), air);
+        for name in ["skirm", "air"] {
+            let mut config = TrainConfig::default_for_unit(name);
+            config.scenarios.truncate(1);
+            config.max_time = 0.1;
+            config.scenarios[0].approach = ApproachStart {
+                name: "crossing".into(),
+                learner_heading_offset_deg: -45.0,
+                enemy_heading_offset_deg: 90.0,
+                learner_speed_fraction: 0.25,
+                enemy_speed_fraction: 1.0,
+            };
+            for learner_side in [0, 1] {
+                let sim = build_simulator(&config, &catalog, 0, learner_side, 11, 0.0).unwrap();
+                let capture = Capture(std::sync::Mutex::new(Vec::new()));
+                sim.run([&capture, &capture], 7);
+                let rows = capture.0.lock().unwrap();
+                assert_eq!(rows.len(), 2);
+                for &(side, heading, speed, velocity) in rows.iter() {
+                    let (offset, fraction) = config.scenarios[0]
+                        .approach
+                        .for_side(side as usize, learner_side);
+                    let expected = if side == 0 { 0.0 } else { PI } + offset;
+                    let error = (heading - expected + PI).rem_euclid(2.0 * PI) - PI;
+                    assert!(error.abs() < 1e-5, "{name} side {side}: wrong heading");
+                    assert!(
+                        (speed - catalog.get(name).unwrap().movement.max_speed * fraction).abs()
+                            < 1e-5
+                    );
+                    let expected_velocity = Vec2::from_heading(expected) * speed;
+                    assert!((velocity - expected_velocity).length() < 1e-4);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_scenarios_omit_approach_and_invalid_motion_is_rejected() {
+        let mut config = tiny_config();
+        let serialized = serde_json::to_value(&config).unwrap();
+        assert!(serialized["scenarios"][0].get("approach").is_none());
+        for fraction in [-0.1, 1.1, f32::NAN] {
+            config.scenarios[0].approach.learner_speed_fraction = fraction;
+            assert!(config.validate().is_err());
+        }
+        config.scenarios[0].approach = ApproachStart::default();
+        config.scenarios[0].approach.enemy_heading_offset_deg = 181.0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rotated_multicolumn_formations_preserve_spacing_front_gap_and_arena_bounds() {
+        let catalog = catalog();
+        for offset in [-90.0, 90.0, 180.0] {
+            let mut config = TrainConfig::default_for_unit("skirm");
+            config.scenarios.truncate(1);
+            config.scenarios[0].learner[0].count = 17;
+            config.scenarios[0].enemy[0].count = 13;
+            config.scenarios[0].approach = ApproachStart {
+                learner_heading_offset_deg: offset,
+                enemy_heading_offset_deg: -offset,
+                ..Default::default()
+            };
+            config.max_time = 0.1;
+            for learner_side in [0, 1] {
+                let sim = build_simulator(&config, &catalog, 0, learner_side, 11, 0.0).unwrap();
+                let hold = crate::policy::BuiltinPolicy::Hold;
+                let (_, trace) =
+                    sim.run_traced([&hold, &hold], 7, crate::trace::TraceConfig::default());
+                let units = &trace.frames[0].units;
+                assert_eq!(units.len(), 30);
+                let left_front = units
+                    .iter()
+                    .filter(|u| u.side == 0)
+                    .map(|u| u.position[0])
+                    .fold(f32::NEG_INFINITY, f32::max);
+                let right_front = units
+                    .iter()
+                    .filter(|u| u.side == 1)
+                    .map(|u| u.position[0])
+                    .fold(f32::INFINITY, f32::min);
+                assert!((right_front - left_front - config.scenarios[0].separation).abs() < 1e-3);
+                for (i, unit) in units.iter().enumerate() {
+                    assert!(unit.position[0] >= unit.radius && unit.position[1] >= unit.radius);
+                    assert!(unit.position[0] + unit.radius <= trace.map.width);
+                    assert!(unit.position[1] + unit.radius <= trace.map.depth);
+                    for other in &units[i + 1..] {
+                        let distance = Vec2::new(
+                            unit.position[0] - other.position[0],
+                            unit.position[1] - other.position[1],
+                        )
+                        .length();
+                        assert!(distance + 1e-3 >= unit.radius + other.radius);
+                    }
+                }
+            }
+        }
+    }
+
     fn catalog() -> UnitCatalog {
         let mut catalog = UnitCatalog::default();
         catalog.units.insert("skirm".into(), skirmisher("skirm"));
@@ -1342,6 +1517,8 @@ mod tests {
         scout.movement.acceleration = 180.0;
         scout.movement.turn_rate = 180.0;
         scout.flight = Some(crate::model::FlightDef {
+            hover: false,
+            turn_radius: None,
             cruise_altitude: 100.0,
             minimum_speed: 100.0,
             attack_run: false,

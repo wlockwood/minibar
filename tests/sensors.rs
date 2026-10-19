@@ -551,3 +551,106 @@ fn world_can_fire_at_radar_and_sustained_fire_keeps_extending_recloak_delay() {
     }
     assert!(world.entity_is_cloaked(shooter));
 }
+
+#[test]
+fn cloak_and_jamming_combine_without_hiding_a_revealed_unit_from_visual_sight() {
+    let mut world = world(serde_json::json!({
+        "name":"cloaked_jammer","health":100,"metal_cost":0,
+        "movement":{"radius":4,"height":8},
+        "strategic":{"is_mobile":true,"can_cloak":true,
+            "min_cloak_distance":10,"jammer_radius":80}
+    }));
+    world
+        .spawn_active(
+            0,
+            world.catalog.id("scout").unwrap(),
+            Vec2::new(40.0, 40.0),
+            BuildFacing::South,
+        )
+        .unwrap();
+    let target = world
+        .spawn_active(
+            1,
+            world.catalog.id("cloaked_jammer").unwrap(),
+            Vec2::new(100.0, 40.0),
+            BuildFacing::South,
+        )
+        .unwrap();
+    world.set_cloak(target, true).unwrap();
+    assert!(world.entity_is_cloaked(target));
+    assert!(world.observation(0).unwrap().entity(target).is_none());
+
+    world.entities.get_mut(target).unwrap().enabled = false;
+    let radar = world.observation(0).unwrap();
+    let contact = radar.entity(target).unwrap();
+    assert_eq!(contact.visibility, ObservationVisibility::Radar);
+    assert_eq!(contact.definition, None);
+    assert_eq!(contact.health_fraction, None);
+
+    world.entities.get_mut(target).unwrap().enabled = true;
+    world.set_cloak(target, false).unwrap();
+    assert_eq!(
+        world
+            .observation(0)
+            .unwrap()
+            .entity(target)
+            .unwrap()
+            .visibility,
+        ObservationVisibility::LineOfSight
+    );
+}
+
+#[test]
+fn unpowered_radar_keeps_operating_until_explicitly_deactivated_and_retains_visual_sight() {
+    let mut world = world(serde_json::json!({
+        "name":"target","health":100,"metal_cost":0,
+        "movement":{"radius":4,"height":8},"strategic":{"is_mobile":true}
+    }));
+    let scout = world
+        .spawn_active(
+            0,
+            world.catalog.id("scout").unwrap(),
+            Vec2::new(40.0, 40.0),
+            BuildFacing::South,
+        )
+        .unwrap();
+    let target = world
+        .spawn_active(
+            1,
+            world.catalog.id("target").unwrap(),
+            Vec2::new(240.0, 40.0),
+            BuildFacing::South,
+        )
+        .unwrap();
+    world.teams[0].economy.energy.stored = 0.0;
+    world.entities.get_mut(scout).unwrap().powered = false;
+    assert_eq!(
+        world
+            .observation(0)
+            .unwrap()
+            .entity(target)
+            .unwrap()
+            .visibility,
+        ObservationVisibility::Radar
+    );
+    world.entities.get_mut(scout).unwrap().enabled = false;
+    assert_eq!(
+        world
+            .observation(0)
+            .unwrap()
+            .entity(target)
+            .unwrap()
+            .visibility,
+        ObservationVisibility::Remembered
+    );
+    world.entities.get_mut(target).unwrap().position.x = 100.0;
+    assert_eq!(
+        world
+            .observation(0)
+            .unwrap()
+            .entity(target)
+            .unwrap()
+            .visibility,
+        ObservationVisibility::LineOfSight
+    );
+}

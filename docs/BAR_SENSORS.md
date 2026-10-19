@@ -86,8 +86,10 @@ simulation. Terrain coverage uses captured heightfields instead of Recoil's
 64/128/32-elmo LOS/air/radar raster maps, emission-height buckets and staggered
 updates. Radar error uses deterministic horizontal 256-frame interpolation instead
 of Recoil's synced 3D random walk. Water and spherical proximity use MiniBAR's
-radius proxy. Aircraft flight/landing and transports remain outside the existing
-movement model; `use_air_los` is explicit rather than simulated altitude.
+radius proxy. Aircraft now have bounded fixed-wing and hover flight, including
+simulated cruise altitude; landing and transports remain unsupported. Source
+aircraft exports set `use_air_los`. See [MECHANICS.md](MECHANICS.md) for movement
+and strategic-weapon support and its remaining limits.
 
 Arbitrary scripts and area-cloak gadgets are not executed. Some BAR jammer and
 pinpointer BOS scripts disable their unit for eight seconds after damage. Those

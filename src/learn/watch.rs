@@ -64,6 +64,7 @@ pub struct WatchDecision {
 /// Static facts about a unit; per-frame data refers to it by id.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct WatchUnit {
+    pub reclaim_metal: f32,
     pub id: UnitId,
     pub side: u8,
     /// Catalog name of the unit's definition.
@@ -89,6 +90,9 @@ pub struct WatchSample {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct WatchBattle {
+    pub wreckage: crate::score::WreckageReport,
+    /// Remaining wreck metal from each source army, learner then opponent.
+    pub wreck_metal_left: [f64; 2],
     /// Full-battle totals, learner then opponent, including unsampled ticks.
     pub firing: [crate::score::FiringStats; 2],
     pub scenario: usize,
@@ -220,6 +224,24 @@ impl Policy for DecisionRecorder<'_> {
     }
 }
 
+/// Union metadata across the complete trace: wrecks and heaps spawn after tick zero.
+fn watch_units(trace: &crate::trace::RunTrace) -> Vec<WatchUnit> {
+    let mut units = BTreeMap::new();
+    for frame in &trace.frames {
+        for u in &frame.units {
+            units.entry(u.id).or_insert_with(|| WatchUnit {
+                id: u.id,
+                side: u.side,
+                name: u.definition.clone(),
+                max_hp: u.max_hp,
+                radius: u.radius,
+                reclaim_metal: u.reclaim_metal,
+            });
+        }
+    }
+    units.into_values().collect()
+}
+
 /// Plays one battle of `scenario` against `opponents[opponent]` and records
 /// everything the viewer needs. `seed` drives both shot randomness and the
 /// layout jitter, so the same arguments always give the same battle.
@@ -264,23 +286,7 @@ pub fn battle(
     );
 
     let mut by_tick = recorder.frames.into_inner().expect("recorder lock");
-    let units = trace
-        .frames
-        .first()
-        .map(|frame| {
-            frame
-                .units
-                .iter()
-                .map(|u| WatchUnit {
-                    id: u.id,
-                    side: u.side,
-                    name: u.definition.clone(),
-                    max_hp: u.max_hp,
-                    radius: u.radius,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let units = watch_units(&trace);
     let frames = trace
         .frames
         .iter()
@@ -347,6 +353,8 @@ pub fn battle(
         .map_or(0.0, |w| w.range);
 
     Ok(WatchBattle {
+        wreckage: result.wreckage,
+        wreck_metal_left: assessment.wreck_metal_left,
         firing: assessment.firing,
         scenario,
         opponent,
@@ -409,6 +417,61 @@ mod tests {
         let brain =
             Brain::random(tactical::KIND, tactical::specs(5), &mut Rng::new(3), 1.0).unwrap();
         (config, catalog, TacticalPolicy::new(brain).unwrap())
+    }
+
+    #[test]
+    fn metadata_includes_late_spawned_neutral_wrecks_once() {
+        let unit = |id, side, metal| crate::trace::TraceUnit {
+            id,
+            side,
+            definition: format!("unit-{id}"),
+            icon_key: String::new(),
+            position: [0.0, 0.0],
+            heading: 0.0,
+            weapon_headings: vec![],
+            hp: 10.0,
+            max_hp: 10.0,
+            radius: 2.0,
+            reclaim_metal: metal,
+            alive: true,
+            selected: false,
+        };
+        let trace = crate::trace::RunTrace {
+            format_version: 1,
+            seed: 0,
+            tick_hz: 30.0,
+            map: crate::trace::TraceMap {
+                width: 1.0,
+                depth: 1.0,
+                cols: 1,
+                rows: 1,
+                cell_size: 1.0,
+                heights: vec![0.0],
+                water_depth: vec![],
+                passable: vec![true],
+                resources: vec![],
+            },
+            frames: vec![
+                crate::trace::TraceFrame {
+                    tick: 0,
+                    time: 0.0,
+                    units: vec![unit(1, 0, 0.0)],
+                    aim_attempts: vec![],
+                },
+                crate::trace::TraceFrame {
+                    tick: 3,
+                    time: 0.1,
+                    units: vec![unit(1, 0, 0.0), unit(2, 255, 25.0)],
+                    aim_attempts: vec![],
+                },
+            ],
+            outcome: None,
+        };
+        let units = watch_units(&trace);
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[1].id, 2);
+        assert_eq!(units[1].side, 255);
+        assert_eq!(units[1].reclaim_metal, 25.0);
     }
 
     #[test]

@@ -370,14 +370,23 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
             flight.minimum_speed,
         );
         if flight.cruise_altitude <= 0.0
-            || flight.minimum_speed <= 0.0
+            || (!flight.hover && flight.minimum_speed <= 0.0)
             || flight.minimum_speed > unit.movement.max_speed
         {
             push_issue(
                 issues,
                 format!("{prefix}.flight"),
-                "flight requires positive altitude and 0 < minimum_speed <= max_speed",
+                "flight requires positive altitude and minimum_speed <= max_speed; fixed wings require positive minimum_speed",
             );
+        }
+        if let Some(radius) = flight.turn_radius {
+            if !radius.is_finite() || radius <= 0.0 || flight.hover {
+                push_issue(
+                    issues,
+                    format!("{prefix}.flight.turn_radius"),
+                    "must be finite and positive, and only applies to fixed-wing aircraft",
+                );
+            }
         }
     }
     let constraints = &unit.strategic.build_constraints;
@@ -491,10 +500,7 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
         &unit.strategic.reclaim,
     );
     if let Some(corpse) = &unit.strategic.corpse {
-        if corpse.name.trim().is_empty() {
-            push_issue(issues, format!("{prefix}.corpse.name"), "must not be empty");
-        }
-        validate_reclaim(issues, &format!("{prefix}.corpse.reclaim"), &corpse.reclaim);
+        validate_corpse(issues, &format!("{prefix}.corpse"), corpse);
     }
     validate_optional_nonnegative(
         issues,
@@ -564,6 +570,26 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
             &format!("{weapon_prefix}.turret_pitch_speed"),
             weapon.turret_pitch_speed,
         );
+        if weapon
+            .max_angle_difference
+            .is_some_and(|angle| !angle.is_finite() || !(0.0..=360.0).contains(&angle))
+        {
+            push_issue(
+                issues,
+                format!("{weapon_prefix}.max_angle_difference"),
+                "must be finite and between zero and 360 degrees",
+            );
+        }
+        if weapon.main_direction.is_some_and(|axis| {
+            axis.iter().any(|value| !value.is_finite())
+                || axis.iter().map(|value| value * value).sum::<f32>() <= f32::EPSILON
+        }) {
+            push_issue(
+                issues,
+                format!("{weapon_prefix}.main_direction"),
+                "must be a finite nonzero direction",
+            );
+        }
         validate_nonnegative_f32(
             issues,
             &format!("{weapon_prefix}.projectile_turn_rate"),
@@ -614,6 +640,13 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
             &format!("{weapon_prefix}.coverage_range"),
             weapon.coverage_range,
         );
+        if weapon.stockpile && weapon.stockpile_limit == 0 {
+            push_issue(
+                issues,
+                format!("{weapon_prefix}.stockpile_limit"),
+                "must be positive for a stockpiled weapon",
+            );
+        }
         if weapon.stockpile && weapon.stockpile_time <= 0.0 {
             push_issue(
                 issues,
@@ -670,6 +703,41 @@ fn validate_unit_data(issues: &mut Vec<CatalogDataIssue>, name: &str, unit: &Uni
             &format!("{weapon_prefix}.only_target_categories"),
             &weapon.only_target_categories,
         );
+    }
+}
+
+fn validate_corpse(issues: &mut Vec<CatalogDataIssue>, prefix: &str, corpse: &CorpseDef) {
+    if corpse.name.trim().is_empty() {
+        push_issue(issues, format!("{prefix}.name"), "must not be empty");
+    }
+    for (field, value) in [
+        ("health", Some(corpse.health)),
+        ("radius", corpse.radius),
+        ("height", corpse.height),
+    ] {
+        if value.is_some_and(|v| !v.is_finite() || v <= 0.0) {
+            push_issue(
+                issues,
+                format!("{prefix}.{field}"),
+                "must be finite and positive",
+            );
+        }
+    }
+    validate_optional_finite(
+        issues,
+        &format!("{prefix}.collision_mid_y"),
+        corpse.collision_mid_y,
+    );
+    validate_reclaim(issues, &format!("{prefix}.reclaim"), &corpse.reclaim);
+    if let Some(heap) = &corpse.heap_definition {
+        if corpse.heap.as_deref().is_some_and(|name| name != heap.name) {
+            push_issue(
+                issues,
+                format!("{prefix}.heap"),
+                "must match heap_definition.name",
+            );
+        }
+        validate_corpse(issues, &format!("{prefix}.heap_definition"), heap);
     }
 }
 
@@ -859,6 +927,20 @@ struct CatalogUnit {
     corpse_energy: f32,
     #[serde(default)]
     corpse_heap: Option<String>,
+    #[serde(default = "default_one")]
+    corpse_health: f32,
+    #[serde(default)]
+    corpse_radius: Option<f32>,
+    #[serde(default)]
+    corpse_height: Option<f32>,
+    #[serde(default)]
+    corpse_collision_mid_y: Option<f32>,
+    #[serde(default = "default_true")]
+    corpse_blocks_movement: bool,
+    #[serde(default = "default_true")]
+    corpse_blocks_fire: bool,
+    #[serde(default)]
+    corpse_heap_definition: Option<Box<CorpseDef>>,
     #[serde(
         default,
         alias = "sight_radius",
@@ -1168,6 +1250,31 @@ pub fn export_catalog_json(
                 }
                 let sensor_values = serde_json::to_value(&unit.strategic)
                     .map_err(|error| format!("serializing sensors for {name}: {error}"))?;
+                // Persist the complete feature chain using the flat source schema.
+                let corpse_values =
+                    serde_json::to_value(unit.strategic.corpse.clone().unwrap_or_default())
+                        .map_err(|error| format!("serializing corpse for {name}: {error}"))?;
+                unit_val["corpse"] = unit
+                    .strategic
+                    .corpse
+                    .as_ref()
+                    .map(|corpse| serde_json::json!(corpse.name))
+                    .unwrap_or(serde_json::Value::Null);
+                for field in [
+                    "health",
+                    "radius",
+                    "height",
+                    "collision_mid_y",
+                    "blocks_movement",
+                    "blocks_fire",
+                    "heap",
+                    "heap_definition",
+                ] {
+                    unit_val[format!("corpse_{field}")] = corpse_values[field].clone();
+                }
+                for field in ["reclaimable", "reclaim_time", "metal", "energy"] {
+                    unit_val[format!("corpse_{field}")] = corpse_values["reclaim"][field].clone();
+                }
                 for field in [
                     "sight_distance",
                     "radar_radius",
@@ -1317,6 +1424,13 @@ fn unit_from_entry(entry: &CatalogUnit, name: &str) -> Result<UnitDef, String> {
                     energy: entry.corpse_energy,
                 },
                 heap: entry.corpse_heap.clone(),
+                health: entry.corpse_health,
+                radius: entry.corpse_radius,
+                height: entry.corpse_height,
+                collision_mid_y: entry.corpse_collision_mid_y,
+                blocks_movement: entry.corpse_blocks_movement,
+                blocks_fire: entry.corpse_blocks_fire,
+                heap_definition: entry.corpse_heap_definition.clone(),
             }),
             sight_distance: entry.sight_distance,
             radar_radius: entry.radar_radius,
@@ -1406,6 +1520,113 @@ fn resolve_vfs_asset(root: &Path, directory: &str, vfs_name: &str) -> Result<Pat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corpse_geometry_chain_and_inert_definition_round_trip() {
+        let (_, mut unit) = parse(
+            r#"{"unit_catalog":{"test":{"health":100,"metal_cost":70,
+            "simulation":{"radius":20,"height":40},"corpse":"test_dead","corpse_health":90,
+            "corpse_radius":10,"corpse_height":6,"corpse_collision_mid_y":4,
+            "corpse_blocks_movement":true,"corpse_blocks_fire":false,"corpse_metal":25,
+            "corpse_heap":"test_heap","corpse_heap_definition":{"name":"test_heap",
+            "health":30,"radius":6,"height":2,"blocks_movement":false,"blocks_fire":false,
+            "reclaim":{"metal":8}}}}}"#,
+        );
+        unit.weapons.push(WeaponDef::default());
+        unit.strategic.key_unit = true;
+        unit.strategic.energy_make = 500.0;
+        let corpse = unit.strategic.corpse.as_ref().unwrap();
+        let feature = corpse.unit_definition(&unit);
+        assert_eq!(feature.health, 90.0);
+        assert_eq!(feature.movement.radius, 10.0);
+        assert_eq!(feature.movement.collision_vertical_bounds(0.0), (1.0, 7.0));
+        assert!(!feature.movement.blocks_fire);
+        assert!(feature.weapons.is_empty());
+        assert_eq!(feature.resource_value(), 0.0);
+        assert_eq!(feature.strategic.energy_make, 0.0);
+        assert!(!feature.strategic.key_unit);
+        assert_eq!(feature.strategic.reclaim.metal, 25.0);
+        assert_eq!(feature.strategic.corpse.as_ref().unwrap().health, 30.0);
+        let native = serde_json::to_string(corpse).unwrap();
+        assert_eq!(serde_json::from_str::<CorpseDef>(&native).unwrap(), *corpse);
+    }
+
+    #[test]
+    fn corpse_legacy_defaults_and_invalid_nested_geometry() {
+        let corpse: CorpseDef = serde_json::from_str(r#"{"name":"old_dead"}"#).unwrap();
+        assert_eq!(corpse.health, 1.0);
+        assert!(corpse.blocks_movement && corpse.blocks_fire);
+        let source = UnitDef {
+            movement: MovementDef {
+                radius: 12.0,
+                height: 9.0,
+                collision_mid_y: Some(7.0),
+                ..MovementDef::default()
+            },
+            ..UnitDef::default()
+        };
+        let legacy = corpse.unit_definition(&source);
+        assert_eq!(legacy.movement.radius, 12.0);
+        assert_eq!(legacy.movement.collision_mid_y, Some(7.0));
+        let mut invalid = corpse;
+        invalid.heap_definition = Some(Box::new(CorpseDef {
+            name: "bad_heap".into(),
+            health: f32::NAN,
+            radius: Some(-2.0),
+            height: Some(0.0),
+            collision_mid_y: Some(f32::INFINITY),
+            ..CorpseDef::default()
+        }));
+        let mut issues = vec![];
+        validate_corpse(&mut issues, "corpse", &invalid);
+        assert_eq!(issues.len(), 4);
+        assert!(
+            issues
+                .iter()
+                .all(|issue| issue.path.contains("heap_definition"))
+        );
+    }
+
+    #[test]
+    fn corpse_catalog_export_persists_mutated_chain() {
+        let directory =
+            std::env::temp_dir().join(format!("minibar-corpse-catalog-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("source.json");
+        let out = directory.join("out.json");
+        fs::write(
+            &source,
+            r#"{"unit_catalog":{"test":{"health":100,"corpse":"test_dead","simulation":{}}}}"#,
+        )
+        .unwrap();
+        let mut catalog = load_catalog(&source).unwrap();
+        let corpse = catalog
+            .units
+            .get_mut("test")
+            .unwrap()
+            .strategic
+            .corpse
+            .as_mut()
+            .unwrap();
+        corpse.health = 42.0;
+        corpse.radius = Some(13.0);
+        corpse.blocks_fire = false;
+        corpse.heap = Some("test_heap".into());
+        corpse.heap_definition = Some(Box::new(CorpseDef {
+            name: "test_heap".into(),
+            health: 10.0,
+            ..CorpseDef::default()
+        }));
+        export_catalog_json(&catalog, &out, &source).unwrap();
+        let restored = load_catalog(&out).unwrap();
+        assert_eq!(
+            restored.units["test"].strategic.corpse,
+            catalog.units["test"].strategic.corpse
+        );
+        fs::remove_file(source).unwrap();
+        fs::remove_file(out).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
 
     #[test]
     fn sensor_catalog_fields_load_flattened_and_round_trip_native() {
@@ -1838,6 +2059,37 @@ mod tests {
         assert!(error.contains("units.test.weapons[0].projectile_lifetime"));
         assert!(error.contains("units.test.weapons[0].damage_by_armour.heavy"));
         assert!(error.contains("units.test.weapons[0].required_capabilities[0]"));
+    }
+
+    #[test]
+    fn directional_mount_catalog_rejects_invalid_cones() {
+        for (direction, angle, path) in [
+            (Some([0.0, 0.0, 0.0]), Some(90.0), "main_direction"),
+            (Some([f32::NAN, 0.0, 1.0]), None, "main_direction"),
+            (None, Some(-1.0), "max_angle_difference"),
+            (None, Some(361.0), "max_angle_difference"),
+            (None, Some(f32::INFINITY), "max_angle_difference"),
+        ] {
+            let unit = UnitDef {
+                weapons: vec![WeaponDef {
+                    main_direction: direction,
+                    max_angle_difference: angle,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let mut issues = Vec::new();
+            validate_unit_data(&mut issues, "test", &unit);
+            assert!(
+                issues
+                    .iter()
+                    .any(|issue| issue.path == format!("units.test.weapons[0].{path}")),
+                "{issues:?}"
+            );
+        }
+        let weapon: WeaponDef = serde_json::from_str("{}").unwrap();
+        assert_eq!(weapon.main_direction, None);
+        assert_eq!(weapon.max_angle_difference, None);
     }
 
     #[test]

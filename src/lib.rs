@@ -24,6 +24,7 @@ pub mod trace;
 pub mod viewer;
 pub mod viewer_protocol;
 pub mod world;
+mod wrecks;
 
 pub use calibration::{
     CALIBRATION_FIXTURE_VERSION, CalibrationDiagnostic, CalibrationFixture, CalibrationNotice,

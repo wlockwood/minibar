@@ -523,7 +523,9 @@ impl ViewerFrame {
                     .collect();
                 ViewerEntity {
                     id: unit.id.to_string(),
-                    relation: if unit.side == 0 {
+                    relation: if unit.side == 255 {
+                        ViewerRelation::Neutral
+                    } else if unit.side == 0 {
                         ViewerRelation::Friendly
                     } else {
                         ViewerRelation::Enemy
@@ -624,11 +626,35 @@ impl ViewerFrame {
             resource_sites,
             detector_evidence: vec![],
             events: vec![],
-            annotations: vec![ViewerAnnotation {
-                label: "economy unavailable in tactical trace".into(),
-                evidence: ViewerEvidence::Unavailable,
-                detail: None,
-            }],
+            annotations: {
+                let mut annotations = vec![ViewerAnnotation {
+                    label: "economy unavailable in tactical trace".into(),
+                    evidence: ViewerEvidence::Unavailable,
+                    detail: None,
+                }];
+                if frame_index + 1 == trace.frames.len() {
+                    if let Some(outcome) = &trace.outcome {
+                        let wreckage = &outcome.wreckage;
+                        annotations.push(ViewerAnnotation {
+                            label: format!("Remaining wreck metal: {:.1}", wreckage.total_metal),
+                            evidence: ViewerEvidence::Simulation,
+                            detail: Some(format!("Source army 0: {:.1}; army 1: {:.1}. Neutral reclaim potential, not collected income.",
+                                wreckage.metal_by_source_side[0], wreckage.metal_by_source_side[1])),
+                        });
+                        if let (Some(potential), Some(conceded)) = (
+                            wreckage.winner_reclaim_potential,
+                            wreckage.loser_metal_conceded,
+                        ) {
+                            annotations.push(ViewerAnnotation {
+                                label: format!("Winner reclaim potential: {potential:.1} metal"),
+                                evidence: ViewerEvidence::Simulation,
+                                detail: Some(format!("Loser metal conceded: {conceded:.1}. Potential only; resources and fitness are unchanged.")),
+                            });
+                        }
+                    }
+                }
+                annotations
+            },
             sensor_coverage: None,
         };
         result.validate()?;
@@ -845,7 +871,7 @@ mod tests {
     fn simulator_trace_conversion_preserves_x_z_health_and_identity() {
         use crate::trace::{RunTrace, TraceFrame, TraceMap, TraceUnit};
 
-        let trace = RunTrace {
+        let mut trace = RunTrace {
             format_version: crate::trace::TRACE_FORMAT_VERSION,
             seed: 4,
             tick_hz: 30.0,
@@ -874,6 +900,7 @@ mod tests {
                     hp: 50.0,
                     max_hp: 100.0,
                     radius: 8.0,
+                    reclaim_metal: 0.0,
                     alive: true,
                     selected: false,
                 }],
@@ -886,6 +913,14 @@ mod tests {
         assert_eq!(frame.entities[0].health, Some(50.0));
         assert_eq!(frame.entities[0].id, "7");
         assert_eq!(frame.header.source_mode, ViewerMode::SimulatorTrace);
+        trace.frames[0].units[0].side = 255;
+        trace.frames[0].units[0].reclaim_metal = 40.0;
+        let wreck_frame = ViewerFrame::from_trace(&trace, 0).unwrap();
+        assert_eq!(wreck_frame.entities[0].relation, ViewerRelation::Neutral);
+        assert_eq!(
+            wreck_frame.entities[0].visibility,
+            ViewerVisibility::LineOfSight
+        );
     }
 
     #[test]

@@ -138,6 +138,8 @@ pub enum Outcome {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct BattleAssessment {
+    /// Remaining neutral wreck metal by source army, learner then opponent.
+    pub wreck_metal_left: [f64; 2],
     /// Learner then opponent, regardless of arena side.
     pub firing: [crate::score::FiringStats; 2],
     pub outcome: Outcome,
@@ -249,6 +251,10 @@ pub fn assess_objective(
         w.key_unit_bonus * lost_fraction(enemy) - w.key_unit_penalty * lost_fraction(own);
 
     BattleAssessment {
+        wreck_metal_left: [
+            f64::from(own.wreck_metal_left),
+            f64::from(enemy.wreck_metal_left),
+        ],
         firing: [own.firing, enemy.firing],
         outcome,
         value_ratio,
@@ -282,6 +288,9 @@ pub fn robust_fitness<'a>(rows: impl Iterator<Item = &'a Tally>, w: &ObjectiveWe
 /// Running totals over assessed battles.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tally {
+    /// Diagnostic sums in metal units; absent for legacy or partially recorded evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wreck_metal_left_sum: Option<[f64; 2]>,
     /// None for legacy evidence without firing counters; sums of unit-battle
     /// participation and ready weapon checks otherwise. Learner then opponent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -305,6 +314,13 @@ pub struct Tally {
 
 impl Tally {
     pub fn add(&mut self, a: &BattleAssessment) {
+        if self.battles == 0 {
+            self.wreck_metal_left_sum = Some(a.wreck_metal_left);
+        } else if let Some(total) = &mut self.wreck_metal_left_sum {
+            for (sum, value) in total.iter_mut().zip(a.wreck_metal_left) {
+                *sum += value;
+            }
+        }
         let firing = self.firing.get_or_insert_with(Default::default);
         for (total, incoming) in firing.iter_mut().zip(a.firing.iter()) {
             total.merge(incoming);
@@ -329,6 +345,15 @@ impl Tally {
     }
 
     pub fn merge(&mut self, other: &Tally) {
+        if self.battles == 0 {
+            self.wreck_metal_left_sum = other.wreck_metal_left_sum;
+        } else if other.battles > 0 {
+            self.wreck_metal_left_sum =
+                match (self.wreck_metal_left_sum, other.wreck_metal_left_sum) {
+                    (Some(a), Some(b)) => Some([a[0] + b[0], a[1] + b[1]]),
+                    _ => None,
+                };
+        }
         if let Some(incoming) = other.firing {
             let firing = self.firing.get_or_insert_with(Default::default);
             for (total, source) in firing.iter_mut().zip(incoming.iter()) {
@@ -403,9 +428,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn wreck_diagnostics_follow_learner_side_and_preserve_legacy_unknowns() {
+        let mut battle = result(Some(0), (100.0, 80.0), (100.0, 0.0));
+        let baseline = assess(&battle, 1, &ObjectiveWeights::default());
+        battle.sides[0].wreck_metal_left = 7.0;
+        battle.sides[1].wreck_metal_left = 21.0;
+        let assessment = assess(&battle, 1, &ObjectiveWeights::default());
+        assert_eq!(assessment.fitness, baseline.fitness);
+        assert_eq!(assessment.wreck_metal_left, [21.0, 7.0]);
+        let mut tally = Tally::default();
+        tally.add(&assessment);
+        let copy = tally;
+        tally.merge(&copy);
+        assert_eq!(tally.wreck_metal_left_sum, Some([42.0, 14.0]));
+        let mut old = serde_json::to_value(copy).unwrap();
+        old.as_object_mut().unwrap().remove("wreck_metal_left_sum");
+        let legacy: Tally = serde_json::from_value(old).unwrap();
+        assert_eq!(legacy.wreck_metal_left_sum, None);
+        tally.merge(&legacy);
+        assert_eq!(tally.wreck_metal_left_sum, None);
+        let mut mixed = legacy;
+        mixed.add(&assessment);
+        assert_eq!(mixed.wreck_metal_left_sum, None);
+    }
+
     fn result(winner: Option<u8>, own: (f32, f32), enemy: (f32, f32)) -> BattleResult {
         // (starting value, remaining hp value)
         BattleResult {
+            wreckage: Default::default(),
             winner,
             timed_out: winner.is_none(),
             duration: 10.0,

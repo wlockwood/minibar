@@ -63,6 +63,9 @@ pub struct TraceUnit {
     pub hp: f32,
     pub max_hp: f32,
     pub radius: f32,
+    /// Remaining reclaimable metal; zero for non-reclaimable objects and older traces.
+    #[serde(default)]
+    pub reclaim_metal: f32,
     pub alive: bool,
     #[serde(default)]
     pub selected: bool,
@@ -102,6 +105,8 @@ pub struct TraceFrame {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TraceOutcome {
+    #[serde(default)]
+    pub wreckage: crate::score::WreckageReport,
     pub winner: Option<u8>,
     pub duration: f32,
 }
@@ -203,6 +208,11 @@ impl TraceRecorder {
                 hp: unit.hp.max(0.0),
                 max_hp: unit.definition.health,
                 radius: unit.definition.movement.radius,
+                reclaim_metal: if unit.alive && unit.definition.strategic.reclaim.reclaimable {
+                    unit.definition.strategic.reclaim.metal.max(0.0)
+                } else {
+                    0.0
+                },
                 alive: unit.alive,
                 selected: false,
             })
@@ -396,9 +406,20 @@ mod tests {
             hp: if alive { 100.0 } else { 0.0 },
             max_hp: 100.0,
             radius: 5.0,
+            reclaim_metal: 0.0,
             alive,
             selected: false,
         }
+    }
+
+    #[test]
+    fn legacy_unit_and_outcome_default_wreck_data() {
+        let mut json = serde_json::to_value(unit(1, 0, [1.0, 2.0], true)).unwrap();
+        json.as_object_mut().unwrap().remove("reclaim_metal");
+        let restored: TraceUnit = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.reclaim_metal, 0.0);
+        let outcome: TraceOutcome = serde_json::from_str(r#"{"winner":0,"duration":1.0}"#).unwrap();
+        assert_eq!(outcome.wreckage.total_metal, 0.0);
     }
 
     #[test]
@@ -456,6 +477,7 @@ mod tests {
             map: map(),
             frames,
             outcome: Some(TraceOutcome {
+                wreckage: Default::default(),
                 winner: Some(1),
                 duration: 1.0,
             }),

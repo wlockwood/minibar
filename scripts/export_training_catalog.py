@@ -33,18 +33,23 @@ def convert_unit(name, raw, supported):
     if not math.isfinite(value) or value <= 0:
         raise ValueError(f"{name}: resource value must be finite and positive")
     if raw.get("canfly"):
-        if raw.get("hoverattack"):
-            raise ValueError(f"{name}: hovering gunships need a separate validated flight model")
-        speed = float(raw.get("speed", 0))
-        radius = float(raw.get("turnradius", 0))
-        if not math.isfinite(radius) or radius <= 0 or not math.isfinite(speed) or speed <= 0:
+        movement = make_catalog.movement_fields(raw)
+        hover = movement["move_type"] == "hover_air"
+        speed = movement["speed"]
+        radius = movement["turn_radius"]
+        if (not hover and (not math.isfinite(radius) or radius <= 0)) or not math.isfinite(speed) or speed <= 0:
             raise ValueError(f"{name}: fixed-wing export needs positive speed and turnradius")
-        # Bounded kinematic approximation: angular speed = forward speed / radius.
-        # Aircraft source definitions do not use the ground unit turnrate field.
-        entry["simulation"]["turn_rate"] = math.degrees(speed / radius)
+        # Retain a max-speed reference rate for legacy viewers; runtime uses
+        # current speed / radius for fixed-wing steering, ignoring ground turnrate.
+        entry["simulation"].update({
+            "turn_rate": movement["turn_rate_deg_s"] if hover else math.degrees(speed / radius),
+            "acceleration": movement["acceleration_elmos_s2"],
+            "braking": movement["brake_elmos_s2"],
+        })
         entry["flight"] = {"cruise_altitude": float(raw.get("cruisealtitude", 100)),
-                           "minimum_speed": speed * 0.55,
-                           "attack_run": not bool(raw.get("airstrafe", False))}
+                           "minimum_speed": 0.0 if hover else speed * 0.55,
+                           "hover": hover, "turn_radius": radius,
+                           "attack_run": not hover and not bool(raw.get("airstrafe", False))}
         categories = set(entry["target_categories"])
         categories.difference_update(("NOTAIR", "SURFACE"))
         categories.update(("AIR", "VTOL", "NOTSURFACE"))
@@ -55,6 +60,18 @@ def convert_unit(name, raw, supported):
         entry["simulation"]["blocks_fire"] = False
         entry["required_capabilities"] = ["flight"]
     return entry
+
+
+def approach_presets():
+    """Shared land/air tests; offsets are relative to facing the other army."""
+    return [{"name": name, "learner_heading_offset_deg": ours, "enemy_heading_offset_deg": theirs,
+             "learner_speed_fraction": speed, "enemy_speed_fraction": speed}
+            for name, ours, theirs, speed in [
+                ("head_on_stopped", 0, 0, 0), ("head_on_moving", 0, 0, 1),
+                ("learner_crosses_left", 0, 90, 1), ("learner_crosses_right", 0, -90, 1),
+                ("enemy_crosses_left", 90, 0, 1), ("enemy_crosses_right", -90, 0, 1),
+                ("learner_rear_approach", 0, 180, 1), ("enemy_rear_approach", 180, 0, 1),
+                ("oblique", -45, 45, 0.5)]]
 
 
 def curriculum(units):
@@ -85,7 +102,7 @@ def curriculum(units):
     # These are combat-control exercises. Starts outside both armies' sight
     # produce stationary policies with no contacts rather than useful fighting.
     return {"count": 24, "metal": [500, 6000], "max_units": 96, "max_balanced_gap": 0.05,
-            "separation": [200, 320],
+            "separation": [200, 320], "approaches": approach_presets(),
             "even_ratio": [0.98, 1.02], "types":types,"families":families,"anchors":anchors}
 
 
@@ -104,6 +121,8 @@ def export(out, bar_root, selected=DEFAULT_UNITS):
                 raise ValueError(f"{name}: missing source unit")
             path = paths[name]
             raw = parse_unit_file(path)[name]
+            if make_catalog.canonical_record(name, raw) is None:
+                raise ValueError(f"{name}: unit database cannot verify this source definition; rebuild the database")
             units[name] = convert_unit(name, raw, set(selected))
             units[name]["human_name"] = human_names.get(name, name)
             units[name]["armour_class"] = raw.get("customparams", {}).get("armordef", armor.get(name, "default"))
@@ -125,6 +144,9 @@ def export(out, bar_root, selected=DEFAULT_UNITS):
     manifest = {"format":"minibar.tactical_source_catalog","version":1,"source_revision":revision,
                 "units":evidence,"rejected":rejected,
                 "unit_name_source":{"path":str(language_path),"sha256":sha256(language_path)},
+                "unit_database":{"path":str(make_catalog.unit_db.DB_PATH),
+                                 "sha256":sha256(Path(make_catalog.unit_db.DB_PATH)),
+                                 "effective_fields_checked_against_source":True},
                 "resource_formula":"metal + energy / 60",
                 "supply_assumption":"Finite 1,000,000 metal and energy per side; no resupply.",
                 "support_status":"Requires native capability validation and combat fixtures; not native BAR equivalence.",
@@ -132,7 +154,7 @@ def export(out, bar_root, selected=DEFAULT_UNITS):
                                   "Flat terrain uses map gravity 130; missile speed averaged over range.",
                                   "Unresolved script turret speeds use instantaneous aim.",
                                   "Flight is bounded cruise/turn/attack-run simulation; takeoff/landing is absent.",
-                                  "Aircraft angular speed is speed / source turnradius (radians/second), a kinematic approximation rather than BAR aerodynamic steering."]}
+                                  "Fixed-wing angular speed uses current speed / effective turnradius; hovering aircraft use heading turnrate. This is a kinematic approximation rather than BAR aerodynamic steering."]}
     write_json(out / "manifest.json", manifest)
     return manifest
 

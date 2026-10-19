@@ -11,6 +11,12 @@ def raw(**fields):
 
 
 class ExportTests(unittest.TestCase):
+    def test_approach_presets_cover_both_sides_and_turn_directions(self):
+        approaches = exporter.curriculum({})["approaches"]
+        angles = {(a["learner_heading_offset_deg"], a["enemy_heading_offset_deg"]) for a in approaches}
+        self.assertTrue({(0, 90), (0, -90), (90, 0), (-90, 0), (0, 180), (180, 0)} <= angles)
+        self.assertTrue(any(a["learner_speed_fraction"] == 0 for a in approaches))
+        self.assertTrue(any(a["learner_speed_fraction"] == 1 for a in approaches))
     def test_combat_curriculum_starts_within_ground_contact_range(self):
         cfg = exporter.curriculum({name:{} for name in exporter.DEFAULT_UNITS})
         self.assertLessEqual(cfg["separation"][1] + 2 * 30, 400)
@@ -19,8 +25,30 @@ class ExportTests(unittest.TestCase):
         import math
         entry = exporter.convert_unit("fighter", raw(canfly=True, speed=128, turnradius=64), set())
         self.assertAlmostEqual(entry["simulation"]["turn_rate"], math.degrees(2.0))
+        self.assertEqual(entry["flight"]["turn_radius"], 64)
         with self.assertRaisesRegex(ValueError, "turnradius"):
             exporter.convert_unit("fighter", raw(canfly=True, turnradius=0), set())
+
+    def test_aircraft_effective_defaults_do_not_export_zero_acceleration(self):
+        source = raw(canfly=True, weapondefs={"gun": {"weapontype": "Cannon"}},
+                     weapons={1: {"def": "gun"}})
+        source.pop("turnradius")
+        entry = exporter.convert_unit("fighter", source, set())
+        self.assertEqual(entry["simulation"]["acceleration"], 58.5)
+        self.assertEqual(entry["flight"]["turn_radius"], 500)
+
+    def test_hover_aircraft_can_stop_and_uses_heading_turn_rate(self):
+        entry = exporter.convert_unit("gunship", raw(canfly=True, hoverattack=True, turnrate=800), set())
+        self.assertTrue(entry["flight"]["hover"])
+        self.assertEqual(entry["flight"]["minimum_speed"], 0)
+        self.assertIsNone(entry["flight"]["turn_radius"])
+        self.assertAlmostEqual(entry["simulation"]["turn_rate"], 131.84)
+
+    def test_flying_builders_use_hover_model_without_hoverattack(self):
+        entry = exporter.convert_unit("airbuilder", raw(canfly=True, builder=True, turnrate=550), set())
+        self.assertTrue(entry["flight"]["hover"])
+        self.assertFalse(entry["flight"]["attack_run"])
+        self.assertAlmostEqual(entry["simulation"]["turn_rate"], 90.64)
 
     def test_resource_value_and_air_categories(self):
         entry = exporter.convert_unit("fighter", raw(canfly=True, cruisealtitude=140, airstrafe=True), set())

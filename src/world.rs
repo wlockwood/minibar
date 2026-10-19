@@ -54,10 +54,11 @@ pub struct UnitDefId(pub u32);
 pub struct WorldCatalog {
     definitions: Arc<[UnitDef]>,
     names: BTreeMap<String, UnitDefId>,
+    corpse_definitions: BTreeMap<UnitDefId, UnitDefId>,
 }
 
 impl WorldCatalog {
-    pub fn new(definitions: Vec<UnitDef>) -> Result<Self, WorldError> {
+    pub fn new(mut definitions: Vec<UnitDef>) -> Result<Self, WorldError> {
         let mut names = BTreeMap::new();
         for (index, definition) in definitions.iter().enumerate() {
             let id = UnitDefId(u32::try_from(index).map_err(|_| WorldError::TooManyDefinitions)?);
@@ -65,9 +66,45 @@ impl WorldCatalog {
                 return Err(WorldError::DuplicateDefinition(definition.name.clone()));
             }
         }
+        let mut corpse_definitions = BTreeMap::new();
+        let mut index = 0;
+        while index < definitions.len() {
+            let source = definitions[index].clone();
+            if let Some(corpse) = &source.strategic.corpse {
+                let mut feature = corpse.unit_definition(&source);
+                // A named live unit must never become the fallback wreck. Reuse
+                // an existing feature only when its full definition agrees.
+                if let Some(existing) = names.get(&feature.name)
+                    && serde_json::to_value(&definitions[existing.0 as usize]).ok()
+                        != serde_json::to_value(&feature).ok()
+                {
+                    feature.name = format!("__corpse/{index}/{}", corpse.name);
+                }
+                while names.get(&feature.name).is_some_and(|existing| {
+                    serde_json::to_value(&definitions[existing.0 as usize]).ok()
+                        != serde_json::to_value(&feature).ok()
+                }) {
+                    feature.name.insert(0, '_');
+                }
+                let id = if let Some(id) = names.get(&feature.name) {
+                    *id
+                } else {
+                    let id = UnitDefId(
+                        u32::try_from(definitions.len())
+                            .map_err(|_| WorldError::TooManyDefinitions)?,
+                    );
+                    names.insert(feature.name.clone(), id);
+                    definitions.push(feature);
+                    id
+                };
+                corpse_definitions.insert(UnitDefId(index as u32), id);
+            }
+            index += 1;
+        }
         Ok(Self {
             definitions: definitions.into(),
             names,
+            corpse_definitions,
         })
     }
 
@@ -728,7 +765,7 @@ impl World {
             owner: u8::MAX,
             position: Vec2::new(blocker.x, blocker.z),
             heading: 0.0,
-            health: 1.0,
+            health: self.definition(definition)?.health.max(f32::EPSILON) as f64,
             enabled: false,
             powered: false,
             role: EntityRole::Feature,
@@ -1224,11 +1261,20 @@ impl World {
             combat.known.remove(&entity);
             let _ = combat.stepper.remove(entity.to_raw());
         }
-        let corpse = (removed.role != EntityRole::Feature)
+        // Unfinished frames have not earned a completed unit's wreck value.
+        let completed = match removed.role {
+            EntityRole::Nanoframe { project_id } => self
+                .construction
+                .get(project_id)
+                .is_some_and(|project| project.progress >= 1.0),
+            _ => true,
+        };
+        let corpse = completed
             .then(|| {
                 self.catalog
-                    .get(removed.definition)
-                    .and_then(|definition| definition.strategic.corpse.clone())
+                    .corpse_definitions
+                    .get(&removed.definition)
+                    .copied()
             })
             .flatten();
         self.occupancy.remove_occupant(occupant(entity));
@@ -1255,25 +1301,40 @@ impl World {
                 .projects_destroyed += 1;
         }
         self.events.push(WorldEvent::EntityDestroyed { entity });
-        if let Some(corpse) = corpse.filter(|corpse| corpse.reclaim.reclaimable) {
-            let definition = self.catalog.id(&corpse.name).unwrap_or(removed.definition);
-            let wreck = self.entities.insert(WorldEntity {
-                definition,
-                owner: u8::MAX,
-                position: removed.position,
-                heading: removed.heading,
-                health: 1.0,
-                enabled: false,
-                powered: false,
-                role: EntityRole::Feature,
-                lifecycle: EntityLifecycle::Active,
-                reclaim: Some(ReclaimState {
-                    progress: 0.0,
-                    reclaim_time: corpse.reclaim.reclaim_time.max(DT) as f64,
-                    metal: corpse.reclaim.metal.max(0.0) as f64,
-                    energy: corpse.reclaim.energy.max(0.0) as f64,
-                }),
-            });
+        if let Some(definition) = corpse {
+            let feature = self
+                .catalog
+                .get(definition)
+                .expect("registered corpse definition");
+            let radius = feature.movement.radius.max(0.0);
+            let (_, top) = feature.movement.collision_vertical_bounds(0.0);
+            let reclaim = &feature.strategic.reclaim;
+            let blocker = StaticBlocker {
+                feature_id: 0,
+                definition: feature.name.clone(),
+                x: removed.position.x,
+                y: self
+                    .map
+                    .ground_height(removed.position.x, removed.position.z),
+                z: removed.position.z,
+                min_x: (removed.position.x - radius).max(0.0),
+                min_z: (removed.position.z - radius).max(0.0),
+                max_x: (removed.position.x + radius).min(self.map.width),
+                max_z: (removed.position.z + radius).min(self.map.depth),
+                blocks_movement: feature.movement.blocks_movement,
+                blocks_fire: feature.movement.blocks_fire,
+                fire_height: top.max(0.0),
+                crushable: false,
+                reclaimable: reclaim.reclaimable,
+                reclaim_time: reclaim.reclaim_time.max(DT),
+                metal: reclaim.metal.max(0.0),
+                energy: reclaim.energy.max(0.0),
+                geothermal: false,
+            };
+            let wreck = self
+                .insert_static_feature(definition, &blocker)
+                .expect("corpse occupancy uses clamped map bounds");
+            self.entities.get_mut(wreck).expect("new wreck").heading = removed.heading;
             self.events.push(WorldEvent::WreckCreated {
                 source: entity,
                 wreck,
@@ -4346,6 +4407,7 @@ impl World {
                     let radius_squared = radius.max(0.0) * radius.max(0.0);
                     let Some(entity) = self.entities.iter().find_map(|(id, entity)| {
                         (entity.role == EntityRole::Feature
+                            && entity.reclaim.is_some()
                             && entity.position.distance_squared(position) <= radius_squared)
                             .then_some(id)
                     }) else {
@@ -4376,6 +4438,10 @@ impl World {
             self.forget_observed_removal(target_id);
             self.entities.remove(target_id);
             self.occupancy.remove_occupant(occupant(target_id));
+            if let Some(combat) = &mut self.combat {
+                combat.known.remove(&target_id);
+                let _ = combat.stepper.remove(target_id.to_raw());
+            }
             deposit_pool(
                 &mut self.teams[builder_owner as usize].economy.metal,
                 reclaim.metal,
@@ -6197,6 +6263,7 @@ mod tests {
                 energy: 10.0,
             },
             heap: None,
+            ..Default::default()
         });
         let wreck_definition = unit("wreck");
         let catalog = Arc::new(WorldCatalog::new(vec![builder, victim, wreck_definition]).unwrap());
@@ -6260,6 +6327,261 @@ mod tests {
                 .conservation(&metrics, 1e-9)
                 .closes
         );
+    }
+
+    fn wreck_test_world(reclaimable: bool, heap: bool) -> World {
+        let mut builder = unit("builder");
+        builder.strategic.is_builder = true;
+        builder.strategic.is_mobile = true;
+        builder.strategic.build_speed = 100.0;
+        builder.strategic.build_distance = 128.0;
+        let mut victim = unit("victim");
+        victim.strategic.corpse = Some(CorpseDef {
+            name: "wreck".into(),
+            health: 70.0,
+            radius: Some(12.0),
+            height: Some(30.0),
+            reclaim: ReclaimDef {
+                reclaimable,
+                reclaim_time: 100.0,
+                metal: 25.0,
+                energy: 10.0,
+            },
+            heap_definition: heap.then(|| {
+                Box::new(CorpseDef {
+                    name: "heap".into(),
+                    health: 20.0,
+                    blocks_movement: false,
+                    blocks_fire: false,
+                    reclaim: ReclaimDef {
+                        reclaimable: true,
+                        reclaim_time: 10.0,
+                        metal: 5.0,
+                        energy: 2.0,
+                    },
+                    ..Default::default()
+                })
+            }),
+            ..Default::default()
+        });
+        World::new(
+            map(),
+            Arc::new(WorldCatalog::new(vec![builder, victim]).unwrap()),
+            WorldConfig::default(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn wreck_blocks_routes_and_fire_and_destruction_transitions_to_heap_once() {
+        let mut world = wreck_test_world(false, true);
+        let position = Vec2::new(56.0, 56.0);
+        let victim = world
+            .spawn_active(0, UnitDefId(1), position, BuildFacing::South)
+            .unwrap();
+        let request =
+            RouteRequest::new(Vec2::new(8.0, 56.0), Vec2::new(104.0, 56.0), "BOT").with_radius(0.0);
+        let clear = world
+            .router
+            .find_route(&world.map, &world.occupancy, &request);
+        let epoch = world.occupancy.movement_epoch();
+        assert!(world.destroy_entity(victim));
+        assert!(!world.destroy_entity(victim));
+        let features: Vec<_> = world
+            .entities
+            .iter()
+            .filter(|(_, entity)| entity.role == EntityRole::Feature)
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(features.len(), 1);
+        let wreck = features[0];
+        let state = world.entities.get(wreck).unwrap();
+        assert_eq!(state.health, 70.0);
+        assert!(state.reclaim.is_none());
+        assert_eq!(state.owner, u8::MAX);
+        assert!(
+            world
+                .catalog
+                .get(state.definition)
+                .unwrap()
+                .weapons
+                .is_empty()
+        );
+        assert!(world.occupancy.is_movement_blocked(position.x, position.z));
+        assert!(world.occupancy.is_reserved_at(position.x, position.z));
+        assert_eq!(
+            world
+                .occupancy
+                .effective_fire_height_at(position.x, position.z),
+            30.0
+        );
+        assert!(world.occupancy.movement_epoch() > epoch);
+        let blocked = world
+            .router
+            .find_route(&world.map, &world.occupancy, &request);
+        assert!(blocked.path_length > clear.path_length);
+        assert!(world.destroy_entity(wreck));
+        let (_, heap) = world
+            .entities
+            .iter()
+            .find(|(_, entity)| entity.role == EntityRole::Feature)
+            .unwrap();
+        assert_eq!(heap.health, 20.0);
+        assert_eq!(heap.reclaim.unwrap().metal, 5.0);
+        assert!(!world.occupancy.is_movement_blocked(position.x, position.z));
+        assert!(!world.occupancy.is_reserved_at(position.x, position.z));
+        assert_eq!(
+            world
+                .occupancy
+                .effective_fire_height_at(position.x, position.z),
+            0.0
+        );
+    }
+
+    #[test]
+    fn reclaim_wreck_removes_combatant_and_occupancy_without_spawning_heap() {
+        let mut world = wreck_test_world(true, true);
+        let builder = world
+            .spawn_active(0, UnitDefId(0), Vec2::new(16.0, 16.0), BuildFacing::South)
+            .unwrap();
+        let position = Vec2::new(56.0, 56.0);
+        let victim = world
+            .spawn_active(0, UnitDefId(1), position, BuildFacing::South)
+            .unwrap();
+        world.destroy_entity(victim);
+        let wreck = world
+            .entities
+            .iter()
+            .find_map(|(id, entity)| (entity.role == EntityRole::Feature).then_some(id))
+            .unwrap();
+        world.enable_combat(1, "BOT", 16.0).unwrap();
+        assert!(world.combat.as_ref().unwrap().known.contains(&wreck));
+        world
+            .reclaim_orders
+            .insert(builder, ReclaimTarget::Entity { entity: wreck });
+        world.advance_reclaim(1.0);
+        assert!(!world.entities.contains(wreck));
+        assert!(!world.combat.as_ref().unwrap().known.contains(&wreck));
+        assert!(
+            !world
+                .entities
+                .iter()
+                .any(|(_, entity)| entity.role == EntityRole::Feature)
+        );
+        assert!(!world.occupancy.is_movement_blocked(position.x, position.z));
+        assert_eq!(world.teams[0].metrics.metal_reclaimed, 25.0);
+        world.advance_reclaim(1.0);
+        assert_eq!(world.teams[0].metrics.metal_reclaimed, 25.0);
+    }
+
+    #[test]
+    fn wreck_tactically_blocks_fire_until_destroyed() {
+        let base = combat_world(100.0);
+        let mut definitions = base.catalog.definitions().to_vec();
+        definitions[2].strategic.corpse = Some(CorpseDef {
+            name: "wall_wreck".into(),
+            health: 100.0,
+            ..Default::default()
+        });
+        let mut world = World::new(
+            map(),
+            Arc::new(WorldCatalog::new(definitions).unwrap()),
+            WorldConfig {
+                starting_resources: Resources::new(100.0, 100.0),
+                base_storage: Resources::new(1_000.0, 1_000.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let attacker = world
+            .spawn_active(0, UnitDefId(0), Vec2::new(24.0, 32.0), BuildFacing::East)
+            .unwrap();
+        let wall = world
+            .spawn_active(0, UnitDefId(2), Vec2::new(52.0, 32.0), BuildFacing::South)
+            .unwrap();
+        let target = world
+            .spawn_active(1, UnitDefId(1), Vec2::new(80.0, 32.0), BuildFacing::West)
+            .unwrap();
+        world.enable_combat(11, "BOT", 16.0).unwrap();
+        order_attack(&mut world, attacker, target);
+        assert!(world.destroy_entity(wall));
+        let wreck = world
+            .entities
+            .iter()
+            .find_map(|(id, entity)| (entity.role == EntityRole::Feature).then_some(id))
+            .unwrap();
+        world.step_seconds(0.25);
+        assert_eq!(world.entities.get(target).unwrap().health, 100.0);
+        assert_eq!(world.entities.get(wreck).unwrap().health, 90.0);
+        assert!(world.destroy_entity(wreck));
+        world.step_seconds(0.5);
+        assert_eq!(world.entities.get(target).unwrap().health, 90.0);
+    }
+
+    #[test]
+    fn unfinished_nanoframe_leaves_no_full_value_wreck_but_completed_frame_does() {
+        for complete in [false, true] {
+            let mut definitions = catalog().definitions().to_vec();
+            definitions[1].strategic.corpse = Some(CorpseDef {
+                name: "wall_wreck".into(),
+                reclaim: ReclaimDef {
+                    reclaimable: true,
+                    reclaim_time: 10.0,
+                    metal: 10.0,
+                    energy: 0.0,
+                },
+                ..Default::default()
+            });
+            let mut world = World::new(
+                map(),
+                Arc::new(WorldCatalog::new(definitions).unwrap()),
+                WorldConfig::default(),
+            )
+            .unwrap();
+            let builder = world
+                .spawn_active(0, UnitDefId(0), Vec2::new(24.0, 24.0), BuildFacing::South)
+                .unwrap();
+            let project = world
+                .issue_wall(
+                    builder,
+                    UnitDefId(1),
+                    Vec2::new(40.0, 24.0),
+                    BuildFacing::South,
+                    0,
+                )
+                .unwrap();
+            world.step_seconds(0.5);
+            let frame = world.project_entity(project).unwrap();
+            if complete {
+                world.construction.get_mut(project).unwrap().progress = 1.0;
+            }
+            assert!(world.destroy_entity(frame));
+            assert_eq!(
+                world
+                    .entities
+                    .iter()
+                    .filter(|(_, entity)| entity.role == EntityRole::Feature)
+                    .count(),
+                usize::from(complete)
+            );
+        }
+    }
+
+    #[test]
+    fn generated_corpse_catalog_is_idempotent_and_preserves_explicit_unit_definitions() {
+        let mut definitions = wreck_test_world(true, true).catalog.definitions().to_vec();
+        // A live unit may happen to have the corpse's requested name.
+        definitions.retain(|definition| definition.name != "wreck" && definition.name != "heap");
+        let mut live = unit("wreck");
+        live.weapons.push(WeaponDef::default());
+        definitions.push(live);
+        let catalog = WorldCatalog::new(definitions).unwrap();
+        let live_id = catalog.id("wreck").unwrap();
+        assert_eq!(catalog.get(live_id).unwrap().weapons.len(), 1);
+        assert_ne!(catalog.corpse_definitions[&UnitDefId(1)], live_id);
+        let rebuilt = WorldCatalog::new(catalog.definitions().to_vec()).unwrap();
+        assert_eq!(catalog.definitions().len(), rebuilt.definitions().len());
+        assert_eq!(catalog.corpse_definitions, rebuilt.corpse_definitions);
     }
 
     #[test]

@@ -133,7 +133,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
   <div class="card" id="field">
     <canvas id="cv"></canvas>
     <div id="overlay"></div>
-    <div class="legend"><i style="background:var(--blue)"></i>friendly council<i style="background:var(--red)"></i>enemy opponent<br><span class="shot" style="color:var(--blue)">━━▶</span>friendly shots <span class="shot" style="color:var(--red)">┄┄▶</span>enemy shots<br>△ body facing · gold line = weapon facing · gold dashed = selected target</div>
+    <div class="legend"><i style="background:var(--blue)"></i>friendly council<i style="background:var(--red)"></i>enemy opponent <i style="background:#968578"></i>neutral wreck<br><span class="shot" style="color:var(--blue)">━━▶</span>friendly shots <span class="shot" style="color:var(--red)">┄┄▶</span>enemy shots<br>△ body facing · gold line = weapon facing · gold dashed = selected target</div>
   </div>
 
   <div class="card">
@@ -221,7 +221,7 @@ function setBattle(b) {
   const info = new Map(b.units.map((u) => [u.id, u]));
   for (const f of b.frames) {
     const weapons = new Map(f.w || []);
-    f.units = f.u.map((a) => { const u = info.get(a[0]); return { id: a[0], side: u.side, max_hp: u.max_hp, radius: u.radius, position: [a[1], a[2]], heading: a[3], weapon_headings: weapons.get(a[0]) || [], hp: a[4], alive: a[4] > 0 }; });
+    f.units = f.u.map((a) => { const u = info.get(a[0]); return { id: a[0], side: u.side, max_hp: u.max_hp, radius: u.radius, reclaim_metal: u.reclaim_metal || 0, position: [a[1], a[2]], heading: a[3], weapon_headings: weapons.get(a[0]) || [], hp: a[4], alive: a[4] > 0 }; });
     f.aim_attempts = f.f.map((a) => ({ shooter: a[0], weapon: a[5] ?? 0, origin: [a[1], a[2]], aim_point: [a[3], a[4]], state: "fired" }));
     f._by = new Map(f.units.map((u) => [u.id, u]));
   }
@@ -260,7 +260,7 @@ function selectedUnit(i) {
   const b = S.battle, f = b.frames[i];
   const mine = (u) => u.side === b.learner_side && u.alive;
   let u = S.follow != null ? f._by.get(S.follow) : null;
-  if (!u || !u.alive) u = f.units.find(mine);
+  if (!u || !mine(u)) u = f.units.find(mine);
   return u || null;
 }
 // Outputs and hidden activations are not on the wire; recompute them from the
@@ -524,7 +524,7 @@ function drawField(i, sel, dec) {
   const v = S.cam || b._view, step = 100;
   for (let x = Math.ceil(v.x0 / step) * step; x < v.x1; x += step) { const [px] = p(x, 0); cx.beginPath(); cx.moveTo(px, 0); cx.lineTo(px, h); cx.stroke(); }
   for (let z = Math.ceil(v.z0 / step) * step; z < v.z1; z += step) { const [, pz] = p(0, z); cx.beginPath(); cx.moveTo(0, pz); cx.lineTo(w, pz); cx.stroke(); }
-  const col = (side, al = 1) => (side === b.learner_side ? `rgba(111,177,255,${al})` : `rgba(255,93,93,${al})`);
+  const col = (side, al = 1) => (side === 255 ? `rgba(150,133,120,${al})` : side === b.learner_side ? `rgba(111,177,255,${al})` : `rgba(255,93,93,${al})`);
   // trails: the last ~1.2 s of every living unit
   for (const u of f0.units) {
     if (!u.alive) continue;
@@ -571,6 +571,15 @@ function drawField(i, sel, dec) {
     const q = at.get(u.id), [px, pz] = p(q.x, q.z), r = Math.max(5, u.radius * s);
     cx.globalAlpha = u.alive ? 1 : 0.22;
     cx.fillStyle = col(u.side, 0.9); cx.strokeStyle = "#0b0d11"; cx.lineWidth = 2;
+    if (u.side === 255) {
+      if (u.alive) {
+        cx.beginPath(); cx.moveTo(px, pz-r); cx.lineTo(px+r, pz); cx.lineTo(px, pz+r); cx.lineTo(px-r, pz); cx.closePath(); cx.fill(); cx.stroke();
+        cx.fillStyle = "#c7b6a5"; cx.font = "10px ui-monospace,Consolas,monospace";
+        cx.fillText(`${fmt(u.reclaim_metal)} M`, px+r+3, pz);
+      }
+      cx.globalAlpha = 1;
+      continue;
+    }
     cx.beginPath(); cx.arc(px, pz, r, 0, 7); cx.fill(); cx.stroke();
     // Small hull triangle at the rim; each weapon gets its own independent barrel.
     const dx = Math.cos(q.hd), dz = Math.sin(q.hd), wing = Math.max(3, r * 0.4);
@@ -596,6 +605,17 @@ function drawField(i, sel, dec) {
     const colr = { win: "#6fd39a", loss: "#ff5d5d", timeout: "#ffd95a", "wipe-out": "#aab3c2" }[b.outcome];
     ov.style.display = "flex";
     ov.innerHTML = `<span style="color:${colr}">${b.outcome.toUpperCase()}</span><small>fitness ${fmt(b.fitness)} · exchange ${fmt(b.exchange)}${S.live && $("auto").checked ? " · next battle…" : ""}</small>`;
+    if (b.wreckage) {
+      const line = document.createElement('small'), w = b.wreckage;
+      line.textContent = `Remaining wreck metal ${fmt(w.total_metal)} · learner ${fmt(b.wreck_metal_left?.[0] || 0)} / opponent ${fmt(b.wreck_metal_left?.[1] || 0)}`;
+      line.title = 'Neutral metal left by each source army. Potential reclaim does not credit either army with resources or fitness.';
+      ov.append(line);
+      if (w.winner_reclaim_potential != null) {
+        const potential = document.createElement('small');
+        potential.textContent = `Winner reclaim potential ${fmt(w.winner_reclaim_potential)} metal · loser metal conceded ${fmt(w.loser_metal_conceded)}`;
+        ov.append(potential);
+      }
+    }
     if (b.firing) {
       const rate = (n,d) => d ? `${Math.round(100*n/d)}%` : 'unavailable';
       b.firing.forEach((s,i) => {
